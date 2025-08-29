@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Set
 from rich.console import Console
+import tiktoken
 
 console = Console()
 
@@ -123,6 +124,22 @@ class PromptEnhancer:
         self.coding_rules_cache = {}
         self.coding_rules_dir = Path("coding-rules")
         self._load_coding_rules()
+        
+        # Token management
+        self.max_context_tokens = 128000  # Typical LLM context limit
+        self.current_context_tokens = 0
+        self.token_flush_threshold = 0.90  # Flush at 90% to leave room for response
+        
+        # Initialize tokenizer (fallback to simple estimation if tiktoken not available)
+        try:
+            self.tokenizer = tiktoken.get_encoding("cl100k_base")  # GPT-4 tokenizer
+        except Exception:
+            self.tokenizer = None
+            console.print("[yellow]Warning: tiktoken not available, using token estimation[/yellow]")
+        
+        # Context preservation settings
+        self.preserve_recent_messages = 5  # Keep last 5 interactions
+        self.preserve_system_context = True  # Always keep system/rules context
     
     def _load_coding_rules(self):
         """Load all coding rules from the coding-rules directory"""
@@ -190,6 +207,130 @@ class PromptEnhancer:
             return header + "\n".join(rules_content)
         
         return ""
+    
+    def count_tokens(self, text: str) -> int:
+        """
+        Count tokens in text
+        
+        Args:
+            text: Text to count tokens for
+            
+        Returns:
+            Number of tokens
+        """
+        if self.tokenizer:
+            try:
+                return len(self.tokenizer.encode(text))
+            except Exception:
+                pass
+        
+        # Fallback estimation: ~4 characters per token
+        return len(text) // 4
+    
+    def get_context_usage_percentage(self) -> float:
+        """
+        Get current context usage as percentage
+        
+        Returns:
+            Percentage of context used (0-100)
+        """
+        if self.max_context_tokens == 0:
+            return 0.0
+        return (self.current_context_tokens / self.max_context_tokens) * 100
+    
+    def add_to_context_history(self, role: str, content: str, metadata: Dict = None):
+        """
+        Add message to context history with token tracking
+        
+        Args:
+            role: Message role (user, assistant, system)
+            content: Message content
+            metadata: Additional metadata
+        """
+        tokens = self.count_tokens(content)
+        
+        message = {
+            'role': role,
+            'content': content,
+            'tokens': tokens,
+            'timestamp': os.times().elapsed,
+            'metadata': metadata or {}
+        }
+        
+        self.context_history.append(message)
+        self.current_context_tokens += tokens
+        
+        # Check if we need to flush
+        if self.get_context_usage_percentage() >= (self.token_flush_threshold * 100):
+            console.print(f"[yellow]🔄 Context at {self.get_context_usage_percentage():.1f}% - Auto-flushing...[/yellow]")
+            self.flush_context()
+    
+    def flush_context(self, preserve_recent: bool = True):
+        """
+        Flush context history while preserving important information
+        
+        Args:
+            preserve_recent: Whether to preserve recent messages
+        """
+        if not self.context_history:
+            return
+        
+        preserved_messages = []
+        preserved_tokens = 0
+        
+        # Always preserve system messages and coding rules
+        if self.preserve_system_context:
+            for msg in self.context_history:
+                if msg['role'] == 'system' or msg.get('metadata', {}).get('type') == 'coding_rules':
+                    preserved_messages.append(msg)
+                    preserved_tokens += msg['tokens']
+        
+        # Preserve recent messages
+        if preserve_recent and len(self.context_history) > self.preserve_recent_messages:
+            recent_messages = self.context_history[-self.preserve_recent_messages:]
+            for msg in recent_messages:
+                if msg not in preserved_messages:
+                    preserved_messages.append(msg)
+                    preserved_tokens += msg['tokens']
+        
+        # Create summary of flushed content
+        flushed_count = len(self.context_history) - len(preserved_messages)
+        if flushed_count > 0:
+            summary = {
+                'role': 'system',
+                'content': f"[CONTEXT SUMMARY: {flushed_count} messages flushed to manage token limit]",
+                'tokens': self.count_tokens(f"[CONTEXT SUMMARY: {flushed_count} messages flushed to manage token limit]"),
+                'timestamp': os.times().elapsed,
+                'metadata': {'type': 'flush_summary'}
+            }
+            preserved_messages.insert(0, summary)
+            preserved_tokens += summary['tokens']
+        
+        # Update context
+        old_tokens = self.current_context_tokens
+        self.context_history = preserved_messages
+        self.current_context_tokens = preserved_tokens
+        
+        console.print(f"[green]✓ Context flushed: {old_tokens} → {preserved_tokens} tokens ({self.get_context_usage_percentage():.1f}%)[/green]")
+    
+    def get_context_status(self) -> str:
+        """
+        Get current context status for display
+        
+        Returns:
+            Formatted context status string
+        """
+        percentage = self.get_context_usage_percentage()
+        messages_count = len(self.context_history)
+        
+        if percentage < 50:
+            color = "green"
+        elif percentage < 80:
+            color = "yellow"
+        else:
+            color = "red"
+        
+        return f"[{color}]{percentage:.1f}%[/{color}] ({messages_count} msgs, {self.current_context_tokens:,} tokens)"
         
     def extract_file_references(self, text: str) -> List[str]:
         """
@@ -489,6 +630,9 @@ class PromptEnhancer:
             coding_rules = self.get_relevant_coding_rules(detected_technologies)
             if coding_rules:
                 enhanced_parts.append(coding_rules)
+                # Add to context with metadata
+                self.add_to_context_history("system", coding_rules, 
+                                          {"type": "coding_rules", "technologies": list(detected_technologies)})
         
         # Add clear instructions about response structuring
         enhanced_parts.append("""

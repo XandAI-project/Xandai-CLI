@@ -167,24 +167,31 @@ class ShellExecutor:
                 # Resolve caminho relativo
                 new_dir = (self.current_dir / path).resolve()
             
-            # Additional check to prevent path component duplication
+            # Advanced path duplication prevention
             try:
-                # Normalize path to prevent duplicate segments
                 str_path = str(new_dir)
                 path_parts = str_path.replace('\\', '/').split('/')
-                # Remove consecutive duplicate parts
-                cleaned_parts = []
-                for part in path_parts:
-                    if not cleaned_parts or part != cleaned_parts[-1]:
-                        cleaned_parts.append(part)
+                
+                # Remove empty parts and normalize
+                path_parts = [part for part in path_parts if part and part != '.']
+                
+                # Advanced duplication detection
+                cleaned_parts = self._remove_path_duplications(path_parts)
                 
                 if len(cleaned_parts) != len(path_parts):
-                    new_dir = Path('/'.join(cleaned_parts)) if not self.is_windows else Path('\\'.join(cleaned_parts))
-                    if self.is_windows and len(cleaned_parts) > 0 and ':' not in cleaned_parts[0]:
-                        # Restore drive letter format for Windows
-                        cleaned_parts[0] = cleaned_parts[0] + ':'
+                    # Reconstruct path with cleaned parts
+                    if self.is_windows and len(cleaned_parts) > 0:
+                        # Windows path reconstruction
+                        if ':' not in cleaned_parts[0] and len(cleaned_parts[0]) == 1:
+                            cleaned_parts[0] = cleaned_parts[0] + ':'
                         new_dir = Path('\\'.join(cleaned_parts))
-            except:
+                    else:
+                        # Unix path reconstruction  
+                        new_dir = Path('/'.join(cleaned_parts))
+                        
+                    console.print(f"[dim]🔧 Path cleaned: {str_path} → {new_dir}[/dim]")
+            except Exception as e:
+                console.print(f"[dim]⚠️ Path cleaning failed: {e}[/dim]")
                 pass  # Use original path if cleaning fails
             
             if new_dir.exists() and new_dir.is_dir():
@@ -197,6 +204,93 @@ class ShellExecutor:
         except Exception as e:
             return False, f"❌ Error changing directory: {e}"
     
+    def _remove_path_duplications(self, path_parts: List[str]) -> List[str]:
+        """
+        Advanced algorithm to remove path duplications
+        
+        Args:
+            path_parts: List of path components
+            
+        Returns:
+            Cleaned path components
+        """
+        if len(path_parts) <= 1:
+            return path_parts
+        
+        cleaned = []
+        i = 0
+        
+        while i < len(path_parts):
+            current_part = path_parts[i]
+            
+            # Always add the first part (usually drive or root)
+            if not cleaned:
+                cleaned.append(current_part)
+                i += 1
+                continue
+            
+            # Look for duplication patterns
+            found_duplication = False
+            
+            # Check for immediate consecutive duplicates
+            if current_part == cleaned[-1]:
+                # Skip consecutive duplicate
+                i += 1
+                found_duplication = True
+                continue
+            
+            # Check for more complex patterns like 'examples/XandAI-CLI/examples'
+            if len(cleaned) >= 2:
+                # Look for patterns where we have A/B/A
+                for j in range(len(cleaned) - 1, -1, -1):
+                    if cleaned[j] == current_part:
+                        # Found a duplication pattern
+                        # Check if this creates a meaningful duplication
+                        if self._is_meaningful_duplication(cleaned, j, current_part, path_parts[i:]):
+                            # Skip this part and continue with the next
+                            i += 1
+                            found_duplication = True
+                            break
+                            
+                if found_duplication:
+                    continue
+            
+            # No duplication found, add the part
+            cleaned.append(current_part)
+            i += 1
+        
+        return cleaned
+    
+    def _is_meaningful_duplication(self, cleaned: List[str], found_index: int, 
+                                  current_part: str, remaining_parts: List[str]) -> bool:
+        """
+        Determine if a duplication is meaningful and should be removed
+        
+        Args:
+            cleaned: Current cleaned path parts
+            found_index: Index where duplication was found
+            current_part: The duplicated part
+            remaining_parts: Remaining parts to process
+            
+        Returns:
+            True if this is a meaningful duplication to remove
+        """
+        # If we find 'examples' again after 'examples/XandAI-CLI', it's likely a duplication
+        if found_index < len(cleaned) - 1:
+            between_parts = cleaned[found_index + 1:]
+            # If there's exactly one part between the duplicates, it's likely a duplication
+            if len(between_parts) == 1:
+                return True
+        
+        # Check for project folder duplications (like 'XandAI-CLI/examples/XandAI-CLI')
+        if current_part in cleaned and len(cleaned) >= 2:
+            # Look for patterns where project name appears multiple times
+            project_appearances = [i for i, part in enumerate(cleaned) if part == current_part]
+            if len(project_appearances) >= 1:
+                return True
+        
+        return False
+
     def get_current_directory(self) -> str:
         """Returns current directory"""
         return str(self.current_dir)

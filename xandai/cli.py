@@ -103,6 +103,8 @@ class XandAICLI:
             '/enhance': self.toggle_prompt_enhancement,
             '/enhance_code': self.enhance_code_command,
             '/task': self.task_command,
+            '/flush': self.flush_context,
+            '/context': self.show_context_status,
             '/debug': self.toggle_debug_mode
         }
         
@@ -132,6 +134,37 @@ class XandAICLI:
         self.enhance_prompts = not self.enhance_prompts
         status = "ativada" if self.enhance_prompts else "desativada"
         console.print(f"[green]✓ Automatic prompt enhancement {status}[/green]")
+    
+    def flush_context(self):
+        """Manually flush the LLM context history"""
+        if hasattr(self.prompt_enhancer, 'flush_context'):
+            old_usage = self.prompt_enhancer.get_context_usage_percentage()
+            self.prompt_enhancer.flush_context()
+            new_usage = self.prompt_enhancer.get_context_usage_percentage()
+            console.print(f"[green]🔄 Context manually flushed: {old_usage:.1f}% → {new_usage:.1f}%[/green]")
+        else:
+            console.print("[yellow]Context management not available[/yellow]")
+    
+    def show_context_status(self):
+        """Show current context usage status"""
+        if hasattr(self.prompt_enhancer, 'get_context_status'):
+            status = self.prompt_enhancer.get_context_status()
+            console.print(f"[blue]📊 Context Status: {status}[/blue]")
+            
+            # Show detailed breakdown
+            if hasattr(self.prompt_enhancer, 'context_history'):
+                history = self.prompt_enhancer.context_history
+                console.print(f"[dim]Messages breakdown:[/dim]")
+                
+                role_counts = {}
+                for msg in history:
+                    role = msg['role']
+                    role_counts[role] = role_counts.get(role, 0) + 1
+                
+                for role, count in role_counts.items():
+                    console.print(f"[dim]  {role}: {count} messages[/dim]")
+        else:
+            console.print("[yellow]Context status not available[/yellow]")
     
     def toggle_debug_mode(self):
         """Alterna modo debug para mostrar respostas completas"""
@@ -900,6 +933,8 @@ class XandAICLI:
 - `/enhance` - Toggles automatic prompt enhancement
 - `/enhance_code <description>` - Improves existing code (adds details, fixes bugs)
 - `/task <description>` - Executes complex task divided into steps
+- `/flush` - Manually flush LLM context history to free up tokens
+- `/context` - Show current context usage status and token percentage
 - `/debug` - Toggles debug mode (shows complete model responses)
 
 ## File Commands
@@ -1370,6 +1405,9 @@ mkdir new_project
                 )
             else:
                 enhanced_prompt = prompt_text
+                # Still track context even without enhancement
+                if hasattr(self.prompt_enhancer, 'add_to_context_history'):
+                    self.prompt_enhancer.add_to_context_history("user", prompt_text)
             
             # Buffer para acumular resposta completa
             full_response = ""
@@ -1478,13 +1516,18 @@ mkdir new_project
         shell_status = "[green]ENABLED[/green]" if self.auto_execute_shell else "[red]DISABLED[/red]"
         prompt_status = "[green]ENABLED[/green]" if self.enhance_prompts else "[red]DISABLED[/red]"
         
+        # Get context status
+        context_status = ""
+        if hasattr(self.prompt_enhancer, 'get_context_status'):
+            context_status = f"\n[bold blue]🧠 Context:[/bold blue] {self.prompt_enhancer.get_context_status()}"
+        
         # Create the complete banner
         banner = f"""{ascii_logo}
 
 [dim cyan]                    AI Assistant with OLLAMA[/dim cyan]
 
 [bold yellow]⚡ Automatic shell:[/bold yellow] {shell_status}
-[bold yellow]🎯 Enhanced prompts:[/bold yellow] {prompt_status}
+[bold yellow]🎯 Enhanced prompts:[/bold yellow] {prompt_status}{context_status}
 
 [bold blue]💻 System:[/bold blue] [white]{os_info}[/white]
 [bold blue]📁 Directory:[/bold blue] [white]{dir_display}[/white]
@@ -1542,7 +1585,7 @@ mkdir new_project
                             else:
                                 self.commands[command]()
                         else:
-                            console.print(f"[red]Comando desconhecido: {command}[/red]")
+                            console.print(f"[red]Unknown command: {command}[/red]")
                             console.print("[dim]Type /help to see available commands.[/dim]")
                     else:
                         # Verifica se é um comando shell
