@@ -527,6 +527,17 @@ class XandAICLI:
                     # Converte comando para o OS apropriado
                     converted_cmd = self.shell_exec.convert_command(cmd)
                     
+                    # Check for directory duplication in mkdir commands
+                    if converted_cmd.strip().startswith('mkdir '):
+                        dir_name = converted_cmd.strip()[6:].strip().strip('"').strip("'")
+                        current_path = self.shell_exec.get_current_directory()
+                        
+                        # Check if the directory name already exists in the current path
+                        if dir_name.lower() in current_path.lower():
+                            console.print(f"[yellow]⚠️  Warning: Directory '{dir_name}' already exists in path![/yellow]")
+                            console.print(f"[yellow]Current path: {current_path}[/yellow]")
+                            console.print(f"[yellow]Consider using a unique name instead[/yellow]")
+                    
                     if self._is_dangerous_command(converted_cmd):
                         console.print(f"\n[yellow]⚠️  Comando potencialmente perigoso detectado:[/yellow]")
                         console.print(f"[red]{converted_cmd}[/red]")
@@ -642,6 +653,17 @@ class XandAICLI:
                     # Converte comando para o OS apropriado
                     converted_cmd = self.shell_exec.convert_command(cmd)
                     
+                    # Check for directory duplication in mkdir commands
+                    if converted_cmd.strip().startswith('mkdir '):
+                        dir_name = converted_cmd.strip()[6:].strip().strip('"').strip("'")
+                        current_path = self.shell_exec.get_current_directory()
+                        
+                        # Check if the directory name already exists in the current path
+                        if dir_name.lower() in current_path.lower():
+                            console.print(f"[yellow]⚠️  Warning: Directory '{dir_name}' already exists in path![/yellow]")
+                            console.print(f"[yellow]Current path: {current_path}[/yellow]")
+                            console.print(f"[yellow]Consider using a unique name instead[/yellow]")
+                    
                     if self._is_dangerous_command(converted_cmd):
                         console.print(f"\n[yellow]⚠️  Comando potencialmente perigoso detectado:[/yellow]")
                         console.print(f"[red]{converted_cmd}[/red]")
@@ -692,6 +714,17 @@ class XandAICLI:
                 for cmd in commands:
                     # Converte comando para o OS apropriado
                     converted_cmd = self.shell_exec.convert_command(cmd)
+                    
+                    # Check for directory duplication in mkdir commands
+                    if converted_cmd.strip().startswith('mkdir '):
+                        dir_name = converted_cmd.strip()[6:].strip().strip('"').strip("'")
+                        current_path = self.shell_exec.get_current_directory()
+                        
+                        # Check if the directory name already exists in the current path
+                        if dir_name.lower() in current_path.lower():
+                            console.print(f"[yellow]⚠️  Warning: Directory '{dir_name}' already exists in path![/yellow]")
+                            console.print(f"[yellow]Current path: {current_path}[/yellow]")
+                            console.print(f"[yellow]Consider using a unique name instead[/yellow]")
                     
                     # Executa o comando convertido
                     with console.status(f"[dim]$ {converted_cmd}[/dim]", spinner="dots"):

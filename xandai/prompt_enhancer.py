@@ -556,16 +556,34 @@ class PromptEnhancer:
         if os_info:
             enhanced_parts.append(f"[Operating System: {os_info}]")
         
-        # Add directory context
+        # Add directory context with path analysis
         if current_dir:
             enhanced_parts.append(f"[Working Directory: {current_dir}]")
+            
+            # Analyze path components for better context
+            path_components = Path(current_dir).parts
+            if len(path_components) > 0:
+                enhanced_parts.append(f"[Current Path Components: {' → '.join(path_components[-3:])}]")
+                
+                # Detect if we're in a project subdirectory
+                project_indicators = ['examples', 'projects', 'src', 'app', 'lib', 'public', 'static']
+                current_location = ""
+                
+                for component in path_components:
+                    if component.lower() in project_indicators:
+                        current_location = f"You are inside a '{component}' directory"
+                        break
+                
+                if current_location:
+                    enhanced_parts.append(f"[CONTEXT: {current_location} - DO NOT create another '{component}' folder]")
             
             # Add existing file structure
             file_structure = self._get_file_structure(current_dir)
             if file_structure:
                 enhanced_parts.append(f"\n[Existing File Structure:]")
                 enhanced_parts.append(file_structure)
-                enhanced_parts.append("\n[IMPORTANT: Edit existing files instead of creating duplicates!]")
+                enhanced_parts.append("\n[CRITICAL: DO NOT recreate existing directories or files!]")
+                enhanced_parts.append("[CRITICAL: Choose a UNIQUE project name that doesn't exist in the path!]")
         
         # Add file context and complete content if they exist
         if context['files']:
@@ -698,6 +716,9 @@ FILE EDITING RULES:
 ❌ NEVER use "..." or "# rest of the code remains the same"
 
 DIRECTORY STRUCTURE RULES:
+⚠️  CRITICAL: NEVER recreate directories that already exist in the current path!
+⚠️  CRITICAL: If you see 'examples' in the path, DON'T create another 'examples' folder!
+⚠️  CRITICAL: Choose UNIQUE project names (e.g., 'my-api-project', 'user-auth-system')!
 ✅ Create simple, flat structures when possible
 ✅ Only create necessary directories (e.g., templates/ for Flask)
 ✅ ALWAYS check [Existing File Structure] before creating files
@@ -707,6 +728,7 @@ DIRECTORY STRUCTURE RULES:
 ❌ NEVER create directories from descriptive text
 ❌ NEVER create duplicate files (e.g., app.py if it already exists)
 ❌ NEVER put Python files inside templates/ directory
+❌ NEVER create 'examples', 'public', 'src' folders if they already exist in the path!
 
 FILE HANDLING RULES:
 ✅ If app.py exists, EDIT it - don't create app2.py or templates/app.py
@@ -719,8 +741,8 @@ First, I'll install Flask and create the project structure:
 
 <actions>
 pip install flask
-mkdir flask_project
-cd flask_project
+mkdir unique-flask-api
+cd unique-flask-api
 </actions>
 
 Now I'll create the main application file:
