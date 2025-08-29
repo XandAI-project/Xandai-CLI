@@ -13,7 +13,7 @@ from rich.syntax import Syntax
 from prompt_toolkit import prompt
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
-from prompt_toolkit.completion import WordCompleter
+from prompt_toolkit.completion import WordCompleter, PathCompleter, Completer, Completion
 from pathlib import Path
 
 from .api import OllamaAPI, OllamaAPIError
@@ -24,6 +24,50 @@ from .task_manager import TaskManager
 from .git_manager import GitManager
 
 console = Console()
+
+
+class XandAICompleter(Completer):
+    """Custom completer for XandAI CLI that handles both commands and file paths"""
+    
+    def __init__(self, commands, shell_executor):
+        self.commands = commands
+        self.shell_executor = shell_executor
+        self.command_completer = WordCompleter(list(commands.keys()), ignore_case=True)
+        self.path_completer = PathCompleter()
+        
+        # Shell commands that typically need file/directory completion
+        self.file_commands = {
+            'cd', 'ls', 'dir', 'cat', 'type', 'rm', 'del', 'cp', 'copy', 'mv', 'move',
+            'mkdir', 'rmdir', 'touch', 'head', 'tail', 'less', 'more', 'nano', 'vim',
+            'code', 'notepad', 'git', 'find', 'grep', 'chmod', 'chown', 'tar', 'zip',
+            'unzip', 'python', 'node', 'npm', 'pip', 'cargo', 'go'
+        }
+    
+    def get_completions(self, document, complete_event):
+        text = document.text
+        
+        # If starts with /, complete CLI commands
+        if text.startswith('/'):
+            yield from self.command_completer.get_completions(document, complete_event)
+            return
+        
+        # For shell commands, provide file/path completion
+        words = text.split()
+        if words:
+            first_word = words[0].lower()
+            
+            # If it's a shell command that typically needs file completion
+            if first_word in self.file_commands:
+                # Create a new document with just the path part for completion
+                if len(words) > 1:
+                    # Get the last word (the path being typed)
+                    path_part = words[-1]
+                    cursor_pos = len(path_part)
+                    path_document = document.__class__(path_part, cursor_pos)
+                    yield from self.path_completer.get_completions(path_document, complete_event)
+                else:
+                    # No path started yet, complete from current directory
+                    yield from self.path_completer.get_completions(document.__class__('', 0), complete_event)
 
 
 class XandAICLI:
@@ -640,7 +684,7 @@ class XandAICLI:
             return
         
         if not self.selected_model:
-            console.print("[red]Nenhum modelo selecionado. Use /models para selecionar um.[/red]")
+            console.print("[red]No model selected. Use /models to select one.[/red]")
             return
         
         console.print("\n[bold blue]🎯 Modo de Tarefa Complexa Ativado[/bold blue]")
@@ -764,7 +808,7 @@ class XandAICLI:
             
             # Se é tarefa de texto, mostra em tempo real
             if task_info['type'] == 'text':
-                with console.status("[bold green]Gerando explicação...", spinner="dots") as status:
+                with console.status("[bold green]Generating explanation...", spinner="dots") as status:
                     for chunk in self.api.generate(self.selected_model, enhanced_prompt):
                         full_response += chunk
                 
@@ -773,7 +817,7 @@ class XandAICLI:
                 console.print(Panel(Markdown(full_response), border_style="cyan"))
             else:
                 # Para código/shell, usa processamento normal
-                with console.status("[bold green]Gerando solução...", spinner="dots") as status:
+                with console.status("[bold green]Generating solution...", spinner="dots") as status:
                     for chunk in self.api.generate(self.selected_model, enhanced_prompt):
                         full_response += chunk
                 
@@ -1025,9 +1069,9 @@ mkdir new_project
                         title += " (busca recursiva)"
                     
                     table = Table(title=title)
-                    table.add_column("Caminho", style="cyan")
-                    table.add_column("Tamanho", style="green")
-                    table.add_column("Modificado", style="yellow")
+                    table.add_column("Path", style="cyan")
+                    table.add_column("Size", style="green")
+                    table.add_column("Modified", style="yellow")
                     
                     for file in sorted(files):
                         if file.is_file():
@@ -1169,11 +1213,11 @@ mkdir new_project
                 return None
             
             # Cria tabela de modelos
-            table = Table(title="Modelos Disponíveis")
-            table.add_column("Número", style="cyan", no_wrap=True)
-            table.add_column("Nome", style="green")
-            table.add_column("Tamanho", style="yellow")
-            table.add_column("Modificado", style="magenta")
+            table = Table(title="Available Models")
+            table.add_column("Number", style="cyan", no_wrap=True)
+            table.add_column("Name", style="green")
+            table.add_column("Size", style="yellow")
+            table.add_column("Modified", style="magenta")
             
             for i, model in enumerate(models, 1):
                 name = model.get('name', 'Unknown')
@@ -1202,7 +1246,7 @@ mkdir new_project
             # Seleção de modelo
             while True:
                 try:
-                    choice = console.input("\n[bold cyan]Selecione um modelo pelo número (ou 'q' para sair): [/bold cyan]")
+                    choice = console.input("\n[bold cyan]Select a model by number (or 'q' to exit): [/bold cyan]")
                     
                     if choice.lower() == 'q':
                         return None
@@ -1210,7 +1254,7 @@ mkdir new_project
                     model_index = int(choice) - 1
                     if 0 <= model_index < len(models):
                         selected = models[model_index]['name']
-                        console.print(f"\n[green]✓ Modelo selecionado: {selected}[/green]")
+                        console.print(f"\n[green]✓ Model selected: {selected}[/green]")
                         return selected
                     else:
                         console.print("[red]Invalid number. Try again.[/red]")
@@ -1219,7 +1263,7 @@ mkdir new_project
                     console.print("[red]Please enter a valid number.[/red]")
                     
         except OllamaAPIError as e:
-            console.print(f"[red]Erro ao listar modelos: {e}[/red]")
+            console.print(f"[red]Error listing models: {e}[/red]")
             return None
     
     def _should_execute_as_command(self, prompt_text: str) -> Optional[str]:
@@ -1266,7 +1310,7 @@ mkdir new_project
             prompt_text: Texto do prompt
         """
         if not self.selected_model:
-            console.print("[red]Nenhum modelo selecionado. Use /models para selecionar um.[/red]")
+            console.print("[red]No model selected. Use /models to select one.[/red]")
             return
         
         # Only execute if it's an EXACT shell command (no interpretation)
@@ -1301,7 +1345,7 @@ mkdir new_project
             line_count = 0
             
             # Gera resposta com status dinâmico
-            with console.status("[bold green]Pensando...", spinner="dots") as status:
+            with console.status("[bold green]Thinking...", spinner="dots") as status:
                 for chunk in self.api.generate(self.selected_model, enhanced_prompt):
                     full_response += chunk
                     line_count += chunk.count('\n')
@@ -1428,14 +1472,12 @@ mkdir new_project
         # Seleciona modelo
         self.selected_model = self.list_models()
         if not self.selected_model:
-            console.print("[yellow]Nenhum modelo selecionado. Saindo...[/yellow]")
+            console.print("[yellow]No model selected. Exiting...[/yellow]")
             return
         
         # Prepara autocompletar
-        command_completer = WordCompleter(
-            list(self.commands.keys()),
-            ignore_case=True
-        )
+        # Create custom completer that handles both commands and file paths
+        custom_completer = XandAICompleter(self.commands, self.shell_exec)
         
         # Loop principal
         console.print("\n[dim]Type /help to see available commands.[/dim]\n")
@@ -1448,8 +1490,9 @@ mkdir new_project
                         f"[{self.selected_model}] > ",
                         history=FileHistory(str(self.history_file)),
                         auto_suggest=AutoSuggestFromHistory(),
-                        completer=command_completer,
-                        multiline=False
+                        completer=custom_completer,
+                        multiline=False,
+                        complete_while_typing=True
                     )
                     
                     if not user_input.strip():
