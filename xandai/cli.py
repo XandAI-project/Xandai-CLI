@@ -92,6 +92,7 @@ class XandAICLI:
         self.history_file = Path.home() / ".xandai_history"
         self.auto_execute_shell = True  # Flag for automatic command execution
         self.enhance_prompts = True     # Flag para melhorar prompts automaticamente
+        self.better_prompting = True    # Flag for better prompting system
         self.commands = {
             '/help': self.show_help,
             '/models': self.list_models,
@@ -105,7 +106,8 @@ class XandAICLI:
             '/task': self.task_command,
             '/flush': self.flush_context,
             '/context': self.show_context_status,
-            '/debug': self.toggle_debug_mode
+            '/debug': self.toggle_debug_mode,
+            '/better': self.toggle_better_prompting
         }
         
         # Modo debug
@@ -165,6 +167,87 @@ class XandAICLI:
                     console.print(f"[dim]  {role}: {count} messages[/dim]")
         else:
             console.print("[yellow]Context status not available[/yellow]")
+    
+    def toggle_better_prompting(self):
+        """Toggles better prompting system"""
+        self.better_prompting = not self.better_prompting
+        status = "enabled" if self.better_prompting else "disabled"
+        console.print(f"[green]✓ Better prompting system {status}[/green]")
+        if self.better_prompting:
+            console.print("[dim]Your prompts will be analyzed and enhanced for better results[/dim]")
+        else:
+            console.print("[dim]Prompts will be sent directly to the LLM[/dim]")
+    
+    def analyze_and_enhance_prompt(self, original_prompt: str) -> str:
+        """
+        Analyze user prompt and enhance it with better context and details
+        
+        Args:
+            original_prompt: User's original prompt
+            
+        Returns:
+            Enhanced prompt with more context and details
+        """
+        analysis_prompt = f"""You are a prompt analysis expert. Your job is to analyze user requests and provide a detailed, enhanced version that will get better results from an AI assistant.
+
+ORIGINAL USER REQUEST:
+"{original_prompt}"
+
+ANALYSIS TASK:
+1. Identify what the user is trying to accomplish
+2. Determine what additional context or details would be helpful
+3. Suggest specific requirements, constraints, or preferences
+4. Consider technical details, best practices, or standards that should be included
+5. Think about potential edge cases or considerations
+
+ENHANCED REQUEST FORMAT:
+Provide an enhanced version of the request that:
+- Maintains the user's original intent
+- Adds helpful context and details
+- Specifies clear requirements when applicable  
+- Includes relevant technical considerations
+- Is more likely to produce a comprehensive, useful response
+
+IMPORTANT: 
+- Keep the enhanced request focused and practical
+- Don't over-complicate simple requests
+- Maintain the original tone and style
+- Add value without changing the core request
+
+Enhanced Request:"""
+
+        try:
+            console.print("[dim]🔍 Analyzing and enhancing your prompt...[/dim]")
+            
+            # Send to LLM for analysis
+            response = ""
+            for chunk in self.api.generate(self.selected_model, analysis_prompt, stream=True):
+                response += chunk
+            
+            # Extract the enhanced request from the response
+            enhanced_prompt = response.strip()
+            
+            # Clean up the response to get just the enhanced prompt
+            if "Enhanced Request:" in enhanced_prompt:
+                enhanced_prompt = enhanced_prompt.split("Enhanced Request:")[-1].strip()
+            elif "enhanced version:" in enhanced_prompt.lower():
+                parts = enhanced_prompt.lower().split("enhanced version:")
+                if len(parts) > 1:
+                    enhanced_prompt = enhanced_prompt[len(parts[0]):].strip()
+            
+            # Remove any leading/trailing quotes or formatting
+            enhanced_prompt = enhanced_prompt.strip('"').strip("'").strip()
+            
+            # Show the enhancement to the user
+            console.print(f"\n[blue]🎯 Enhanced Prompt:[/blue]")
+            console.print(f"[dim]{enhanced_prompt}[/dim]\n")
+            
+            return enhanced_prompt
+            
+        except Exception as e:
+            console.print(f"[yellow]⚠️ Prompt enhancement failed: {e}[/yellow]")
+            console.print("[dim]Falling back to original prompt[/dim]")
+            return original_prompt
     
     def toggle_debug_mode(self):
         """Alterna modo debug para mostrar respostas completas"""
@@ -994,6 +1077,7 @@ class XandAICLI:
 - `/task <description>` - Executes complex task divided into steps
 - `/flush` - Manually flush LLM context history to free up tokens
 - `/context` - Show current context usage status and token percentage
+- `/better` - Toggle better prompting system (two-stage prompt enhancement)
 - `/debug` - Toggles debug mode (shows complete model responses)
 
 ## File Commands
@@ -1455,18 +1539,23 @@ mkdir new_project
             return
         
         try:
-            # Melhora o prompt se a opção estiver ativada
+            # Step 1: Better prompting - analyze and enhance user request
+            working_prompt = prompt_text
+            if self.better_prompting:
+                working_prompt = self.analyze_and_enhance_prompt(prompt_text)
+            
+            # Step 2: Apply regular prompt enhancements if enabled  
             if self.enhance_prompts:
                 enhanced_prompt = self.prompt_enhancer.enhance_prompt(
-                    prompt_text, 
+                    working_prompt, 
                     self.shell_exec.get_current_directory(),
                     self.shell_exec.get_os_info()
                 )
             else:
-                enhanced_prompt = prompt_text
+                enhanced_prompt = working_prompt
                 # Still track context even without enhancement
                 if hasattr(self.prompt_enhancer, 'add_to_context_history'):
-                    self.prompt_enhancer.add_to_context_history("user", prompt_text)
+                    self.prompt_enhancer.add_to_context_history("user", working_prompt)
             
             # Buffer para acumular resposta completa
             full_response = ""
@@ -1575,10 +1664,12 @@ mkdir new_project
         shell_status = "[green]ENABLED[/green]" if self.auto_execute_shell else "[red]DISABLED[/red]"
         prompt_status = "[green]ENABLED[/green]" if self.enhance_prompts else "[red]DISABLED[/red]"
         
-        # Get context status
+        # Get context status and better prompting status
         context_status = ""
         if hasattr(self.prompt_enhancer, 'get_context_status'):
             context_status = f"\n[bold blue]🧠 Context:[/bold blue] {self.prompt_enhancer.get_context_status()}"
+        
+        better_status = f"\n[bold blue]🎯 Better Prompting:[/bold blue] {'[green]ENABLED[/green]' if self.better_prompting else '[red]DISABLED[/red]'}"
         
         # Create the complete banner
         banner = f"""{ascii_logo}
@@ -1586,7 +1677,7 @@ mkdir new_project
 [dim cyan]                    AI Assistant with OLLAMA[/dim cyan]
 
 [bold yellow]⚡ Automatic shell:[/bold yellow] {shell_status}
-[bold yellow]🎯 Enhanced prompts:[/bold yellow] {prompt_status}{context_status}
+[bold yellow]🎯 Enhanced prompts:[/bold yellow] {prompt_status}{better_status}{context_status}
 
 [bold blue]💻 System:[/bold blue] [white]{os_info}[/white]
 [bold blue]📁 Directory:[/bold blue] [white]{dir_display}[/white]
