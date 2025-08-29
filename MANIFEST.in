@@ -1,0 +1,11 @@
+include README.md
+include LICENSE
+include requirements.txt
+include pyproject.toml
+recursive-include xandai *.py
+recursive-include tests *.py
+recursive-include examples *.py
+exclude .gitignore
+global-exclude __pycache__
+global-exclude *.py[co]
+global-exclude .DS_Store
