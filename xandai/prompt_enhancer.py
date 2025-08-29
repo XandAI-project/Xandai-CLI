@@ -3,8 +3,9 @@ Module to enhance prompts with coding context
 """
 
 import re
+import os
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Set
 from rich.console import Console
 
 console = Console()
@@ -69,9 +70,126 @@ class PromptEnhancer:
         'make': 'make'
     }
     
+    # Technology detection patterns
+    TECHNOLOGY_PATTERNS = {
+        'react': [
+            r'\breact\b', r'\bjsx\b', r'\btsx\b', r'react[-\s]app', r'create[-\s]react[-\s]app',
+            r'usestate', r'useeffect', r'usememo', r'usecallback', r'usecontext',
+            r'component', r'props', r'state'
+        ],
+        'python': [
+            r'\.py\b', r'\bpython\b', r'\bpip\b', r'requirements\.txt', r'setup\.py',
+            r'\bflask\b', r'\bdjango\b', r'\bfastapi\b', r'__init__\.py',
+            r'import\s+\w+', r'from\s+\w+\s+import', r'def\s+\w+', r'class\s+\w+'
+        ],
+        'flask': [
+            r'\bflask\b', r'flask[-\s]app', r'app\.route', r'render_template',
+            r'jsonify', r'request', r'session', r'Blueprint'
+        ],
+        'javascript': [
+            r'\.js\b', r'\.mjs\b', r'\bjavascript\b', r'\bnode\b', r'package\.json',
+            r'npm\s+install', r'yarn\s+add', r'function\s*\(', r'=>\s*\{',
+            r'const\s+\w+', r'let\s+\w+', r'var\s+\w+'
+        ],
+        'typescript': [
+            r'\.ts\b', r'\.tsx\b', r'\btypescript\b', r'tsconfig\.json',
+            r'interface\s+\w+', r'type\s+\w+', r'enum\s+\w+'
+        ],
+        'vue': [
+            r'\bvue\b', r'\.vue\b', r'vue[-\s]cli', r'@vue/', r'v-if', r'v-for',
+            r'v-model', r'<template>', r'<script>'
+        ],
+        'angular': [
+            r'\bangular\b', r'@angular/', r'ng\s+new', r'ng\s+generate',
+            r'@component', r'@injectable', r'@ngmodule'
+        ],
+        'express': [
+            r'\bexpress\b', r'express\(\)', r'app\.get', r'app\.post',
+            r'app\.listen', r'middleware'
+        ],
+        'fastapi': [
+            r'\bfastapi\b', r'from\s+fastapi', r'@app\.get', r'@app\.post',
+            r'pydantic', r'uvicorn'
+        ],
+        'django': [
+            r'\bdjango\b', r'django[-\s]admin', r'models\.py', r'views\.py',
+            r'urls\.py', r'settings\.py', r'manage\.py'
+        ]
+    }
+    
     def __init__(self):
-        """Initializes the prompt enhancer"""
+        """Initialize the PromptEnhancer with coding rules cache"""
         self.context_history: List[Dict] = []
+        self.coding_rules_cache = {}
+        self.coding_rules_dir = Path("coding-rules")
+        self._load_coding_rules()
+    
+    def _load_coding_rules(self):
+        """Load all coding rules from the coding-rules directory"""
+        if not self.coding_rules_dir.exists():
+            return
+        
+        for rule_file in self.coding_rules_dir.glob("*.md"):
+            try:
+                with open(rule_file, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    rule_name = rule_file.stem.lower()
+                    self.coding_rules_cache[rule_name] = content
+                    console.print(f"[dim]Loaded coding rule: {rule_name}[/dim]")
+            except Exception as e:
+                console.print(f"[yellow]Warning: Could not load rule {rule_file}: {e}[/yellow]")
+    
+    def detect_technologies(self, text: str) -> Set[str]:
+        """
+        Detect technologies mentioned in the text
+        
+        Args:
+            text: Text to analyze
+            
+        Returns:
+            Set of detected technology names
+        """
+        detected = set()
+        text_lower = text.lower()
+        
+        for tech, patterns in self.TECHNOLOGY_PATTERNS.items():
+            for pattern in patterns:
+                if re.search(pattern, text_lower, re.IGNORECASE):
+                    detected.add(tech)
+                    break  # One match per technology is enough
+        
+        return detected
+    
+    def get_relevant_coding_rules(self, detected_technologies: Set[str]) -> str:
+        """
+        Get coding rules for detected technologies
+        
+        Args:
+            detected_technologies: Set of technology names
+            
+        Returns:
+            Combined coding rules content
+        """
+        if not detected_technologies:
+            return ""
+        
+        rules_content = []
+        
+        for tech in detected_technologies:
+            if tech in self.coding_rules_cache:
+                rules_content.append(f"\n[CODING RULES FOR {tech.upper()}]")
+                rules_content.append(self.coding_rules_cache[tech])
+                rules_content.append(f"[END {tech.upper()} RULES]\n")
+        
+        if rules_content:
+            header = "\n" + "="*60 + "\n"
+            header += "AUTOMATIC CODING RULES INJECTION\n"
+            header += f"Detected technologies: {', '.join(detected_technologies)}\n"
+            header += "="*60 + "\n"
+            
+            return header + "\n".join(rules_content)
+        
+        return ""
         
     def extract_file_references(self, text: str) -> List[str]:
         """
@@ -364,6 +482,13 @@ class PromptEnhancer:
         else:
             # Prompt sem tag de tarefa
             enhanced_parts.append(f"\n{original_prompt}")
+        
+        # Detect technologies and inject coding rules
+        detected_technologies = self.detect_technologies(original_prompt)
+        if detected_technologies:
+            coding_rules = self.get_relevant_coding_rules(detected_technologies)
+            if coding_rules:
+                enhanced_parts.append(coding_rules)
         
         # Add clear instructions about response structuring
         enhanced_parts.append("""

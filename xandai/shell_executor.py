@@ -157,18 +157,45 @@ class ShellExecutor:
             if path.startswith('~'):
                 path = str(Path.home()) + path[1:]
             
-            # Resolve caminho relativo
-            new_dir = (self.current_dir / path).resolve()
+            # Clean path and prevent duplication
+            path = path.strip().strip('"').strip("'")
+            
+            # Check if path is absolute to prevent duplication
+            if Path(path).is_absolute():
+                new_dir = Path(path).resolve()
+            else:
+                # Resolve caminho relativo
+                new_dir = (self.current_dir / path).resolve()
+            
+            # Additional check to prevent path component duplication
+            try:
+                # Normalize path to prevent duplicate segments
+                str_path = str(new_dir)
+                path_parts = str_path.replace('\\', '/').split('/')
+                # Remove consecutive duplicate parts
+                cleaned_parts = []
+                for part in path_parts:
+                    if not cleaned_parts or part != cleaned_parts[-1]:
+                        cleaned_parts.append(part)
+                
+                if len(cleaned_parts) != len(path_parts):
+                    new_dir = Path('/'.join(cleaned_parts)) if not self.is_windows else Path('\\'.join(cleaned_parts))
+                    if self.is_windows and len(cleaned_parts) > 0 and ':' not in cleaned_parts[0]:
+                        # Restore drive letter format for Windows
+                        cleaned_parts[0] = cleaned_parts[0] + ':'
+                        new_dir = Path('\\'.join(cleaned_parts))
+            except:
+                pass  # Use original path if cleaning fails
             
             if new_dir.exists() and new_dir.is_dir():
                 self.current_dir = new_dir
                 os.chdir(str(new_dir))
                 return True, f"📁 Directory changed to: {new_dir}"
             else:
-                return False, f"Directory not found: {path}"
+                return False, f"❌ Directory not found: {path}"
                 
         except Exception as e:
-            return False, f"Error changing directory: {e}"
+            return False, f"❌ Error changing directory: {e}"
     
     def get_current_directory(self) -> str:
         """Returns current directory"""

@@ -485,6 +485,14 @@ class XandAICLI:
                             console.print(output)
                     else:
                         console.print(f"[red]❌ {output}[/red]")
+                        # Send error back to LLM for automatic fix
+                        console.print("[yellow]🤖 Sending error to AI for automatic fix...[/yellow]")
+                        error_prompt = f"The shell command '{converted_cmd}' failed with error: {output}. Please provide the correct command to fix this issue."
+                        # Process error through LLM but disable auto-execution temporarily
+                        temp_auto_execute = self.auto_execute_shell
+                        self.auto_execute_shell = False
+                        self.process_prompt(error_prompt)
+                        self.auto_execute_shell = temp_auto_execute
         
         # Processa outros blocos de código
         if other_blocks:
@@ -592,6 +600,14 @@ class XandAICLI:
                             console.print(output)
                     else:
                         console.print(f"[red]❌ {output}[/red]")
+                        # Send error back to LLM for automatic fix
+                        console.print("[yellow]🤖 Sending error to AI for automatic fix...[/yellow]")
+                        error_prompt = f"The shell command '{converted_cmd}' failed with error: {output}. Please provide the correct command to fix this issue."
+                        # Process error through LLM but disable auto-execution temporarily
+                        temp_auto_execute = self.auto_execute_shell
+                        self.auto_execute_shell = False
+                        self.process_prompt(error_prompt)
+                        self.auto_execute_shell = temp_auto_execute
         
         # Processa tags <read>
         read_blocks = re.findall(r'<read>(.*?)</read>', response, re.DOTALL | re.IGNORECASE)
@@ -627,6 +643,14 @@ class XandAICLI:
                             console.print(output)
                     else:
                         console.print(f"[red]❌ {output}[/red]")
+                        # Send error back to LLM for automatic fix
+                        console.print("[yellow]🤖 Sending error to AI for automatic fix...[/yellow]")
+                        error_prompt = f"The shell command '{converted_cmd}' failed with error: {output}. Please provide the correct command to fix this issue."
+                        # Process error through LLM but disable auto-execution temporarily
+                        temp_auto_execute = self.auto_execute_shell
+                        self.auto_execute_shell = False
+                        self.process_prompt(error_prompt)
+                        self.auto_execute_shell = temp_auto_execute
         
         # Processa tags <code>
         code_matches = re.findall(r'<code\s+filename=["\']([^"\']+)["\']>(.*?)</code>', response, re.DOTALL | re.IGNORECASE)
@@ -1326,6 +1350,14 @@ mkdir new_project
                     console.print("[green]✓ Command executed[/green]")
             else:
                 console.print(f"[red]❌ {output}[/red]")
+                # If command failed, send error back to LLM for automatic fix
+                console.print("[yellow]🤖 Sending error to AI for automatic fix...[/yellow]")
+                error_prompt = f"The command '{prompt_text.strip()}' failed with error: {output}. Please provide the correct command to fix this issue."
+                # Process the error through LLM but don't auto-execute the fix
+                temp_auto_execute = self.auto_execute_shell
+                self.auto_execute_shell = False
+                self.process_prompt(error_prompt)
+                self.auto_execute_shell = temp_auto_execute
             return
         
         try:
@@ -1525,6 +1557,10 @@ mkdir new_project
                                 # Não mostra mensagem de sucesso se não houver output
                             else:
                                 console.print(f"[red]❌ {output}[/red]")
+                                # If command failed, send error back to LLM for automatic fix
+                                console.print("[yellow]🤖 Sending error to AI for automatic fix...[/yellow]")
+                                error_prompt = f"The command '{user_input}' failed with error: {output}. Please provide the correct command to fix this issue."
+                                self.process_prompt(error_prompt)
                         else:
                             # Processa prompt normal
                             self.process_prompt(user_input)
