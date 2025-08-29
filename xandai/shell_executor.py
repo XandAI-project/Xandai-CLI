@@ -292,8 +292,31 @@ class ShellExecutor:
         return False
 
     def get_current_directory(self) -> str:
-        """Returns current directory"""
-        return str(self.current_dir)
+        """Returns current directory with path deduplication applied"""
+        current_path = str(self.current_dir)
+        
+        # Apply the same deduplication logic as directory changes
+        try:
+            path_parts = current_path.replace('\\', '/').split('/')
+            path_parts = [part for part in path_parts if part and part != '.']
+            cleaned_parts = self._remove_path_duplications(path_parts)
+            
+            if len(cleaned_parts) != len(path_parts):
+                if self.is_windows and len(cleaned_parts) > 0:
+                    if ':' not in cleaned_parts[0] and len(cleaned_parts[0]) == 1:
+                        cleaned_parts[0] = cleaned_parts[0] + ':'
+                    clean_path = '\\'.join(cleaned_parts)
+                else:
+                    clean_path = '/'.join(cleaned_parts)
+                
+                # Update internal current_dir to the clean path
+                self.current_dir = Path(clean_path)
+                console.print(f"[dim]🔧 Current directory cleaned: {current_path} → {clean_path}[/dim]")
+                return clean_path
+        except Exception as e:
+            console.print(f"[dim]⚠️ Directory path cleaning failed: {e}[/dim]")
+        
+        return current_path
     
     def _get_os_specific_commands(self) -> Dict[str, str]:
         """

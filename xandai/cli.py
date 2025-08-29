@@ -432,19 +432,45 @@ class XandAICLI:
     
     def _resolve_file_path(self, filepath: str, current_dir: Path) -> Path:
         """
-        Resolve caminho de arquivo relativo ao diretório atual
+        Resolve caminho de arquivo relativo ao diretório atual com limpeza de duplicações
         
         Args:
             filepath: Caminho do arquivo (pode ser relativo ou absoluto)
             current_dir: Diretório atual
             
         Returns:
-            Caminho absoluto resolvido
+            Caminho absoluto resolvido e limpo
         """
         if Path(filepath).is_absolute():
-            return Path(filepath)
+            resolved_path = Path(filepath)
         else:
-            return current_dir / filepath
+            resolved_path = current_dir / filepath
+        
+        # Apply path cleaning to prevent duplications
+        try:
+            str_path = str(resolved_path)
+            path_parts = str_path.replace('\\', '/').split('/')
+            path_parts = [part for part in path_parts if part and part != '.']
+            
+            # Use the same deduplication logic as ShellExecutor
+            if hasattr(self.shell_exec, '_remove_path_duplications'):
+                cleaned_parts = self.shell_exec._remove_path_duplications(path_parts)
+                
+                if len(cleaned_parts) != len(path_parts):
+                    # Reconstruct clean path
+                    if self.shell_exec.is_windows and len(cleaned_parts) > 0:
+                        if ':' not in cleaned_parts[0] and len(cleaned_parts[0]) == 1:
+                            cleaned_parts[0] = cleaned_parts[0] + ':'
+                        clean_path = Path('\\'.join(cleaned_parts))
+                    else:
+                        clean_path = Path('/'.join(cleaned_parts))
+                    
+                    console.print(f"[dim]🔧 File path cleaned: {resolved_path} → {clean_path}[/dim]")
+                    return clean_path
+        except Exception as e:
+            console.print(f"[dim]⚠️ File path cleaning failed: {e}[/dim]")
+        
+        return resolved_path
     
     def _is_dangerous_command(self, code: str) -> bool:
         """
