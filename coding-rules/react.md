@@ -1,6 +1,7 @@
 # React Development Rules
 
 ## Project Structure
+- Use create-react-app framework for the boilerplate
 - Use `src/` for all source code
 - Components in `src/components/`
 - Pages/Views in `src/pages/`

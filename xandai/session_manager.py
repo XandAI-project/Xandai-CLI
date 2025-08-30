@@ -15,17 +15,25 @@ console = Console()
 class SessionManager:
     """Manages storage and retrieval of XandAI sessions"""
     
-    def __init__(self, session_dir: str = "sessions"):
+    def __init__(self, session_dir: str = None):
         """
         Initializes the session manager
         
         Args:
-            session_dir: Directory where sessions will be stored
+            session_dir: Directory where sessions will be stored (defaults to XandAI-CLI/sessions)
         """
-        self.session_dir = Path(session_dir)
+        if session_dir is None:
+            # Get the XandAI-CLI project directory (parent of the xandai package)
+            xandai_package_dir = Path(__file__).parent
+            xandai_project_dir = xandai_package_dir.parent
+            self.session_dir = xandai_project_dir / "sessions"
+        else:
+            self.session_dir = Path(session_dir)
+            
         # Ensure the directory exists, create if it doesn't
         try:
             self.session_dir.mkdir(exist_ok=True, parents=True)
+            console.print(f"[dim]Sessions directory: {self.session_dir}[/dim]")
         except Exception as e:
             console.print(f"[yellow]⚠️ Could not create sessions directory: {e}[/yellow]")
             console.print(f"[yellow]Sessions will be disabled for this run[/yellow]")

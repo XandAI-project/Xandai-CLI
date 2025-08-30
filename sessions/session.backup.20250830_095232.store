@@ -1,11 +1,11 @@
 {
   "version": "1.0",
-  "created_at": "2025-08-30T09:39:12.378393",
-  "last_updated": "2025-08-30T09:39:12.378393",
-  "model_name": "test-model",
+  "created_at": "2025-08-30T09:51:23.153483",
+  "last_updated": "2025-08-30T09:51:23.153483",
+  "model_name": "test-from-examples",
   "context_history": [],
   "interaction_count": 1,
-  "working_directory": "C:\\Users\\keyce\\XandNet Project\\XandAI-CLI",
+  "working_directory": "C:\\Users\\keyce\\XandNet Project\\XandAI-CLI\\examples",
   "shell_settings": {
     "auto_execute_shell": true,
     "enhance_prompts": true,
