@@ -3,6 +3,7 @@ Interface CLI principal do XandAI
 """
 
 import sys
+import os
 import re
 from typing import Optional, List, Dict, Any
 from rich.console import Console
@@ -22,6 +23,7 @@ from .shell_executor import ShellExecutor
 from .prompt_enhancer import PromptEnhancer
 from .task_manager import TaskManager
 from .git_manager import GitManager
+from .session_manager import SessionManager
 
 console = Console()
 
@@ -88,6 +90,7 @@ class XandAICLI:
         self.prompt_enhancer = PromptEnhancer()
         self.task_manager = TaskManager()
         self.git_manager = GitManager(self.user_initial_dir)
+        self.session_manager = SessionManager()
         self.selected_model = None
         self.history_file = Path.home() / ".xandai_history"
         self.auto_execute_shell = True  # Flag for automatic command execution
@@ -107,7 +110,8 @@ class XandAICLI:
             '/flush': self.flush_context,
             '/context': self.show_context_status,
             '/debug': self.toggle_debug_mode,
-            '/better': self.toggle_better_prompting
+            '/better': self.toggle_better_prompting,
+            '/session': self.session_command
         }
         
         # Modo debug
@@ -160,8 +164,11 @@ class XandAICLI:
                 
                 role_counts = {}
                 for msg in history:
-                    role = msg['role']
-                    role_counts[role] = role_counts.get(role, 0) + 1
+                    if isinstance(msg, dict) and 'role' in msg:
+                        role = msg['role']
+                        role_counts[role] = role_counts.get(role, 0) + 1
+                    else:
+                        role_counts['unknown'] = role_counts.get('unknown', 0) + 1
                 
                 for role, count in role_counts.items():
                     console.print(f"[dim]  {role}: {count} messages[/dim]")
@@ -279,13 +286,13 @@ Enhanced Request:"""
         
         # Show that it's in enhancement mode
         console.print("\n[bold magenta]🔧 CODE ENHANCEMENT MODE[/bold magenta]")
-        console.print("[dim]Analisando arquivos existentes e preparando melhorias...[/dim]\n")
+        console.print("[dim]Analyzing existing files and preparing improvements...[/dim]\n")
         
-        # Salva flag indicando que estamos em modo enhancement
+        # Save flag indicating we're in enhancement mode
         self._enhancement_mode = True
         
         try:
-            # Processa o prompt melhorado
+            # Process the enhanced prompt
             self.process_prompt(enhanced_prompt)
         finally:
             self._enhancement_mode = False
@@ -664,13 +671,11 @@ Enhanced Request:"""
             else:
                 console.print(f"\n[dim]💾 {total_blocks} code files available[/dim]")
             
-            # Pergunta se quer salvar
-            save = console.input("[cyan]Salvar código? (s/N): [/cyan]")
-            if save.lower() == 's':
-                saved_count = 0
-                for lang, codes in by_lang.items():
-                    for i, code in enumerate(codes):
-                        # Gera nome automaticamente
+            # Save automatically without asking
+            saved_count = 0
+            for lang, codes in by_lang.items():
+                for i, code in enumerate(codes):
+                    # Generate name automatically
                         filename = self._generate_filename(lang, code, original_prompt)
                         
                         # Se houver múltiplos arquivos da mesma linguagem, adiciona índice
@@ -696,10 +701,10 @@ Enhanced Request:"""
                                 self.git_manager.commit_file_operation("created", file_path)
                             saved_count += 1
                         except FileOperationError as e:
-                            console.print(f"[red]Erro ao salvar {filename}: {e}[/red]")
+                            console.print(f"[red]Error saving {filename}: {e}[/red]")
                 
                 if saved_count > 0:
-                    console.print(f"[green]✓ {saved_count} arquivo(s) salvo(s)[/green]")
+                    console.print(f"[green]✓ {saved_count} file(s) saved[/green]")
     
     def _process_special_tags(self, response: str, original_prompt: str):
         """
@@ -858,17 +863,132 @@ Enhanced Request:"""
                     created_count += 1
                     
                 except FileOperationError as e:
-                    console.print(f"[red]❌ Erro ao processar {filename}: {e}[/red]")
+                    console.print(f"[red]❌ Error processing {filename}: {e}[/red]")
             
             if created_count > 0:
-                console.print(f"[bold green]✅ {created_count} arquivo(s) criado(s) com sucesso![/bold green]")
+                console.print(f"[bold green]✅ {created_count} file(s) created successfully![/bold green]")
         
-        # Debug: informa se nenhuma tag especial foi processada
+        # Debug: inform if no special tags were processed
         if not processed_something:
-            console.print("[dim]⚠️  Nenhuma tag especial encontrada na resposta[/dim]")
+            console.print("[dim]⚠️  No special tags found in response[/dim]")
             console.print("[dim]💡 The model should use <actions>, <read> or <code> for actions[/dim]")
         
         return processed_something
+    
+    def session_command(self, args: str = ""):
+        """
+        Processes session-related commands
+        
+        Args:
+            args: Session command arguments
+        """
+        parts = args.split(maxsplit=1) if args.strip() else []
+        subcommand = parts[0].lower() if parts else "info"
+        
+        if subcommand == "info" or subcommand == "status":
+            # Show current session information
+            summary = self.session_manager.get_session_summary()
+            if summary:
+                console.print(summary)
+                
+                # Show detailed statistics
+                stats = self.session_manager.get_interaction_stats()
+                if stats:
+                    console.print(f"\n[bold blue]📈 Session Statistics:[/bold blue]")
+                    console.print(f"[dim]• Total interactions: {stats.get('total_interactions', 0)}")
+                    console.print(f"• User messages: {stats.get('user_messages', 0)}")
+                    console.print(f"• Assistant messages: {stats.get('assistant_messages', 0)}")
+                    if stats.get('session_duration'):
+                        console.print(f"• Session duration: {stats['session_duration']}[/dim]")
+            else:
+                console.print("[yellow]No previous session found.[/yellow]")
+                
+        elif subcommand == "clear":
+            # Clear current session
+            if self.session_manager.clear_session():
+                console.print("[green]✓ Current session cleared and archived[/green]")
+                # Also clear prompt enhancer context
+                if hasattr(self.prompt_enhancer, 'flush_context'):
+                    self.prompt_enhancer.flush_context()
+                    console.print("[green]✓ Model context also cleared[/green]")
+            else:
+                console.print("[red]❌ Error clearing session[/red]")
+                
+        elif subcommand == "backups":
+            # List available backups
+            backups = self.session_manager.list_backup_sessions()
+            if backups:
+                console.print(f"[bold blue]📁 Available Session Backups:[/bold blue]")
+                for i, backup in enumerate(backups[:10], 1):  # Show only the 10 most recent
+                    from datetime import datetime
+                    timestamp = datetime.fromtimestamp(backup.stat().st_mtime)
+                    console.print(f"[dim]  {i}. {backup.name} - {timestamp.strftime('%Y-%m-%d %H:%M:%S')}[/dim]")
+                
+                if len(backups) > 10:
+                    console.print(f"[dim]  ... and {len(backups) - 10} more backup(s)[/dim]")
+                    
+                console.print(f"\n[dim]💡 Use '/session restore <backup_name>' to restore[/dim]")
+            else:
+                console.print("[yellow]No session backups found.[/yellow]")
+                
+        elif subcommand == "restore":
+            # Restore a backup
+            if len(parts) < 2:
+                console.print("[red]Usage: /session restore <backup_name>[/red]")
+                console.print("[dim]Use '/session backups' to see available backups[/dim]")
+                return
+            
+            backup_name = parts[1]
+            backup_path = self.session_manager.session_dir / backup_name
+            
+            if not backup_path.exists():
+                # Try to find by partial pattern
+                backups = self.session_manager.list_backup_sessions()
+                matches = [b for b in backups if backup_name in b.name]
+                
+                if len(matches) == 1:
+                    backup_path = matches[0]
+                elif len(matches) > 1:
+                    console.print(f"[yellow]Multiple backups found with '{backup_name}':[/yellow]")
+                    for match in matches[:5]:
+                        console.print(f"[dim]  - {match.name}[/dim]")
+                    console.print("[dim]Use the complete backup name[/dim]")
+                    return
+                else:
+                    console.print(f"[red]Backup '{backup_name}' not found[/red]")
+                    console.print("[dim]Use '/session backups' to see available backups[/dim]")
+                    return
+            
+            if self.session_manager.restore_backup_session(backup_path):
+                console.print("[green]✓ Backup restored successfully[/green]")
+                console.print("[yellow]💡 Restart XandAI to load the restored session[/yellow]")
+            else:
+                console.print("[red]❌ Error restoring backup[/red]")
+                
+        elif subcommand == "save":
+            # Force save of current session
+            if self.selected_model and hasattr(self.prompt_enhancer, 'context_history'):
+                success = self.session_manager.save_session(
+                    model_name=self.selected_model,
+                    context_history=getattr(self.prompt_enhancer, 'context_history', []),
+                    working_directory=str(self.shell_exec.get_current_directory()),
+                    shell_settings={
+                        'auto_execute_shell': self.auto_execute_shell,
+                        'enhance_prompts': self.enhance_prompts,
+                        'better_prompting': self.better_prompting
+                    }
+                )
+                
+                if success:
+                    console.print("[green]✓ Session saved successfully[/green]")
+                else:
+                    console.print("[red]❌ Error saving session[/red]")
+            else:
+                console.print("[yellow]⚠️  No active session to save[/yellow]")
+                
+        else:
+            console.print(f"[red]Unknown session command: {subcommand}[/red]")
+            console.print("[dim]Available commands: info, clear, backups, restore, save[/dim]")
     
     def task_command(self, args: str = ""):
         """
@@ -889,11 +1009,19 @@ Enhanced Request:"""
         console.print("\n[bold blue]🎯 Modo de Tarefa Complexa Ativado[/bold blue]")
         console.print(f"[dim]Analisando: {args}[/dim]\n")
         
-        # Detecta linguagem e framework na requisição inicial
-        self.task_manager.detect_and_update_context(args)
+        # Step 1: Apply better prompting to enhance task description
+        enhanced_args = args
+        if self.better_prompting:
+            enhanced_args = self.analyze_and_enhance_prompt(args)
+            # Add to context history
+            if hasattr(self.prompt_enhancer, 'add_to_context_history'):
+                self.prompt_enhancer.add_to_context_history("user", f"Task: {args}")
         
-        # Passo 1: Pedir ao modelo para quebrar em sub-tarefas
-        breakdown_prompt = self.task_manager.get_breakdown_prompt(args)
+        # Detecta linguagem e framework na requisição melhorada
+        self.task_manager.detect_and_update_context(enhanced_args)
+        
+        # Passo 1: Pedir ao modelo para quebrar em sub-tarefas usando a versão melhorada
+        breakdown_prompt = self.task_manager.get_breakdown_prompt(enhanced_args)
         
         try:
             # Gera breakdown sem mostrar todo o processo
@@ -912,11 +1040,11 @@ Enhanced Request:"""
                 console.print("[red]Could not extract sub-tasks. Try to be more specific.[/red]")
                 return
             
-            # Salva tarefas no manager
+            # Save tasks in manager
             self.task_manager.current_tasks = tasks
             self.task_manager.completed_tasks = []
             
-            # Mostra plano de execução
+            # Show execution plan
             console.print("[bold green]✅ Execution Plan Created![/bold green]\n")
             self.task_manager.display_task_progress()
             
@@ -981,7 +1109,7 @@ Enhanced Request:"""
             self.task_manager.display_task_progress()
             
         except Exception as e:
-            console.print(f"[red]Erro ao processar tarefas: {e}[/red]")
+            console.print(f"[red]Error processing tasks: {e}[/red]")
     
     def _execute_task(self, task_prompt: str, task_info: Dict):
         """
@@ -1058,7 +1186,7 @@ Enhanced Request:"""
                     console.print("[dim]💡 Dica: O modelo deveria usar tags <code>, <actions> ou <read> para esta tarefa[/dim]")
             
         except Exception as e:
-            console.print(f"[red]Erro ao executar tarefa: {e}[/red]")
+            console.print(f"[red]Error executing task: {e}[/red]")
             task_info['status'] = 'failed'
         
     def show_help(self):
@@ -1079,6 +1207,7 @@ Enhanced Request:"""
 - `/context` - Show current context usage status and token percentage
 - `/better` - Toggle better prompting system (two-stage prompt enhancement)
 - `/debug` - Toggles debug mode (shows complete model responses)
+- `/session <command>` - Session management commands
 
 ## File Commands
 
@@ -1089,6 +1218,14 @@ Enhanced Request:"""
 - `/file delete <path>` - Deletes a file
 - `/file list [directory] [pattern] [-r]` - Lists files (use -r for recursive search)
 - `/file search <filename>` - Searches for file in parent and subdirectories
+
+## Session Commands
+
+- `/session info` - Shows information about current/previous session
+- `/session clear` - Clears current session and archives it
+- `/session backups` - Lists available session backups
+- `/session restore <backup_name>` - Restores a session backup
+- `/session save` - Manually saves current session
 
 ## Automatic Shell Command Execution
 
@@ -1393,12 +1530,12 @@ mkdir new_project
                         console.print(f"[red]❌ No file or directory found with name similar to '{filename}'[/red]")
                     
             else:
-                console.print(f"[red]Comando de arquivo desconhecido: {subcommand}[/red]")
+                console.print(f"[red]Unknown file command: {subcommand}[/red]")
                 
         except FileOperationError as e:
-            console.print(f"[red]Erro: {e}[/red]")
+            console.print(f"[red]Error: {e}[/red]")
         except Exception as e:
-            console.print(f"[red]Erro inesperado: {e}[/red]")
+            console.print(f"[red]Unexpected error: {e}[/red]")
     
     def list_models(self) -> Optional[str]:
         """
@@ -1553,9 +1690,14 @@ mkdir new_project
                 )
             else:
                 enhanced_prompt = working_prompt
-                # Still track context even without enhancement
-                if hasattr(self.prompt_enhancer, 'add_to_context_history'):
+            
+            # ALWAYS track context regardless of enhancement settings
+            if hasattr(self.prompt_enhancer, 'add_to_context_history'):
+                try:
                     self.prompt_enhancer.add_to_context_history("user", working_prompt)
+                except Exception as e:
+                    if self.debug_mode:
+                        console.print(f"[dim]⚠️ Error adding user message to context: {e}[/dim]")
             
             # Buffer para acumular resposta completa
             full_response = ""
@@ -1572,19 +1714,19 @@ mkdir new_project
                     if '```' in chunk:
                         code_count += 1
                         if code_count % 2 == 1:
-                            status.update("[bold yellow]Escrevendo código...", spinner="dots2")
+                            status.update("[bold yellow]Writing code...", spinner="dots2")
                         else:
-                            status.update("[bold green]Analisando...", spinner="dots")
+                            status.update("[bold green]Analyzing...", spinner="dots")
                     elif len(full_response) > 100 and line_count % 5 == 0:
-                        # Alterna status periodicamente
-                        if 'código' in full_response.lower() or 'function' in full_response or 'def ' in full_response:
-                            status.update("[bold yellow]Escrevendo código...", spinner="dots2")
-                        elif 'erro' in full_response.lower() or 'bug' in full_response.lower():
-                            status.update("[bold red]Analisando erro...", spinner="dots3")
+                        # Alternate status periodically
+                        if 'code' in full_response.lower() or 'function' in full_response or 'def ' in full_response:
+                            status.update("[bold yellow]Writing code...", spinner="dots2")
+                        elif 'error' in full_response.lower() or 'bug' in full_response.lower():
+                            status.update("[bold red]Analyzing error...", spinner="dots3")
                         elif 'test' in full_response.lower():
-                            status.update("[bold blue]Preparando testes...", spinner="dots")
+                            status.update("[bold blue]Preparing tests...", spinner="dots")
                         else:
-                            status.update("[bold green]Processando...", spinner="dots")
+                            status.update("[bold green]Processing...", spinner="dots")
             
             # Exibe resposta completa formatada
             console.print("\n[bold cyan]Assistente:[/bold cyan]\n")
@@ -1606,6 +1748,14 @@ mkdir new_project
                     console.print(f"[dim]🔍 Response without code/actions detected.[/dim]")
                     console.print(f"[dim]📝 Preview da resposta: {response_preview}[/dim]")
                     console.print(f"[dim]💡 Use /debug para ver resposta completa[/dim]\n")
+            
+            # ALWAYS add assistant response to context at the end
+            if hasattr(self.prompt_enhancer, 'add_to_context_history'):
+                try:
+                    self.prompt_enhancer.add_to_context_history("assistant", full_response)
+                except Exception as e:
+                    if self.debug_mode:
+                        console.print(f"[dim]⚠️ Error adding assistant message to context: {e}[/dim]")
             
             # Processa tags especiais e blocos de código PRIMEIRO
             special_processed = False
@@ -1640,14 +1790,121 @@ mkdir new_project
                     console.print("[yellow]Try again with a more specific description or use a different model.[/yellow]")
                     console.print("\n[dim]💡 Example: /enhance_code transform into professional SAAS landing page[/dim]")
             
+            # Automatically save interaction
+            try:
+                self.auto_save_session({
+                    'prompt': prompt_text,
+                    'enhanced_prompt': enhanced_prompt if enhanced_prompt != prompt_text else None,
+                    'response': full_response,
+                    'model': self.selected_model,
+                    'directory': str(self.shell_exec.get_current_directory()),
+                    'had_special_processing': special_processed
+                })
+            except Exception as e:
+                if self.debug_mode:
+                    console.print(f"[dim]⚠️ Error auto-saving session: {e}[/dim]")
+            
         except OllamaAPIError as e:
-            console.print(f"[red]Erro ao gerar resposta: {e}[/red]")
+            console.print(f"[red]Error generating response: {e}[/red]")
         except KeyboardInterrupt:
-            console.print("\n[yellow]Resposta interrompida.[/yellow]")
+            console.print("\n[yellow]Response interrupted.[/yellow]")
     
+    def load_previous_session(self):
+        """
+        Loads previous session if it exists and asks user if they want to continue
+        """
+        previous_session = self.session_manager.load_session()
+        if not previous_session:
+            return False
+        
+        # Show previous session summary
+        summary = self.session_manager.get_session_summary()
+        if summary:
+            console.print(summary)
+            
+            # Ask if user wants to continue session
+            from rich.prompt import Confirm
+            continue_session = Confirm.ask("\n[cyan]Do you want to continue the previous session?[/cyan]", default=True)
+            
+            if continue_session:
+                # Restore settings
+                self.selected_model = previous_session.get('model_name')
+                self.auto_execute_shell = previous_session.get('shell_settings', {}).get('auto_execute_shell', True)
+                self.enhance_prompts = previous_session.get('shell_settings', {}).get('enhance_prompts', True)
+                self.better_prompting = previous_session.get('shell_settings', {}).get('better_prompting', True)
+                
+                # Restore context if available
+                if hasattr(self.prompt_enhancer, 'context_history') and previous_session.get('context_history'):
+                    # Validate context history format before restoring
+                    context_history = previous_session['context_history']
+                    valid_messages = []
+                    for msg in context_history:
+                        if isinstance(msg, dict) and 'role' in msg and 'content' in msg:
+                            valid_messages.append(msg)
+                        elif self.debug_mode:
+                            console.print(f"[dim]⚠️ Skipping invalid message in context: {msg}[/dim]")
+                    
+                    self.prompt_enhancer.context_history = valid_messages
+                    console.print(f"[green]✓ Context restored with {len(valid_messages)} messages[/green]")
+                
+                # Try to navigate to previous directory
+                previous_dir = previous_session.get('working_directory')
+                if previous_dir and Path(previous_dir).exists():
+                    try:
+                        rel_path = os.path.relpath(previous_dir, self.user_initial_dir)
+                        if rel_path != ".":
+                            success, _ = self.shell_exec.execute_command(f'cd "{rel_path}"')
+                            if success:
+                                console.print(f"[green]✓ Directory restored: {previous_dir}[/green]")
+                    except Exception:
+                        pass
+                
+                console.print("[green]✓ Previous session loaded successfully![/green]\n")
+                return True
+            else:
+                # Archive previous session
+                self.session_manager.clear_session()
+                console.print("[yellow]📦 Previous session archived[/yellow]\n")
+        
+        return False
+    
+    def auto_save_session(self, last_interaction=None):
+        """
+        Automatically saves current session state
+        
+        Args:
+            last_interaction: Last interaction (prompt + response)
+        """
+        if not self.selected_model:
+            return
+            
+        try:
+            context_history = []
+            if hasattr(self.prompt_enhancer, 'context_history'):
+                # Get context history and ensure it's valid
+                raw_context = getattr(self.prompt_enhancer, 'context_history', [])
+                # Filter out invalid entries that don't have proper message format
+                context_history = [msg for msg in raw_context if isinstance(msg, dict) and 'role' in msg and 'content' in msg]
+            
+            self.session_manager.save_session(
+                model_name=self.selected_model,
+                context_history=context_history,
+                working_directory=str(self.shell_exec.get_current_directory()),
+                shell_settings={
+                    'auto_execute_shell': self.auto_execute_shell,
+                    'enhance_prompts': self.enhance_prompts,
+                    'better_prompting': self.better_prompting
+                },
+                last_interaction=last_interaction
+            )
+        except Exception as e:
+            # Silent failure to not interrupt flow
+            if self.debug_mode:
+                console.print(f"[dim]⚠️ Error auto-saving session: {e}[/dim]")
+
     def run(self):
         """Executa a CLI principal"""
-        # Banner de boas-vindas
+        # Welcome banner
         os_info = self.shell_exec.get_os_info()
         dir_display = str(self.user_initial_dir)
         if len(dir_display) > 30:
@@ -1694,13 +1951,34 @@ mkdir new_project
         
         console.print("[green]✓ Connected to OLLAMA API[/green]\n")
         
-        # Seleciona modelo
-        self.selected_model = self.list_models()
-        if not self.selected_model:
-            console.print("[yellow]No model selected. Exiting...[/yellow]")
-            return
+        # Try to load previous session
+        session_loaded = self.load_previous_session()
         
-        # Prepara autocompletar
+        # Select model (if not loaded from previous session)
+        if not self.selected_model:
+            self.selected_model = self.list_models()
+            if not self.selected_model:
+                console.print("[yellow]No model selected. Exiting...[/yellow]")
+                return
+        elif session_loaded:
+            # If loaded from session, confirm model is still available
+            try:
+                models = self.api.list_models()
+                available_models = [m['name'] for m in models]
+                if self.selected_model not in available_models:
+                    console.print(f"[yellow]⚠️  Model from previous session '{self.selected_model}' is no longer available[/yellow]")
+                    console.print("[cyan]Selecting new model...[/cyan]")
+                    self.selected_model = self.list_models()
+                    if not self.selected_model:
+                        console.print("[yellow]No model selected. Exiting...[/yellow]")
+                        return
+                else:
+                    console.print(f"[green]✓ Using model from session: {self.selected_model}[/green]")
+            except Exception:
+                # If verification fails, allow continuing with session model
+                pass
+        
+        # Prepare autocompletion
         # Create custom completer that handles both commands and file paths
         custom_completer = XandAICompleter(self.commands, self.shell_exec)
         
@@ -1710,9 +1988,17 @@ mkdir new_project
         try:
             while True:
                 try:
+                    # Build dynamic prompt with model name and context percentage
+                    context_percentage = ""
+                    if hasattr(self.prompt_enhancer, 'get_context_usage_percentage'):
+                        percentage = self.prompt_enhancer.get_context_usage_percentage()
+                        context_percentage = f" ({percentage:.0f}% context)"
+                    
+                    prompt_text = f"[{self.selected_model}{context_percentage}] > "
+                    
                     # Prompt com histórico e autocompletar
                     user_input = prompt(
-                        f"[{self.selected_model}] > ",
+                        prompt_text,
                         history=FileHistory(str(self.history_file)),
                         auto_suggest=AutoSuggestFromHistory(),
                         completer=custom_completer,
@@ -1747,7 +2033,7 @@ mkdir new_project
                             if success:
                                 if output.strip():
                                     console.print(output)
-                                # Não mostra mensagem de sucesso se não houver output
+                                # Don't show success message if no output
                             else:
                                 console.print(f"[red]❌ {output}[/red]")
                                 # If command failed, send error back to LLM for automatic fix
@@ -1759,10 +2045,14 @@ mkdir new_project
                             self.process_prompt(user_input)
                         
                 except KeyboardInterrupt:
-                    console.print("\n[yellow]Use /exit para sair.[/yellow]")
+                    console.print("\n[yellow]Use /exit to quit.[/yellow]")
                 except EOFError:
                     self.exit_cli()
                     
         except Exception as e:
-            console.print(f"\n[red]Erro fatal: {e}[/red]")
-            console.print("[dim]Saindo...[/dim]")
+            console.print(f"\n[red]Fatal error: {str(e)}[/red]")
+            if self.debug_mode:
+                import traceback
+                console.print(f"[dim]Debug traceback:[/dim]")
+                console.print(f"[dim]{traceback.format_exc()}[/dim]")
+            console.print("[dim]Exiting...[/dim]")

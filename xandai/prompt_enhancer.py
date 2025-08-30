@@ -313,6 +313,45 @@ class PromptEnhancer:
         
         console.print(f"[green]✓ Context flushed: {old_tokens} → {preserved_tokens} tokens ({self.get_context_usage_percentage():.1f}%)[/green]")
     
+    def _format_conversation_history(self, max_messages: int = 10) -> str:
+        """
+        Format recent conversation history for LLM context
+        
+        Args:
+            max_messages: Maximum number of messages to include
+            
+        Returns:
+            Formatted conversation history
+        """
+        if not self.context_history:
+            return ""
+        
+        # Get recent messages (excluding system/rule messages)
+        conversation_messages = [
+            msg for msg in self.context_history 
+            if msg['role'] in ['user', 'assistant'] and 
+            msg.get('metadata', {}).get('type') != 'coding_rules'
+        ]
+        
+        if not conversation_messages:
+            return ""
+        
+        # Take last N messages, but ensure we don't exceed token limit
+        recent_messages = conversation_messages[-max_messages:]
+        
+        formatted_parts = []
+        for i, msg in enumerate(recent_messages):
+            role_label = "🧑 USER" if msg['role'] == 'user' else "🤖 ASSISTANT"
+            
+            # Limit message content to prevent token overflow
+            content = msg['content']
+            if len(content) > 500:  # Limit long responses
+                content = content[:500] + "... [truncated]"
+            
+            formatted_parts.append(f"{role_label}: {content}")
+        
+        return "\n".join(formatted_parts)
+    
     def get_context_status(self) -> str:
         """
         Get current context status for display
@@ -770,19 +809,31 @@ This creates a basic Flask application...
             else:
                 enhanced_parts.append("\n[OS Commands: Use Unix commands like ls, cat, cp, mv, rm, clear, which, etc.]")
         
-        # Add historical context if relevant
+        # Add conversation history for memory (exclude current prompt)
         if self.context_history:
-            recent_files = set()
-            for hist in self.context_history[-3:]:  # Last 3 interactions
-                recent_files.update(hist.get('files', []))
+            conversation_context = self._format_conversation_history()
+            if conversation_context:
+                enhanced_parts.append("\n[CONVERSATION HISTORY]")
+                enhanced_parts.append("Previous conversation to maintain context:")
+                enhanced_parts.append(conversation_context)
+                enhanced_parts.append("[/CONVERSATION HISTORY]\n")
             
-            if recent_files:
-                enhanced_parts.append(f"\n[Recent Context: Previously worked with {', '.join(recent_files)}]")
+            # Also add recent files for additional context
+        recent_files = set()
+        # Use a separate history for old-style context tracking to avoid conflicts
+        if hasattr(self, '_old_context_history'):
+            for hist in self._old_context_history[-3:]:  # Last 3 interactions
+                recent_files.update(hist.get('files', []))
         
-        # Save context to history
-        self.context_history.append(context)
-        if len(self.context_history) > 10:
-            self.context_history.pop(0)
+        if recent_files:
+            enhanced_parts.append(f"[Recent Context: Previously worked with {', '.join(recent_files)}]")
+        
+        # Save context to separate history to avoid conflicts with message-based context
+        if not hasattr(self, '_old_context_history'):
+            self._old_context_history = []
+        self._old_context_history.append(context)
+        if len(self._old_context_history) > 10:
+            self._old_context_history.pop(0)
         
         return '\n'.join(enhanced_parts)
     
