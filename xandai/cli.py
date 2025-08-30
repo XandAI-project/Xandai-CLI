@@ -517,8 +517,12 @@ Enhanced Request:"""
                     return existing
             return 'index.html'
         
-        # Para outras linguagens, usa nome da linguagem
-        return f'main{ext}'
+        # For other languages, refuse to create generic names
+        # Instead, prompt user to provide specific filename
+        console.print(f"[yellow]⚠️ Cannot determine appropriate filename for {lang} code[/yellow]")
+        console.print(f"[yellow]💡 Please use <code filename=\"your_filename{ext}\"> tags to specify filename[/yellow]")
+        console.print(f"[yellow]💡 Or mention the desired filename in your request[/yellow]")
+        return None  # Return None to skip file creation
     
     def _resolve_file_path(self, filepath: str, current_dir: Path) -> Path:
         """
@@ -654,9 +658,9 @@ Enhanced Request:"""
                         self.process_prompt(error_prompt)
                         self.auto_execute_shell = temp_auto_execute
         
-        # Processa outros blocos de código
+                        # Process other code blocks
         if other_blocks:
-            # Agrupa por linguagem
+            # Group by language
             by_lang = {}
             for lang, code in other_blocks:
                 lang_key = lang or 'text'
@@ -664,7 +668,7 @@ Enhanced Request:"""
                     by_lang[lang_key] = []
                 by_lang[lang_key].append(code)
             
-            # Mostra resumo sutil
+            # Show subtle summary
             total_blocks = sum(len(codes) for codes in by_lang.values())
             if total_blocks == 1:
                 console.print(f"\n[dim]💾 1 code file available[/dim]")
@@ -676,12 +680,21 @@ Enhanced Request:"""
             for lang, codes in by_lang.items():
                 for i, code in enumerate(codes):
                     # Generate name automatically
-                        filename = self._generate_filename(lang, code, original_prompt)
-                        
-                        # Se houver múltiplos arquivos da mesma linguagem, adiciona índice
-                        if len(codes) > 1:
-                            base, ext = filename.rsplit('.', 1)
-                            filename = f"{base}_{i+1}.{ext}"
+                    filename = self._generate_filename(lang, code, original_prompt)
+                    
+                    # Skip if no valid filename could be generated
+                    if filename is None:
+                        continue
+                    
+                    # If there are multiple files of the same language, add index
+                    if len(codes) > 1:
+                        # Don't create generic indexed files - instead skip or use better naming
+                        if filename.startswith('main') or filename in ['index.js', 'index.html', 'main.py']:
+                            console.print(f"[yellow]⚠️ Skipping generic file creation: {filename}_{i+1}[/yellow]")
+                            console.print(f"[yellow]💡 Hint: Use specific filenames in your request or <code filename=\"...\"> tags[/yellow]")
+                            continue
+                        base, ext = filename.rsplit('.', 1) if '.' in filename else (filename, '')
+                        filename = f"{base}_{i+1}.{ext}" if ext else f"{base}_{i+1}"
                         
                         try:
                             # Resolve caminho do arquivo relativo ao diretório atual

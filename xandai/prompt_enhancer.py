@@ -773,7 +773,9 @@ FILE HANDLING RULES:
 ✅ If app.py exists, EDIT it - don't create app2.py or templates/app.py
 ✅ If templates/index.html exists, EDIT it - don't create templates/templates/index.html
 ✅ Use <code filename="existing_file.py"> to edit existing files
-❌ Don't create newfile.py, code.py, or other generic names
+❌ Don't create newfile.py, code.py, a_1.txt, a_2.txt, or other generic names
+❌ NEVER create files with generic names like a_1.txt, temp.txt, test.txt
+❌ If you can't determine a good filename, use descriptive names based on content
 
 EXAMPLE RESPONSE FORMAT:
 First, I'll install Flask and create the project structure:
