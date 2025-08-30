@@ -23,10 +23,16 @@ class SessionManager:
             session_dir: Directory where sessions will be stored
         """
         self.session_dir = Path(session_dir)
-        self.session_dir.mkdir(exist_ok=True)
+        # Ensure the directory exists, create if it doesn't
+        try:
+            self.session_dir.mkdir(exist_ok=True, parents=True)
+        except Exception as e:
+            console.print(f"[yellow]⚠️ Could not create sessions directory: {e}[/yellow]")
+            console.print(f"[yellow]Sessions will be disabled for this run[/yellow]")
+            self.session_dir = None
         
         # Current session file
-        self.session_file = self.session_dir / "session.store"
+        self.session_file = self.session_dir / "session.store" if self.session_dir else None
         
         # Current session data
         self.session_data = {
@@ -65,6 +71,18 @@ class SessionManager:
             True if saved successfully, False otherwise
         """
         try:
+            # Check if sessions are available
+            if not self.session_file:
+                return False
+                
+            # Ensure directory exists before saving
+            if not self.session_dir.exists():
+                try:
+                    self.session_dir.mkdir(parents=True, exist_ok=True)
+                except Exception as e:
+                    console.print(f"[red]Error creating sessions directory: {e}[/red]")
+                    return False
+            
             now = datetime.now().isoformat()
             
             # Load existing data if available
@@ -113,7 +131,7 @@ class SessionManager:
             Session data or None if no saved session exists
         """
         try:
-            if not self.session_file.exists():
+            if not self.session_file or not self.session_file.exists():
                 return None
             
             with open(self.session_file, 'r', encoding='utf-8') as f:
@@ -192,7 +210,7 @@ class SessionManager:
             True if cleared successfully
         """
         try:
-            if self.session_file.exists():
+            if self.session_file and self.session_file.exists():
                 # Rename to backup instead of deleting
                 backup_name = f"session.backup.{datetime.now().strftime('%Y%m%d_%H%M%S')}.store"
                 backup_path = self.session_dir / backup_name
@@ -213,6 +231,8 @@ class SessionManager:
             List of backup files
         """
         try:
+            if not self.session_dir:
+                return []
             backups = list(self.session_dir.glob("session.backup.*.store"))
             return sorted(backups, key=lambda x: x.stat().st_mtime, reverse=True)
         except Exception:
@@ -229,6 +249,8 @@ class SessionManager:
             True if restored successfully
         """
         try:
+            if not self.session_file:
+                return False
             if backup_file.exists():
                 # Backup current session if it exists
                 if self.session_file.exists():
