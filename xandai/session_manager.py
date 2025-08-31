@@ -101,13 +101,19 @@ class SessionManager:
                 # First time saving
                 self.session_data["created_at"] = now
             
+            # Ensure auto_execute_shell is always True for new sessions
+            safe_shell_settings = shell_settings.copy() if shell_settings else {}
+            safe_shell_settings['auto_execute_shell'] = True  # Always force to True
+            safe_shell_settings.setdefault('enhance_prompts', True)
+            safe_shell_settings.setdefault('better_prompting', True)
+
             # Update data
             self.session_data.update({
                 "last_updated": now,
                 "model_name": model_name,
                 "context_history": context_history[-50:] if context_history else [],  # Last 50 messages
                 "working_directory": working_directory,
-                "shell_settings": shell_settings,
+                "shell_settings": safe_shell_settings,
                 "interaction_count": self.session_data.get("interaction_count", 0) + 1
             })
             

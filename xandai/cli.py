@@ -1620,31 +1620,94 @@ mkdir new_project
     
     def _should_execute_as_command(self, prompt_text: str) -> Optional[str]:
         """
-        Verifica se o prompt deve ser executado como comando ao invés de enviado ao modelo
+        Checks if the prompt should be executed as a shell command instead of sent to LLM
         
         Args:
-            prompt_text: Texto do prompt
+            prompt_text: User input to analyze
             
         Returns:
-            Comando a executar ou None
+            Command to execute if it's a shell command, None otherwise
         """
-        prompt_lower = prompt_text.lower()
+        # Remove leading/trailing whitespace and normalize
+        text = prompt_text.strip()
         
-        # Padrões que indicam comandos diretos
+        # Skip if it's too long (likely not a simple command)
+        if len(text) > 150:
+            return None
+        
+        # Skip if it contains question words or complex phrases indicating LLM queries
+        question_indicators = ['what', 'how', 'why', 'when', 'where', 'which', 'who', 'can you', 'please', 'help', '?', 'explain', 'show me', 'tell me', 'create', 'make', 'generate', 'write', 'build']
+        text_lower = text.lower()
+        if any(indicator in text_lower for indicator in question_indicators):
+            return None
+        
+        # Common shell commands that should be executed directly
+        simple_commands = [
+            # Navigation
+            'ls', 'dir', 'pwd', 'cd', 'pushd', 'popd',
+            # File operations  
+            'mkdir', 'rmdir', 'rm', 'del', 'cp', 'copy', 'mv', 'move', 'rename',
+            'cat', 'type', 'more', 'less', 'head', 'tail',
+            # Display/info
+            'echo', 'clear', 'cls', 'date', 'time', 'whoami', 'hostname',
+            # File listing/search
+            'find', 'grep', 'findstr', 'tree', 'where', 'which',
+            # Process/system
+            'ps', 'kill', 'killall', 'top', 'htop', 'tasklist', 'taskkill',
+            # Network
+            'ping', 'curl', 'wget', 'netstat',
+            # Archive
+            'zip', 'unzip', 'tar', 'gzip', 'gunzip',
+            # Version control
+            'git', 'svn', 'hg',
+            # Package managers
+            'npm', 'yarn', 'pip', 'conda', 'brew', 'apt', 'yum',
+            # Development tools
+            'node', 'python', 'python3', 'java', 'javac', 'gcc', 'make', 'cmake',
+            # Text editors (when just opening)
+            'vim', 'vi', 'nano', 'emacs', 'code'
+        ]
+        
+        # Check if it starts with a simple command
+        first_word = text.split()[0].lower() if text.split() else ""
+        if first_word in simple_commands:
+            # Additional check: avoid complex pipes or programming constructs
+            if not any(complex_indicator in text for complex_indicator in ['&&', '||', '>', '>>', '|', ';', 'if', 'for', 'while', 'function']):
+                return text
+        
+        # Special case: single-word commands
+        if len(text.split()) == 1 and first_word in simple_commands:
+            return text
+            
+        # Pattern matching for common command structures
+        command_patterns = [
+            r'^cd\s+[\w\-\.\/\\]+$',  # cd path
+            r'^ls\s*[\w\-\.\s\/\\]*$',  # ls with optional path/flags
+            r'^dir\s*[\w\-\.\s\/\\]*$',  # dir with optional path/flags  
+            r'^cat\s+[\w\-\.\/\\]+$',  # cat filename
+            r'^mkdir\s+[\w\-\.\/\\]+$',  # mkdir dirname
+            r'^rm\s+[\w\-\.\/\\]+$',  # rm filename
+            r'^git\s+\w+(\s+[\w\-\.\/\\]*)*$',  # git commands
+            r'^npm\s+\w+(\s+[\w\-\.\/\\@]*)*$',  # npm commands
+            r'^python\s+[\w\-\.\/\\]+\.py$',  # python script.py
+        ]
+        
+        for pattern in command_patterns:
+            if re.match(pattern, text, re.IGNORECASE):
+                return text
+        
+        # Legacy patterns for natural language commands
+        prompt_lower = text.lower()
         list_patterns = [
-            # Listagem de arquivos
+            # File listing
             (r'list.*files?.*directory', 'dir' if self.shell_exec.is_windows else 'ls -la'),
             (r'show.*files?', 'dir' if self.shell_exec.is_windows else 'ls -la'),
             (r'what.*files?.*here', 'dir' if self.shell_exec.is_windows else 'ls -la'),
-            (r'ls\s*$', 'ls'),
-            (r'dir\s*$', 'dir'),
             (r'list.*current.*directory', 'dir' if self.shell_exec.is_windows else 'ls -la'),
-            (r'list.*files?', 'dir' if self.shell_exec.is_windows else 'ls'),
             (r'show.*directory.*content', 'dir' if self.shell_exec.is_windows else 'ls -la'),
-            # Diretório atual
+            # Current directory
             (r'where.*am.*i', 'cd' if self.shell_exec.is_windows else 'pwd'),
             (r'current.*directory', 'cd' if self.shell_exec.is_windows else 'pwd'),
-            (r'pwd\s*$', 'pwd'),
             (r'show.*current.*path', 'cd' if self.shell_exec.is_windows else 'pwd'),
         ]
         
@@ -1661,15 +1724,13 @@ mkdir new_project
         Args:
             prompt_text: Texto do prompt
         """
-        if not self.selected_model:
-            console.print("[red]No model selected. Use /models to select one.[/red]")
-            return
-        
-        # Only execute if it's an EXACT shell command (no interpretation)
-        if self.auto_execute_shell and self.shell_exec.is_shell_command(prompt_text.strip()):
-            console.print(f"\n[dim]Executing: {prompt_text.strip()}[/dim]\n")
-            with console.status(f"[dim]$ {prompt_text.strip()}[/dim]", spinner="dots"):
-                success, output = self.shell_exec.execute_command(prompt_text.strip())
+        # FIRST: Check if it should be executed as a shell command directly
+        # This should work even without a model selected
+        command_to_execute = self._should_execute_as_command(prompt_text.strip())
+        if self.auto_execute_shell and command_to_execute:
+            console.print(f"\n[dim]Executing: {command_to_execute}[/dim]\n")
+            with console.status(f"[dim]$ {command_to_execute}[/dim]", spinner="dots"):
+                success, output = self.shell_exec.execute_command(command_to_execute)
             
             if success:
                 if output.strip():
@@ -1679,30 +1740,47 @@ mkdir new_project
             else:
                 console.print(f"[red]❌ {output}[/red]")
                 # If command failed, send error back to LLM for automatic fix
-                console.print("[yellow]🤖 Sending error to AI for automatic fix...[/yellow]")
-                error_prompt = f"The command '{prompt_text.strip()}' failed with error: {output}. Please provide the correct command to fix this issue."
-                # Process the error through LLM but don't auto-execute the fix
-                temp_auto_execute = self.auto_execute_shell
-                self.auto_execute_shell = False
-                self.process_prompt(error_prompt)
-                self.auto_execute_shell = temp_auto_execute
+                # Only if we have a model selected
+                if self.selected_model:
+                    console.print("[yellow]🤖 Sending error to AI for automatic fix...[/yellow]")
+                    error_prompt = f"The command '{command_to_execute}' failed with error: {output}. Please provide the correct command to fix this issue."
+                    # Process the error through LLM but don't auto-execute the fix
+                    temp_auto_execute = self.auto_execute_shell
+                    self.auto_execute_shell = False
+                    self.process_prompt(error_prompt)
+                    self.auto_execute_shell = temp_auto_execute
+            return
+        
+        # SECOND: Check if we have a model for LLM tasks
+        if not self.selected_model:
+            console.print("[red]No model selected. Use /models to select one.[/red]")
             return
         
         try:
-            # Step 1: Better prompting - analyze and enhance user request
-            working_prompt = prompt_text
-            if self.better_prompting:
-                working_prompt = self.analyze_and_enhance_prompt(prompt_text)
-            
-            # Step 2: Apply regular prompt enhancements if enabled  
-            if self.enhance_prompts:
-                enhanced_prompt = self.prompt_enhancer.enhance_prompt(
-                    working_prompt, 
-                    self.shell_exec.get_current_directory(),
-                    self.shell_exec.get_os_info()
+            # Step 1: Check if input is an error message and create specialized prompt
+            error_info = self.prompt_enhancer.detect_error_type(prompt_text)
+            if error_info:
+                console.print(f"[yellow]🔍 Detected {error_info['type']} error - creating specialized fix prompt[/yellow]")
+                enhanced_prompt = self.prompt_enhancer.create_error_fix_prompt(
+                    prompt_text, 
+                    error_info, 
+                    self.shell_exec.get_current_directory()
                 )
             else:
-                enhanced_prompt = working_prompt
+                # Step 2: Better prompting - analyze and enhance user request
+                working_prompt = prompt_text
+                if self.better_prompting:
+                    working_prompt = self.analyze_and_enhance_prompt(prompt_text)
+                
+                # Step 3: Apply regular prompt enhancements if enabled  
+                if self.enhance_prompts:
+                    enhanced_prompt = self.prompt_enhancer.enhance_prompt(
+                        working_prompt, 
+                        self.shell_exec.get_current_directory(),
+                        self.shell_exec.get_os_info()
+                    )
+                else:
+                    enhanced_prompt = working_prompt
             
             # ALWAYS track context regardless of enhancement settings
             if hasattr(self.prompt_enhancer, 'add_to_context_history'):
@@ -1845,6 +1923,19 @@ mkdir new_project
                 self.auto_execute_shell = previous_session.get('shell_settings', {}).get('auto_execute_shell', True)
                 self.enhance_prompts = previous_session.get('shell_settings', {}).get('enhance_prompts', True)
                 self.better_prompting = previous_session.get('shell_settings', {}).get('better_prompting', True)
+                
+                # Verify model is available
+                if self.selected_model:
+                    try:
+                        available_models = [model['name'] for model in self.api.list_models()]
+                        if self.selected_model not in available_models:
+                            console.print(f"[yellow]⚠️ Previously selected model '{self.selected_model}' is not available[/yellow]")
+                            console.print(f"[yellow]Available models: {', '.join(available_models[:3])}{'...' if len(available_models) > 3 else ''}[/yellow]")
+                            self.selected_model = None
+                    except Exception as e:
+                        if self.debug_mode:
+                            console.print(f"[yellow]Could not verify model availability: {e}[/yellow]")
+                        self.selected_model = None
                 
                 # Restore context if available
                 if hasattr(self.prompt_enhancer, 'context_history') and previous_session.get('context_history'):
@@ -2003,11 +2094,12 @@ mkdir new_project
                 try:
                     # Build dynamic prompt with model name and context percentage
                     context_percentage = ""
-                    if hasattr(self.prompt_enhancer, 'get_context_usage_percentage'):
+                    if self.selected_model and hasattr(self.prompt_enhancer, 'get_context_usage_percentage'):
                         percentage = self.prompt_enhancer.get_context_usage_percentage()
                         context_percentage = f" ({percentage:.0f}% context)"
                     
-                    prompt_text = f"[{self.selected_model}{context_percentage}] > "
+                    model_name = self.selected_model or "No model"
+                    prompt_text = f"[{model_name}{context_percentage}] > "
                     
                     # Prompt com histórico e autocompletar
                     user_input = prompt(

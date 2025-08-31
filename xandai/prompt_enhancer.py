@@ -25,6 +25,41 @@ class PromptEnhancer:
         r'\'([^\']+\.[\w]+)\'',
     ]
     
+    # Error detection patterns
+    ERROR_PATTERNS = {
+        'webpack': [
+            r'Module not found:.*Error.*Can\'t resolve',
+            r'ERROR in .*\.tsx?:.*TS\d+',
+            r'webpack compiled with \d+ error',
+            r'Module build failed.*Error',
+        ],
+        'import': [
+            r'ImportError:.*No module named',
+            r'ModuleNotFoundError:.*No module named',
+            r'Cannot find module.*or its corresponding type declarations',
+            r'Unable to resolve path to module',
+        ],
+        'syntax': [
+            r'SyntaxError:.*',
+            r'ERROR in .*\.tsx?:.*TS\d+.*syntax',
+            r'Parse error.*',
+            r'Unexpected token',
+        ],
+        'runtime': [
+            r'RuntimeError:.*',
+            r'TypeError:.*',
+            r'AttributeError:.*',
+            r'ReferenceError:.*',
+            r'Cannot read.*of undefined',
+        ],
+        'compilation': [
+            r'error: .*\.(?:c|cpp|rs|go):.*',
+            r'fatal error:.*',
+            r'compilation terminated',
+            r'build failed',
+        ]
+    }
+    
     # Keywords that indicate coding tasks
     CODING_KEYWORDS = {
         'criar': 'create',
@@ -912,67 +947,170 @@ Based on the enhancement request above, you need to:
 """)
         
         # Add final MORE DIRECT instructions
-        enhanced_parts.append("""
-[CRITICAL - YOU MUST FOLLOW THIS EXACT FORMAT]
-
-Step 1: ANALYZE the existing files and identify what needs improvement
-
-Step 2: EDIT each file using <code> tags (THIS IS MANDATORY):
-
-<code filename="index.html">
-PUT THE COMPLETE ENHANCED FILE CONTENT HERE
-WITH ALL YOUR IMPROVEMENTS
-</code>
-
-<code filename="styles.css">
-PUT THE COMPLETE ENHANCED CSS HERE
-</code>
-
-<code filename="app.py">
-PUT THE COMPLETE ENHANCED PYTHON CODE HERE
-</code>
-
-Step 3: SUMMARY of what you changed
-
-⚠️ CRITICAL RULES:
-- YOU MUST USE <code filename="..."> tags for ALL file edits
-- PUT THE COMPLETE FILE CONTENT inside the tags
-- DO NOT create new files
-- DO NOT just read files without editing
-- YOU MUST ACTUALLY EDIT AND IMPROVE THE FILES
-
-IF YOU DON'T USE <code> TAGS, THE ENHANCEMENT WILL FAIL!
-
-EXAMPLE OF CORRECT RESPONSE:
-
-Step 1: Analysis
-I found that index.html is a generic template and needs to be transformed into a SAAS landing page...
-
-Step 2: Enhanced Files
-
-<code filename="index.html">
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>XANDSAAS - Your Solution</title>
-    <!-- Complete enhanced HTML here -->
-</head>
-<body>
-    <!-- Complete SAAS landing page HTML -->
-</body>
-</html>
-</code>
-
-<code filename="styles.css">
-/* Complete enhanced CSS for SAAS landing page */
-</code>
-
-Step 3: Summary
-I transformed the generic page into a professional SAAS landing page with...
-""")
+        enhanced_parts.append("")
         
-        return '\n'.join(enhanced_parts)
+        return "\n".join(enhanced_parts)
+    
+    def detect_error_type(self, text: str) -> Optional[Dict[str, any]]:
+        """
+        Detects if the input text contains error messages and identifies the error type
+        
+        Args:
+            text: Input text to analyze
+            
+        Returns:
+            Dictionary with error information or None if no error detected
+        """
+        text_lower = text.lower()
+        
+        # Check for various error patterns
+        for error_type, patterns in self.ERROR_PATTERNS.items():
+            for pattern in patterns:
+                if re.search(pattern, text, re.IGNORECASE | re.MULTILINE):
+                    # Extract specific error details
+                    error_info = {
+                        'type': error_type,
+                        'pattern_matched': pattern,
+                        'raw_text': text
+                    }
+                    
+                    # Extract file paths mentioned in the error
+                    file_matches = []
+                    for file_pattern in self.FILE_PATTERNS:
+                        matches = re.findall(file_pattern, text)
+                        file_matches.extend(matches)
+                    
+                    # Extract specific details based on error type
+                    if error_type == 'webpack':
+                        # Extract module path and file that failed
+                        module_match = re.search(r"Can't resolve '([^']+)'", text)
+                        file_match = re.search(r"ERROR in ([^\s]+)", text)
+                        
+                        error_info.update({
+                            'missing_module': module_match.group(1) if module_match else None,
+                            'failing_file': file_match.group(1) if file_match else None,
+                            'files_mentioned': file_matches
+                        })
+                    
+                    elif error_type == 'import':
+                        # Extract module name
+                        module_match = re.search(r"module named '([^']+)'", text, re.IGNORECASE)
+                        error_info.update({
+                            'missing_module': module_match.group(1) if module_match else None,
+                            'files_mentioned': file_matches
+                        })
+                    
+                    return error_info
+        
+        return None
+    
+    def create_error_fix_prompt(self, original_prompt: str, error_info: Dict[str, any], current_dir: str = None) -> str:
+        """
+        Creates an enhanced prompt specifically designed to help fix the detected error
+        
+        Args:
+            original_prompt: Original user input (error message)
+            error_info: Error information from detect_error_type
+            current_dir: Current working directory
+            
+        Returns:
+            Enhanced prompt for fixing the error
+        """
+        error_type = error_info['type']
+        
+        enhanced_parts = []
+        enhanced_parts.append("🔧 ERROR ANALYSIS & FIX REQUEST")
+        enhanced_parts.append("="*50)
+        
+        # Add current directory context
+        if current_dir:
+            enhanced_parts.append(f"\n📂 CURRENT DIRECTORY: {current_dir}")
+            
+            # Try to gather file structure around the error
+            current_path = Path(current_dir)
+            if current_path.exists():
+                enhanced_parts.append("\n📋 CURRENT DIRECTORY STRUCTURE:")
+                try:
+                    # List relevant files (limit to avoid too much output)
+                    files = []
+                    for item in current_path.rglob("*"):
+                        if item.is_file() and not any(ignore in str(item) for ignore in ['.git', 'node_modules', '__pycache__', '.venv', 'venv']):
+                            relative_path = item.relative_to(current_path)
+                            files.append(str(relative_path))
+                            if len(files) >= 20:  # Limit to first 20 files
+                                break
+                    
+                    for f in sorted(files):
+                        enhanced_parts.append(f"  - {f}")
+                    
+                    if len(files) >= 20:
+                        enhanced_parts.append("  ... (showing first 20 files)")
+                        
+                except Exception as e:
+                    enhanced_parts.append(f"  (Could not list files: {e})")
+        
+        enhanced_parts.append(f"\n🚨 ERROR DETECTED: {error_type.upper()} ERROR")
+        enhanced_parts.append(f"Raw Error Message:")
+        enhanced_parts.append("```")
+        enhanced_parts.append(original_prompt)
+        enhanced_parts.append("```")
+        
+        # Add specific guidance based on error type
+        if error_type == 'webpack':
+            enhanced_parts.append("\n🎯 WEBPACK/MODULE ERROR ANALYSIS:")
+            enhanced_parts.append("This appears to be a webpack module resolution error.")
+            
+            if error_info.get('missing_module'):
+                enhanced_parts.append(f"- Missing module: '{error_info['missing_module']}'")
+            if error_info.get('failing_file'):
+                enhanced_parts.append(f"- File with error: '{error_info['failing_file']}'")
+            
+            enhanced_parts.append("\n✅ COMMON SOLUTIONS:")
+            enhanced_parts.append("1. Check if the imported file/module actually exists at the specified path")
+            enhanced_parts.append("2. Verify the import path is correct (relative vs absolute)")
+            enhanced_parts.append("3. Check for typos in file names or import statements")
+            enhanced_parts.append("4. Ensure file extensions are correct (.js, .ts, .tsx, etc.)")
+            enhanced_parts.append("5. Check if the module is properly exported from the target file")
+            enhanced_parts.append("6. For npm packages, verify they are installed (npm ls)")
+            
+        elif error_type == 'import':
+            enhanced_parts.append("\n🎯 IMPORT ERROR ANALYSIS:")
+            enhanced_parts.append("This appears to be a Python import error.")
+            
+            if error_info.get('missing_module'):
+                enhanced_parts.append(f"- Missing module: '{error_info['missing_module']}'")
+            
+            enhanced_parts.append("\n✅ COMMON SOLUTIONS:")
+            enhanced_parts.append("1. Install the missing package: pip install <package_name>")
+            enhanced_parts.append("2. Check if the module name is spelled correctly")
+            enhanced_parts.append("3. Verify the module is in your Python path")
+            enhanced_parts.append("4. Check if you're in the correct virtual environment")
+            enhanced_parts.append("5. For local modules, check file paths and __init__.py files")
+        
+        elif error_type == 'syntax':
+            enhanced_parts.append("\n🎯 SYNTAX ERROR ANALYSIS:")
+            enhanced_parts.append("This appears to be a syntax error.")
+            enhanced_parts.append("\n✅ COMMON SOLUTIONS:")
+            enhanced_parts.append("1. Check for missing brackets, parentheses, or quotes")
+            enhanced_parts.append("2. Verify proper indentation (especially in Python)")
+            enhanced_parts.append("3. Look for typos in keywords or variable names")
+            enhanced_parts.append("4. Check for incorrect usage of language constructs")
+        
+        enhanced_parts.append("\n🔍 DEBUGGING INSTRUCTIONS:")
+        enhanced_parts.append("Please analyze the error above and:")
+        enhanced_parts.append("1. Identify the root cause of the problem")
+        enhanced_parts.append("2. Examine the current file structure (provided above)")
+        enhanced_parts.append("3. Provide step-by-step solution to fix this error")
+        enhanced_parts.append("4. If files need to be created or modified, use appropriate <code filename=\"...\"> or <actions> tags")
+        enhanced_parts.append("5. Explain why this error occurred and how to prevent it in the future")
+        
+        enhanced_parts.append("\n⚠️ IMPORTANT CONSTRAINTS:")
+        enhanced_parts.append("- Only create/modify files that are actually needed to fix this error")
+        enhanced_parts.append("- Maintain existing code structure and don't break working functionality")
+        enhanced_parts.append("- Provide clear explanations for each step taken")
+        enhanced_parts.append("- Test your solution logic before proposing changes")
+        
+        return "\n".join(enhanced_parts)
     
     def format_response_context(self, response: str, context: Dict) -> str:
         """
