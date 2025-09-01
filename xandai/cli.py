@@ -1436,7 +1436,13 @@ Enhanced Request:"""
                 console.print(f"[dim]🔄 Skipping {len(skipped_reads)} read tag(s) to prevent infinite loop[/dim]")
             
         if read_blocks:
-            console.print("\n[bold blue]📖 Reading files...[/bold blue]")
+            total_read_commands = sum(len([line.strip() for line in reads.strip().split('\n') 
+                                         if line.strip() and not line.strip().startswith('#')]) 
+                                    for reads in read_blocks)
+            if total_read_commands > 1:
+                console.print(f"\n[bold blue]🚀 BATCH READING: Processing {total_read_commands} read command(s)...[/bold blue]")
+            else:
+                console.print("\n[bold blue]📖 Reading files...[/bold blue]")
             processed_something = True
             for reads in read_blocks:
                 # Remove comentários e linhas vazias
@@ -1518,7 +1524,10 @@ Enhanced Request:"""
             create_blocks = [(filename, content) for action_type, filename, content in code_blocks if action_type == 'create']
             
             total_blocks = len(code_blocks)
-            console.print(f"\n[bold green]💾 Processing {total_blocks} file(s): {len(edit_blocks)} edit(s), {len(create_blocks)} create(s)...[/bold green]")
+            if total_blocks > 1:
+                console.print(f"\n[bold green]🚀 BATCH PROCESSING: {total_blocks} file(s): {len(edit_blocks)} edit(s), {len(create_blocks)} create(s)...[/bold green]")
+            else:
+                console.print(f"\n[bold green]💾 Processing {total_blocks} file(s): {len(edit_blocks)} edit(s), {len(create_blocks)} create(s)...[/bold green]")
             processed_something = True
             
             processed_count = 0
@@ -1609,7 +1618,10 @@ Enhanced Request:"""
                     console.print(f"[red]❌ Error creating {filename}: {e}[/red]")
             
             if processed_count > 0:
-                console.print(f"[bold green]✅ {processed_count} file(s) processed successfully![/bold green]")
+                if processed_count > 1:
+                    console.print(f"[bold green]🚀✅ BATCH SUCCESS: {processed_count} file(s) processed efficiently in ONE response![/bold green]")
+                else:
+                    console.print(f"[bold green]✅ {processed_count} file(s) processed successfully![/bold green]")
         
         # Debug: inform if no special tags were processed
         if not processed_something:
@@ -3016,6 +3028,8 @@ mkdir new_project
 
 [MANDATORY TAGS FOR ACTIONS - CLEAN CODE ONLY]
 
+⚡ EFFICIENCY TIP: Process multiple files in ONE response! Don't stop after editing just one file.
+
 1. For shell/terminal commands:
    ✅ RIGHT: <actions>mkdir my-project</actions>
    ✅ RIGHT: <actions>pip install flask</actions>
@@ -3049,6 +3063,30 @@ mkdir new_project
              ```
    ❌ WRONG: Just describing: "Check the contents of app.py"
 
+🚀 MULTIPLE OPERATIONS EXAMPLES:
+
+✅ EXCELLENT - Process multiple files in ONE response:
+   <read>
+   cat app.py
+   cat config.py
+   ls templates/
+   </read>
+   
+   <code edit filename="app.py">
+   # Updated app.py content here
+   </code>
+   
+   <code edit filename="config.py">
+   # Updated config.py content here
+   </code>
+   
+   <code create filename="templates/base.html">
+   # New template content here
+   </code>
+
+❌ INEFFICIENT - Don't stop after just one operation:
+   "I'll start by reading app.py and then wait for further instructions..."
+
 CRITICAL RULES:
 - ALWAYS use <actions> for commands (mkdir, pip, npm, git, etc.)
 - ALWAYS use <code edit filename="..."> for editing existing files
@@ -3057,6 +3095,7 @@ CRITICAL RULES:
 - NEVER use ``` blocks for files that should be created/edited
 - NEVER just describe actions - use the tags!
 - The old <code filename="..."> format is deprecated - always specify edit or create
+- 🚀 BATCH OPERATIONS: Do multiple file operations in ONE response for efficiency
 
 🚫 CLEAN CODE FORMATTING RULES:
 - Code blocks must contain ONLY the file content - no explanations or summaries
@@ -3618,13 +3657,14 @@ IMPLEMENT NOW - NO MORE EXPLANATIONS:"""
                 "🚨 CRITICAL: The user wants to UPDATE/MODIFY an existing project, NOT create a new one!",
                 "",
                 "**PRESERVATION-FIRST Edit Mode Instructions:**",
-                "- ALWAYS read existing files first using <read> tags",
+                "- ALWAYS read existing files first using <read> tags (multiple files in ONE <read> block)",
                 "- PRESERVE ALL existing code: functions, endpoints, classes, variables, imports",
                 "- NEVER delete or remove existing functionality unless explicitly requested",
                 "- Make ONLY the specific changes requested - keep everything else identical",
                 "- When editing files, provide the COMPLETE file including all existing code",
                 "- Use <code edit filename=\"...\"> for modifying existing files (FULL file content required)",
                 "- Use <code create filename=\"...\"> ONLY for completely new files",
+                "- 🚀 EFFICIENCY: Process multiple files in ONE response - don't stop after editing just one",
                 "- Mark new additions with comments like // NEW: or // ADDED: for clarity",
                 "- Maintain consistency with existing patterns and conventions",
                 "- If you find config files (package.json, requirements.txt), UPDATE instead of creating new ones",
@@ -3682,6 +3722,7 @@ IMPLEMENT NOW - NO MORE EXPLANATIONS:"""
                 "- Include necessary configuration files (package.json, requirements.txt, etc.)",
                 "- Organize code in logical directory structure",
                 "- Include basic documentation (README.md)",
+                "- 🚀 EFFICIENCY: Create ALL necessary files in ONE response - don't create just one file",
                 "- ALWAYS provide complete implementation, not just explanations",
                 "- NEVER stop without creating the requested files and code",
                 "",

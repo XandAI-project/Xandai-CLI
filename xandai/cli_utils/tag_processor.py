@@ -106,6 +106,8 @@ find . -name "*.py" -o -name "*.js" -o -name "*.html" -o -name "*.css" | head -1
 [FORCED READ-FIRST FOR EDIT MODE]
 🚨 CRITICAL: You are in EDIT MODE. You MUST start by reading existing files before making any changes.
 
+🚀 EFFICIENCY TIP: Read MULTIPLE files in ONE <read> block!
+
 {suggested_reads}
 
 After reading files, I will re-send your request with the EXISTING code content. You MUST then:
@@ -115,12 +117,15 @@ After reading files, I will re-send your request with the EXISTING code content.
 4. Use <code edit filename="..."> to modify existing files (include COMPLETE file)
 5. NEVER delete or remove existing functionality unless explicitly requested
 6. When editing, provide the FULL file with existing code + your changes
-7. NEVER create new files unless specifically requested
+7. 🚀 EFFICIENCY: Process ALL required files in ONE response - don't stop after one
+8. NEVER create new files unless specifically requested
 
 PRESERVATION RULE: If existing code has endpoints A, B, C and you need to add D:
 - Keep A, B, C exactly as they are
 - Add D properly integrated
 - Provide complete file with A, B, C, D all included
+
+BATCH PROCESSING RULE: If you need to modify multiple files, do them all in ONE response
 """
             return prompt + read_instruction, True
         
@@ -272,6 +277,7 @@ IMPLEMENTATION RULES:
    - Your new additions/changes integrated properly
 5. NEVER provide partial code - always provide the complete updated file
 6. Mark your changes with comments like // NEW: or // MODIFIED: for clarity
+7. 🚀 BATCH PROCESSING: Process ALL required files in ONE response - don't stop after one file
 
 🚫 CODE FORMATTING RULES:
 1. Provide ONLY clean, executable code - NO explanations or descriptions inside code blocks
@@ -280,6 +286,16 @@ IMPLEMENTATION RULES:
 4. Code blocks should contain ONLY the file content - no external commentary
 5. Keep files in their proper format (HTML files should be valid HTML, not markdown)
 6. If you need to explain changes, do it OUTSIDE the code blocks, not inside files
+
+⚡ EFFICIENCY EXAMPLES:
+EXCELLENT - Multiple files in ONE response:
+<code edit filename="app.py">...</code>
+<code edit filename="config.py">...</code>
+<code create filename="utils.py">...</code>
+
+POOR - Only one file then stopping:
+<code edit filename="app.py">...</code>
+"Let me know if you want me to update other files..."
 
 EXAMPLE of correct editing:
 If existing file has endpoints A, B, C and you need to add endpoint D:
