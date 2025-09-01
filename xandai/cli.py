@@ -5,6 +5,7 @@ Interface CLI principal do XandAI
 import sys
 import os
 import re
+import time
 from typing import Optional, List, Dict, Any, Tuple
 from rich.console import Console
 from rich.table import Table
@@ -24,6 +25,13 @@ from .prompt_enhancer import PromptEnhancer
 from .task_manager import TaskManager
 from .git_manager import GitManager
 from .session_manager import SessionManager
+
+from .cli_utils.file_context import FileContextManager
+from .cli_utils.read_levels import ReadLevelsManager
+from .cli_utils.context_commands import ContextCommands
+from .cli_utils.tag_processor import TagProcessor
+from .cli_utils.auto_recovery import AutoRecovery
+
 
 console = Console()
 
@@ -91,6 +99,12 @@ class XandAICLI:
         self.task_manager = TaskManager(prompt_enhancer=self.prompt_enhancer)
         self.git_manager = GitManager(self.user_initial_dir)
         self.session_manager = SessionManager()
+        self.file_context_manager = FileContextManager()
+        self.read_levels_manager = ReadLevelsManager(self.shell_exec)
+        self.context_commands = ContextCommands(self.file_context_manager)
+        # TagProcessor e AutoRecovery serão inicializados depois que o modelo for selecionado
+        self.tag_processor = None
+        self.auto_recovery = None
         self.selected_model = None
         self.history_file = Path.home() / ".xandai_history"
         self.auto_execute_shell = True  # Flag for automatic command execution
@@ -108,7 +122,9 @@ class XandAICLI:
             '/enhance_code': self.enhance_code_command,
             '/task': self.task_command,
             '/flush': self.flush_context,
-            '/context': self.context_command_new,
+            '/context': self.context_commands.show_file_context,
+            '/clear-context': self.context_commands.clear_file_context,
+            '/refresh-context': self.context_commands.refresh_file_context,
             '/debug': self.toggle_debug_mode,
             '/better': self.toggle_better_prompting,
             '/session': self.session_command
@@ -1185,10 +1201,7 @@ Enhanced Request:"""
                         if output.strip():
                             console.print(output)
                             # Captura conteúdo para injetar no contexto do LLM
-                            read_content.append({
-                                'command': converted_cmd,
-                                'content': output.strip()
-                            })
+                            read_content.append(f"--- Output from: {converted_cmd} ---\n{output.strip()}\n")
                     else:
                         console.print(f"[red]❌ {output}[/red]")
                         # Send error back to LLM for automatic fix
@@ -1252,52 +1265,6 @@ Enhanced Request:"""
         
         return processed_something
     
-    def _execute_read_tags_only(self, response: str) -> list:
-        """
-        Executa apenas as tags <read> e retorna o conteúdo lido
-        
-        Args:
-            response: Resposta que contém tags <read>
-            
-        Returns:
-            Lista de dicionários com command e content dos arquivos lidos
-        """
-        read_content = []
-        read_blocks = re.findall(r'<read>(.*?)</read>', response, re.DOTALL | re.IGNORECASE)
-        
-        if read_blocks:
-            console.print("\n[bold blue]📖 Reading files...[/bold blue]")
-            for reads in read_blocks:
-                # Remove comentários e linhas vazias
-                lines = [line.strip() for line in reads.strip().split('\n') 
-                         if line.strip() and not line.strip().startswith('#')]
-                
-                # Filtra apenas comandos válidos
-                commands = []
-                for line in lines:
-                    cleaned_line = line.strip().strip('"').strip("'")
-                    if self._is_valid_command_syntax(cleaned_line):
-                        if self.shell_exec.is_shell_command(cleaned_line) or any(cleaned_line.startswith(cmd) for cmd in ['cat ', 'type ', 'ls ', 'dir ', 'head ', 'tail ']):
-                            commands.append(cleaned_line)
-                
-                for cmd in commands:
-                    converted_cmd = self.shell_exec.convert_command(cmd)
-                    
-                    with console.status(f"[dim]$ {converted_cmd}[/dim]", spinner="dots"):
-                        success, output = self.shell_exec.execute_command(converted_cmd)
-                    
-                    if success:
-                        if output.strip():
-                            console.print(output)
-                            read_content.append({
-                                'command': converted_cmd,
-                                'content': output.strip()
-                            })
-                    else:
-                        console.print(f"[red]❌ {output}[/red]")
-        
-        return read_content
-    
     def _restart_generation_with_content(self, original_prompt: str, enhanced_prompt: str, read_content: list, previous_response: str = ""):
         """
         Reinicia a geração com o conteúdo dos arquivos injetado
@@ -1312,10 +1279,8 @@ Enhanced Request:"""
             # Constrói contexto com o conteúdo dos arquivos
             file_context_parts = ["\n[FILES READ - INJECTED CONTENT:]"]
             
-            for item in read_content:
-                file_context_parts.append(f"\n--- Output from: {item['command']} ---")
-                file_context_parts.append(item['content'])
-                file_context_parts.append("--- End of file content ---\n")
+            for content in read_content:
+                file_context_parts.append(content)
             
             file_context = '\n'.join(file_context_parts)
             
@@ -1363,16 +1328,14 @@ Enhanced Request:"""
         
         Args:
             original_prompt: Prompt original do usuário
-            read_content: Lista de dicionários com command e content dos arquivos lidos
+            read_content: Lista de strings com conteúdo dos arquivos lidos
         """
         try:
             # Constrói contexto com o conteúdo dos arquivos
             file_context_parts = ["\n[FILES READ - INJECTED CONTENT:]"]
             
-            for item in read_content:
-                file_context_parts.append(f"\n--- Output from: {item['command']} ---")
-                file_context_parts.append(item['content'])
-                file_context_parts.append("--- End of file content ---\n")
+            for content in read_content:
+                file_context_parts.append(content)
             
             file_context = '\n'.join(file_context_parts)
             
@@ -2274,8 +2237,45 @@ mkdir new_project
                     console.print("[green]✓ Command executed[/green]")
             else:
                 console.print(f"[red]❌ {output}[/red]")
-                # If command failed, send error back to LLM for automatic fix
-                # Only if we have a model selected
+                
+                # *** NEW: Auto-recovery for directory not found errors ***
+                if self.auto_recovery and self.auto_recovery.is_directory_not_found_error(output):
+                    console.print("[blue]🔄 Initiating auto-recovery for directory error...[/blue]")
+                    
+                    # Get recovery commands
+                    recovery_commands = self.auto_recovery.auto_recover_directory_error(command_to_execute, output)
+                    
+                    if recovery_commands:
+                        console.print(f"[blue]📖 Executing {len(recovery_commands)} recovery commands...[/blue]")
+                        
+                        # Execute recovery commands and collect results
+                        recovery_results = []
+                        for cmd in recovery_commands:
+                            console.print(f"[dim]$ {cmd}[/dim]")
+                            try:
+                                rec_success, rec_output = self.shell_exec.execute_command(cmd)
+                                if rec_success and rec_output.strip():
+                                    console.print(rec_output)
+                                    recovery_results.append(rec_output)
+                            except Exception as e:
+                                console.print(f"[yellow]⚠️ Recovery command failed: {e}[/yellow]")
+                        
+                        # Suggest correct paths based on findings
+                        if recovery_results:
+                            failed_path = self.auto_recovery.extract_failed_path(command_to_execute, output)
+                            suggestions = self.auto_recovery.suggest_correct_paths(recovery_results, failed_path)
+                            
+                            if suggestions:
+                                console.print(f"[green]💡 Found similar directories:[/green]")
+                                for i, suggestion in enumerate(suggestions, 1):
+                                    console.print(f"  {i}. {suggestion}")
+                                console.print(f"[dim]💡 Try: cd {suggestions[0]}[/dim]")
+                            else:
+                                console.print("[blue]📋 Directory structure mapped. Check the output above for available paths.[/blue]")
+                        
+                        return  # Skip normal AI error processing
+                
+                # Normal AI error fix for non-directory errors
                 if self.selected_model:
                     console.print("[yellow]🤖 Sending error to AI for automatic fix...[/yellow]")
                     error_prompt = f"The command '{command_to_execute}' failed with error: {output}. Please provide the correct command to fix this issue."
@@ -2325,7 +2325,7 @@ mkdir new_project
                         enhanced_prompt = working_prompt
                 
                 # *** NEW FEATURE: Always suggest reading files first (unless file content already provided)
-                enhanced_prompt = self._add_read_first_instruction(enhanced_prompt)
+                enhanced_prompt, needs_read_first = self._add_read_first_instruction(enhanced_prompt)
             
             # ALWAYS track context regardless of enhancement settings
             if hasattr(self.prompt_enhancer, 'add_to_context_history'):
@@ -2335,7 +2335,51 @@ mkdir new_project
                     if self.debug_mode:
                         console.print(f"[dim]⚠️ Error adding user message to context: {e}[/dim]")
             
-            # Buffer para acumular resposta completa
+            # *** NEW LOGIC: Handle read-first flow ***
+            if needs_read_first:
+                console.print("[blue]📖 Read-first flow: Requesting file examination...[/blue]")
+                
+                # Step 1: Send prompt with read instruction and capture read response
+                read_response = ""
+                try:
+                    with console.status("[bold blue]📖 Waiting for read commands...", spinner="dots") as status:
+                        for chunk in self.api.generate(self.selected_model, enhanced_prompt):
+                            read_response += chunk
+                            
+                            # Check if we have a complete read tag
+                            read_match = re.search(r'<read>(.*?)</read>', read_response, re.DOTALL)
+                            if read_match:
+                                console.print(f"\n[green]📖 Read commands detected, executing...[/green]")
+                                
+                                # Execute read commands and get content
+                                read_content = self.tag_processor.execute_read_tags_only(read_response)
+                                
+                                # Step 2: Re-send ORIGINAL prompt with file content (no read instruction)
+                                self._send_original_with_file_content(
+                                    prompt_text,  # Original user prompt  
+                                    working_prompt,  # Enhanced prompt without read instruction
+                                    read_content
+                                )
+                                return
+                            
+                            # Update status with read progress
+                            if '<read>' in read_response:
+                                status.update("[bold blue]📖 Reading commands detected, waiting for completion...", spinner="dots3")
+                            
+                except KeyboardInterrupt:
+                    console.print(f"\n[yellow]⚠️ Read-first generation interrupted by user[/yellow]")
+                    return
+                    
+                # If we get here, no read tag was found - show warning and continue with normal processing
+                console.print(f"\n[yellow]⚠️ No read tag found in read-first response, proceeding with normal flow[/yellow]")
+                # Use the response we got as the final response
+                if read_response.strip():
+                    console.print("\n[bold cyan]Response:[/bold cyan]\n")
+                    self._display_formatted_response(read_response)
+                    self._process_special_tags(read_response, prompt_text)
+                    return
+            
+            # Normal flow: Generate response without read-first requirement
             full_response = ""
             code_count = 0
             line_count = 0
@@ -2348,7 +2392,7 @@ mkdir new_project
                         full_response += chunk
                         line_count += chunk.count('\n')
                         
-                        # *** CRITICAL: Check for complete <read> tags ***
+                        # *** FALLBACK: Check for complete <read> tags in normal flow ***
                         read_match = re.search(r'<read>(.*?)</read>', full_response, re.DOTALL | re.IGNORECASE)
                         if read_match:
                             console.print(f"\n[bold blue]📖 Read tag detected - stopping generation and executing reads...[/bold blue]")
@@ -2421,7 +2465,7 @@ mkdir new_project
                     console.print("[dim]No response generated[/dim]")
                     return
             
-            # *** SPECIAL CASE: Check if generation was stopped due to <read> tag ***
+            # *** FALLBACK: Check if generation was stopped due to <read> tag ***
             read_match = re.search(r'<read>(.*?)</read>', full_response, re.DOTALL | re.IGNORECASE)
             if read_match:
                 # Display partial response first
@@ -2432,7 +2476,7 @@ mkdir new_project
                 
                 # Process the read tags immediately
                 console.print(f"\n[bold blue]📖 Processing read tags and restarting generation...[/bold blue]")
-                read_content = self._execute_read_tags_only(full_response)
+                read_content = self.tag_processor.execute_read_tags_only(full_response)
                 
                 if read_content:
                     # Restart generation with file content injected
@@ -2615,138 +2659,41 @@ CRITICAL RULES:
 - NEVER just describe actions - use the tags!
 """
     
-    def _add_read_first_instruction(self, prompt: str) -> str:
+    def _add_read_first_instruction(self, prompt: str) -> tuple[str, bool]:
         """
         Adiciona instrução para sempre começar com <read> exceto quando já há contexto de arquivos
-        
-        Args:
-            prompt: Prompt (possivelmente já melhorado)
-            
-        Returns:
-            Prompt com instrução para ler arquivos primeiro
         """
-        # Verifica se já há contexto de arquivos no prompt
-        has_file_content = any(marker in prompt for marker in [
-            "[FILES READ - INJECTED CONTENT:]",
-            "--- Output from:",
-            "--- End of file content ---",
-            "[Existing File Structure]",
-            "[CURRENT PROJECT STRUCTURE:]"
-        ])
-        
-        if has_file_content:
-            # Já tem contexto de arquivos, não adiciona instrução read
-            return prompt
-        
-        # Detecta tipo de projeto/contexto para sugerir leituras relevantes
-        suggested_reads = self._get_suggested_read_commands(prompt)
-        
-        if suggested_reads:
-            read_instruction = f"""
-
-[MANDATORY FIRST STEP - READ FILES]
-CRITICAL: Before responding, you MUST first examine relevant files to understand the current context.
-Start your response with a <read> tag containing appropriate commands:
-
-{suggested_reads}
-
-ONLY after reading files should you provide your main response. Use the actual file content to give accurate, context-aware answers.
-"""
-            return prompt + read_instruction
-        
-        return prompt
+        return self.tag_processor.add_read_first_instruction(prompt, self.read_levels_manager)
     
     def _get_suggested_read_commands(self, prompt: str) -> str:
         """
-        Sugere comandos de leitura baseados no contexto do prompt
-        
-        Args:
-            prompt: Prompt do usuário
-            
-        Returns:
-            String com comandos de leitura sugeridos
+        Sugere comandos de leitura baseados no contexto do prompt usando sistema de níveis
         """
-        prompt_lower = prompt.lower()
+        return self.read_levels_manager.get_suggested_read_commands(prompt)
+    
+    def _determine_read_level(self, prompt_lower: str) -> int:
+        """
+        Determina qual nível de read é necessário baseado no contexto
+        """
+        return self.read_levels_manager.determine_read_level(prompt_lower)
+    
+    def _send_original_with_file_content(self, original_prompt: str, working_prompt: str, read_content: list):
+        """
+        Re-envia o prompt original (sem instrução read) mas com conteúdo dos arquivos injetado
+        """
+        full_response = self.tag_processor.send_original_with_file_content(
+            original_prompt, working_prompt, read_content, self.api, self.selected_model
+        )
         
-        # Comandos base para qualquer situação
-        os_info = self.shell_exec.get_os_info().lower()
-        is_windows = "windows" in os_info
-        base_commands = ["dir"] if is_windows else ["ls -la"]
-        
-        suggested_commands = []
-        
-        # Adiciona comando de listagem primeiro
-        suggested_commands.extend(base_commands)
-        
-        # Detecta contexto específico e sugere leituras relevantes
-        if any(word in prompt_lower for word in ['analyze', 'review', 'check', 'examine', 'debug', 'fix', 'error']):
-            # Análise/Debug - ler arquivos principais
-            if is_windows:
-                suggested_commands.extend([
-                    "type *.py 2>nul || echo No Python files",
-                    "type *.js 2>nul || echo No JavaScript files", 
-                    "type *.html 2>nul || echo No HTML files",
-                    "type package.json 2>nul || echo No package.json",
-                    "type requirements.txt 2>nul || echo No requirements.txt"
-                ])
-            else:
-                suggested_commands.extend([
-                    "cat *.py 2>/dev/null || echo 'No Python files'",
-                    "cat *.js 2>/dev/null || echo 'No JavaScript files'", 
-                    "cat *.html 2>/dev/null || echo 'No HTML files'",
-                    "cat package.json 2>/dev/null || echo 'No package.json'",
-                    "cat requirements.txt 2>/dev/null || echo 'No requirements.txt'"
-                ])
-        
-        elif any(word in prompt_lower for word in ['flask', 'django', 'python', 'api']):
-            # Projeto Python
-            if is_windows:
-                suggested_commands.extend([
-                    "type app.py 2>nul || type main.py 2>nul || echo No main Python file",
-                    "type requirements.txt 2>nul || echo No requirements.txt"
-                ])
-            else:
-                suggested_commands.extend([
-                    "cat app.py 2>/dev/null || cat main.py 2>/dev/null || echo 'No main Python file'",
-                    "cat requirements.txt 2>/dev/null || echo 'No requirements.txt'"
-                ])
-        
-        elif any(word in prompt_lower for word in ['react', 'vue', 'angular', 'node', 'npm', 'javascript']):
-            # Projeto JavaScript/Node
-            if is_windows:
-                suggested_commands.extend([
-                    "type package.json 2>nul || echo No package.json",
-                    "type src\\App.js 2>nul || type app.js 2>nul || echo No main JS file"
-                ])
-            else:
-                suggested_commands.extend([
-                    "cat package.json 2>/dev/null || echo 'No package.json'",
-                    "cat src/App.js 2>/dev/null || cat app.js 2>/dev/null || echo 'No main JS file'"
-                ])
-        
-        else:
-            # Contexto geral - ler arquivos comuns
-            if is_windows:
-                suggested_commands.extend([
-                    "type README.md 2>nul || echo No README",
-                    "type *.py 2>nul || type *.js 2>nul || echo No common code files"
-                ])
-            else:
-                suggested_commands.extend([
-                    "cat README.md 2>/dev/null || echo 'No README'",
-                    "ls *.py *.js *.html 2>/dev/null || echo 'No common code files'"
-                ])
-        
-        # Limita número de comandos (máximo 4)
-        suggested_commands = suggested_commands[:4]
-        
-        if suggested_commands:
-            commands_text = "\n".join(suggested_commands)
-            return f"""<read>
-{commands_text}
-</read>"""
-        
-        return ""
+        if full_response:
+            # Exibe a resposta final
+            console.print("\n[bold cyan]Response:[/bold cyan]\n")
+            
+            # Processa resposta para tags especiais
+            self._process_special_tags(full_response, original_prompt)
+            
+            # Exibe a resposta formatada
+            self._display_formatted_response(full_response)
     
     def load_previous_session(self):
         """
@@ -2912,6 +2859,22 @@ ONLY after reading files should you provide your main response. Use the actual f
             if not self.selected_model:
                 console.print("[yellow]No model selected. Exiting...[/yellow]")
                 return
+                
+        # Initialize TagProcessor and AutoRecovery with AI decision system after model selection
+        if not self.tag_processor:
+            self.tag_processor = TagProcessor(
+                self.shell_exec, 
+                self.file_ops, 
+                self.file_context_manager,
+                self.api,
+                self.selected_model
+            )
+            
+        if not self.auto_recovery:
+            self.auto_recovery = AutoRecovery(
+                self.shell_exec,
+                self.tag_processor.ai_read_decision if self.tag_processor else None
+            )
         elif session_loaded:
             # If loaded from session, confirm model is still available
             try:
@@ -2924,11 +2887,27 @@ ONLY after reading files should you provide your main response. Use the actual f
                     if not self.selected_model:
                         console.print("[yellow]No model selected. Exiting...[/yellow]")
                         return
+                        
                 else:
                     console.print(f"[green]✓ Using model from session: {self.selected_model}[/green]")
             except Exception:
                 # If verification fails, allow continuing with session model
                 pass
+                
+        # Re-initialize TagProcessor and AutoRecovery if model changed
+        if not self.tag_processor or session_loaded:
+            self.tag_processor = TagProcessor(
+                self.shell_exec, 
+                self.file_ops, 
+                self.file_context_manager,
+                self.api,
+                self.selected_model
+            )
+            
+            self.auto_recovery = AutoRecovery(
+                self.shell_exec,
+                self.tag_processor.ai_read_decision if self.tag_processor else None
+            )
         
         # Prepare autocompletion
         # Create custom completer that handles both commands and file paths
