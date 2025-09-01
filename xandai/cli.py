@@ -2031,6 +2031,9 @@ IMPORTANT: Use the file content above to provide a complete and accurate respons
             else:
                 enhanced_prompt = task_prompt
             
+            # Initialize read-first flag
+            needs_read_first = False
+            
             # Apply mode-specific instructions if mode decision is available
             if mode_decision:
                 mode_instructions = self._generate_mode_instructions(mode_decision)
@@ -2038,7 +2041,7 @@ IMPORTANT: Use the file content above to provide a complete and accurate respons
                     enhanced_prompt += f"\n\n{mode_instructions}"
                     
                 # Check if we need read-first instruction for edit mode
-                if mode_decision['mode'] == 'edit' and mode_decision['confidence'] > 30:
+                if mode_decision and mode_decision.get('mode') == 'edit' and mode_decision.get('confidence', 0) > 30:
                     # Check if task requires reading files first
                     needs_read_first = self._should_add_read_first_instruction(enhanced_prompt)
                     if needs_read_first:
@@ -2739,6 +2742,10 @@ mkdir new_project
                 mode_emoji = "✏️" if mode_decision['mode'] == 'edit' else "🆕"
                 console.print(f"[dim]{mode_emoji} Mode: {mode_decision['mode']} (confidence: {mode_decision['confidence']:.0f}%)[/dim]")
             
+            # Initialize variables BEFORE any conditional branches  
+            needs_read_first = False
+            working_prompt = prompt_text  # Initialize with original prompt as fallback
+            
             # Step 1: Check if input is an error message and create specialized prompt
             error_info = self.prompt_enhancer.detect_error_type(prompt_text)
             if error_info:
@@ -2750,9 +2757,15 @@ mkdir new_project
                 )
                 # Inject structure context into error fix prompt
                 enhanced_prompt = structure_context + "\n\n" + enhanced_prompt
+                
+                # Apply read-first logic for error prompts too if in edit mode
+                if mode_decision and mode_decision.get('mode') == 'edit':
+                    console.print("[blue]🔧 Edit mode detected for error fix - FORCING file reading first[/blue]")
+                    enhanced_prompt, needs_read_first = self._add_read_first_instruction(enhanced_prompt, force_read=True)
+                else:
+                    enhanced_prompt, needs_read_first = self._add_read_first_instruction(enhanced_prompt)
             else:
-                # Step 2: Better prompting - analyze and enhance user request
-                working_prompt = prompt_text
+                # Step 2: Better prompting - analyze and enhance user request  
                 if self.better_prompting:
                     working_prompt = self.analyze_and_enhance_prompt(prompt_text)
                 
@@ -2779,7 +2792,7 @@ mkdir new_project
                 
                 # *** NEW FEATURE: Always suggest reading files first (unless file content already provided)
                 # *** SIMPLE FIX: Force read-first for edit mode ***
-                if mode_decision['mode'] == 'edit':
+                if mode_decision and mode_decision.get('mode') == 'edit':
                     console.print("[blue]🔧 Edit mode detected - FORCING file reading first[/blue]")
                     enhanced_prompt, needs_read_first = self._add_read_first_instruction(enhanced_prompt, force_read=True)
                 else:
