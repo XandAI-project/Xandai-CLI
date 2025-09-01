@@ -1334,7 +1334,7 @@ Enhanced Request:"""
                 if saved_count > 0:
                     console.print(f"[green]✓ {saved_count} file(s) saved[/green]")
     
-    def _process_special_tags(self, response: str, original_prompt: str, skip_read_tags: bool = False):
+    def _process_special_tags(self, response: str, original_prompt: str, skip_read_tags: bool = False, current_read_level: int = None):
         """
         Processa tags especiais na resposta: <actions>, <read>, <code>
         
@@ -1342,7 +1342,14 @@ Enhanced Request:"""
             response: Resposta completa do modelo
             original_prompt: Prompt original do usuário
             skip_read_tags: Se True, pula processamento de tags <read> para evitar loop infinito
+            current_read_level: Nível atual de leitura (1-4), se None será determinado automaticamente
         """
+        # Determina o nível de leitura atual se não foi fornecido
+        if current_read_level is None:
+            current_read_level = self._determine_read_level(original_prompt.lower())
+        
+        # Só pula tags <read> se o nível atual for 4 (Deep Analysis) para evitar loops infinitos
+        should_skip_reads = skip_read_tags and current_read_level >= 4
         processed_something = False
         
         # Processa tags <actions>
@@ -1423,8 +1430,8 @@ Enhanced Request:"""
                         self.process_prompt(error_prompt)
                         self.auto_execute_shell = temp_auto_execute
         
-        # Processa tags <read> (only if not skipping to avoid infinite loop)
-        if not skip_read_tags:
+        # Processa tags <read> (only skip if level >= 4 to avoid infinite loops in deep analysis)
+        if not should_skip_reads:
             read_blocks = re.findall(r'<read>(.*?)</read>', response, re.DOTALL | re.IGNORECASE)
             read_content = []  # Acumula conteúdo lido para injetar no contexto
         else:
@@ -1433,7 +1440,7 @@ Enhanced Request:"""
             # Check if response contains read tags that we're skipping
             skipped_reads = re.findall(r'<read>(.*?)</read>', response, re.DOTALL | re.IGNORECASE)
             if skipped_reads:
-                console.print(f"[dim]🔄 Skipping {len(skipped_reads)} read tag(s) to prevent infinite loop[/dim]")
+                console.print(f"[dim]🔄 Skipping {len(skipped_reads)} read tag(s) - Level {current_read_level} (Deep Analysis) prevents loops[/dim]")
             
         if read_blocks:
             total_read_commands = sum(len([line.strip() for line in reads.strip().split('\n') 
@@ -1676,7 +1683,8 @@ Enhanced Request:"""
             console.print("\n[bold cyan]📋 Complete Response with File Content:[/bold cyan]\n")
             
             # Processa novamente para tags especiais
-            self._process_special_tags(full_response, original_prompt)
+            read_level = self._determine_read_level(original_prompt.lower())
+            self._process_special_tags(full_response, original_prompt, current_read_level=read_level)
             
             # Exibe a resposta formatada
             self._display_formatted_response(full_response)
@@ -1729,7 +1737,8 @@ IMPORTANT: Use the file content above to provide a complete and accurate respons
             console.print("\n[bold cyan]📋 Response with File Content:[/bold cyan]\n")
             
             # Processa novamente para tags especiais (recursivamente)
-            self._process_special_tags(full_response, original_prompt)
+            read_level = self._determine_read_level(original_prompt.lower())
+            self._process_special_tags(full_response, original_prompt, current_read_level=read_level)
             
             # Exibe a resposta formatada
             self._display_formatted_response(full_response)
@@ -1890,8 +1899,21 @@ IMPORTANT: Use the file content above to provide a complete and accurate respons
         # Detect language and framework in enhanced request
         self.task_manager.detect_and_update_context(enhanced_args)
         
+        # Detect project mode (edit vs create) for the task
+        mode_decision = self.project_mode_detector.detect_project_mode(enhanced_args)
+        console.print(f"[dim]🔍 Task Mode: {mode_decision['mode'].upper()} (confidence: {mode_decision['confidence']}%)[/dim]")
+        
+        # Show debug info if enabled
+        if self.debug_mode:
+            self._show_mode_detection_debug(mode_decision)
+        
         # Step 1: Ask model to break down into sub-tasks using improved version
         breakdown_prompt = self.task_manager.get_breakdown_prompt(enhanced_args)
+        
+        # Add mode-specific instructions to breakdown prompt
+        mode_instructions = self._generate_mode_instructions(mode_decision)
+        if mode_instructions:
+            breakdown_prompt += f"\n\n{mode_instructions}"
         
         try:
             # Generate breakdown without showing the whole process
@@ -1966,9 +1988,13 @@ IMPORTANT: Use the file content above to provide a complete and accurate respons
                 # Create specific prompt for the task
                 task_prompt = self.task_manager.format_task_prompt(task, context=args)
                 
-                # Execute the task
+                # Detect mode for individual task
+                task_mode_decision = self.project_mode_detector.detect_project_mode(task['description'])
+                
+                # Execute the task with mode information
+                console.print(f"[dim]📝 Subtask Mode: {task_mode_decision['mode'].upper()} (confidence: {task_mode_decision['confidence']}%)[/dim]")
                 console.print("\n[dim]Executing task...[/dim]")
-                self._execute_task(task_prompt, task)
+                self._execute_task(task_prompt, task, task_mode_decision)
                 
                 # Mark as completed and refresh context
                 task['status'] = 'completed'
@@ -1985,13 +2011,14 @@ IMPORTANT: Use the file content above to provide a complete and accurate respons
         except Exception as e:
             console.print(f"[red]Error processing tasks: {e}[/red]")
     
-    def _execute_task(self, task_prompt: str, task_info: Dict):
+    def _execute_task(self, task_prompt: str, task_info: Dict, mode_decision: Dict[str, Any] = None):
         """
         Executa uma tarefa individual
         
         Args:
             task_prompt: Prompt formatado para a tarefa
             task_info: Informações da tarefa
+            mode_decision: Decisão de modo (edit vs create) para a tarefa
         """
         try:
             # If enhancements are enabled, apply to task prompt too
@@ -2003,6 +2030,20 @@ IMPORTANT: Use the file content above to provide a complete and accurate respons
                 )
             else:
                 enhanced_prompt = task_prompt
+            
+            # Apply mode-specific instructions if mode decision is available
+            if mode_decision:
+                mode_instructions = self._generate_mode_instructions(mode_decision)
+                if mode_instructions:
+                    enhanced_prompt += f"\n\n{mode_instructions}"
+                    
+                # Check if we need read-first instruction for edit mode
+                if mode_decision['mode'] == 'edit' and mode_decision['confidence'] > 30:
+                    # Check if task requires reading files first
+                    needs_read_first = self._should_add_read_first_instruction(enhanced_prompt)
+                    if needs_read_first:
+                        enhanced_prompt, _ = self._add_read_first_instruction(enhanced_prompt, force_read=True)
+                        console.print("[dim]🔄 Edit mode detected - forcing read-first approach for task[/dim]")
             
             # Gera resposta
             full_response = ""
@@ -2053,11 +2094,30 @@ IMPORTANT: Use the file content above to provide a complete and accurate respons
                 # Processa tags especiais PRIMEIRO
                 special_processed = False
                 
-                # Processa tags especiais
+                # Processa tags especiais (com informações de modo se disponível)
                 if has_actions or has_read or has_code:
-                    tags_processed = self._process_special_tags(full_response, task_info['description'])
+                    read_level = self._determine_read_level(task_info['description'].lower())
+                    
+                    # If this task has read tags and it's edit mode with read-first enabled, handle it properly
+                    should_skip_reads = False
+                    if has_read and mode_decision and mode_decision['mode'] == 'edit':
+                        # Only skip reads if we're already at deep analysis level
+                        should_skip_reads = read_level >= 4
+                    
+                    tags_processed = self._process_special_tags(
+                        full_response, 
+                        task_info['description'], 
+                        skip_read_tags=should_skip_reads, 
+                        current_read_level=read_level
+                    )
                     if tags_processed:
                         special_processed = True
+                        
+                        # Check if read tags were processed and need file content reprocessing
+                        if has_read and not should_skip_reads:
+                            # Check if _process_special_tags triggered file content reading
+                            # This would be handled automatically by the read processing in _process_special_tags
+                            console.print(f"[dim]📖 Read operations completed for task '{task_info['description'][:50]}...'[/dim]")
                 
                 # Detecta e processa blocos de código tradicionais (compatibilidade)
                 if has_traditional_code:
@@ -2780,7 +2840,8 @@ mkdir new_project
                 if read_response.strip():
                     console.print("\n[bold cyan]Response:[/bold cyan]\n")
                     self._display_formatted_response(read_response)
-                    self._process_special_tags(read_response, prompt_text, skip_read_tags=True)
+                    read_level = self._determine_read_level(prompt_text.lower())
+                    self._process_special_tags(read_response, prompt_text, skip_read_tags=True, current_read_level=read_level)
                     return
             
             # Normal flow: Generate response without read-first requirement
@@ -2929,7 +2990,8 @@ mkdir new_project
             
             # Processa tags especiais
             if has_actions or has_read or has_code:
-                tags_processed = self._process_special_tags(full_response, prompt_text)
+                read_level = self._determine_read_level(prompt_text.lower())
+                tags_processed = self._process_special_tags(full_response, prompt_text, current_read_level=read_level)
                 if tags_processed:
                     special_processed = True
             
@@ -3145,7 +3207,8 @@ CRITICAL RULES:
             console.print("\n[bold cyan]Response:[/bold cyan]\n")
             
             # Processa resposta para tags especiais (skip read tags to avoid infinite loop)
-            implementation_found = self._process_special_tags(full_response, original_prompt, skip_read_tags=True)
+            read_level = self._determine_read_level(original_prompt.lower())
+            implementation_found = self._process_special_tags(full_response, original_prompt, skip_read_tags=True, current_read_level=read_level)
             
             # Se ainda não há implementação, avisa o usuário
             if not implementation_found:
