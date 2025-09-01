@@ -526,19 +526,31 @@ Enhanced Request:"""
     
     def _resolve_file_path(self, filepath: str, current_dir: Path) -> Path:
         """
-        Resolve caminho de arquivo relativo ao diretório atual com limpeza de duplicações
+        Resolve file path relative to current directory with duplication cleaning
         
         Args:
-            filepath: Caminho do arquivo (pode ser relativo ou absoluto)
-            current_dir: Diretório atual
+            filepath: File path (can be relative or absolute)
+            current_dir: Current directory
             
         Returns:
-            Caminho absoluto resolvido e limpo
+            Resolved and cleaned absolute path
         """
         if Path(filepath).is_absolute():
             resolved_path = Path(filepath)
         else:
             resolved_path = current_dir / filepath
+        
+        # Check for self-nesting (creating files inside a directory with the same name)
+        current_dir_name = current_dir.name
+        file_parts = Path(filepath).parts
+        
+        # Prevent creating files like "uber-react-app/uber-react-app/file.js"
+        if len(file_parts) > 1 and file_parts[0].lower() == current_dir_name.lower():
+            console.print(f"[yellow]⚠️  Preventing self-nesting: Removing duplicate '{file_parts[0]}' from path[/yellow]")
+            # Remove the duplicate directory part
+            cleaned_filepath = Path(*file_parts[1:])
+            resolved_path = current_dir / cleaned_filepath
+            console.print(f"[dim]🔧 Path adjusted: {filepath} → {cleaned_filepath}[/dim]")
         
         # Apply path cleaning to prevent duplications
         try:

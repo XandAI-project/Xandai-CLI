@@ -891,6 +891,12 @@ class PromptEnhancer:
                 
                 if current_location:
                     enhanced_parts.append(f"[CONTEXT: {current_location} - DO NOT create another '{component}' folder]")
+                
+                # Add specific warning about current directory name
+                current_dir_name = Path(current_dir).name
+                enhanced_parts.append(f"[CRITICAL: You are currently inside '{current_dir_name}' directory]")
+                enhanced_parts.append(f"[DO NOT create a folder with the same name '{current_dir_name}' - you are already inside it!]")
+                enhanced_parts.append(f"[Use unique folder names like '{current_dir_name}-v2', 'new-{current_dir_name}', or completely different names]")
             
             # Add existing file structure with smart context detection
             project_size = self._estimate_project_size(current_dir)
