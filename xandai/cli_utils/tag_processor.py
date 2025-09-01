@@ -251,14 +251,18 @@ CRITICAL REQUIREMENTS:
             else:
                 # Se não há conteúdo de arquivos, usa prompt melhorado normal
                 enhanced_prompt_with_files = working_prompt
-            
-            
             # Gera resposta final com conteúdo dos arquivos
             full_response = ""
+            chunk_count = 0
             try:
                 with console.status("[bold green]🔄 Processing with file content...", spinner="dots") as status:
                     for chunk in api.generate(selected_model, enhanced_prompt_with_files):
                         full_response += chunk
+                        chunk_count += 1
+                        
+                        # Update status every 10 chunks to show progress
+                        if chunk_count % 10 == 0:
+                            status.update(f"[bold green]🔄 Processing with file content... ({chunk_count} chunks)", spinner="dots")
             except KeyboardInterrupt:
                 console.print("\n[yellow]💡 Re-processing interrupted by user[/yellow]")
                 return full_response

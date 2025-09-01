@@ -2727,30 +2727,36 @@ mkdir new_project
                 
                 # Step 1: Send prompt with read instruction and capture read response
                 read_response = ""
+                read_content = None
                 try:
                     with console.status("[bold blue]📖 Waiting for read commands...", spinner="dots") as status:
+                        chunk_count = 0
                         for chunk in self.api.generate(self.selected_model, enhanced_prompt):
                             read_response += chunk
+                            chunk_count += 1
+                            
+                            # Update status every 5 chunks
+                            if chunk_count % 5 == 0:
+                                status.update(f"[bold blue]📖 Analyzing response... ({chunk_count} chunks)", spinner="dots")
                             
                             # Check if we have a complete read tag
                             read_match = re.search(r'<read>(.*?)</read>', read_response, re.DOTALL)
                             if read_match:
-                                console.print(f"\n[green]📖 Read commands detected, executing...[/green]")
+                                status.update("[bold blue]📖 Read commands detected, executing...", spinner="dots3")
                                 
                                 # Execute read commands and get content
                                 read_content = self.tag_processor.execute_read_tags_only(read_response)
-                                
-                                # Step 2: Re-send ORIGINAL prompt with file content (no read instruction)
-                                self._send_original_with_file_content(
-                                    prompt_text,  # Original user prompt  
-                                    working_prompt,  # Enhanced prompt without read instruction
-                                    read_content
-                                )
-                                return
-                            
-                            # Update status with read progress
-                            if '<read>' in read_response:
-                                status.update("[bold blue]📖 Reading commands detected, waiting for completion...", spinner="dots3")
+                                break  # Exit the loop to end the status context
+                    
+                    # Step 2: Re-send ORIGINAL prompt with file content (outside status context)
+                    if read_content is not None:
+                        console.print(f"[green]📖 Read commands executed successfully[/green]")
+                        self._send_original_with_file_content(
+                            prompt_text,  # Original user prompt  
+                            working_prompt,  # Enhanced prompt without read instruction
+                            read_content
+                        )
+                        return
                             
                 except KeyboardInterrupt:
                     console.print(f"\n[yellow]⚠️ Read-first generation interrupted by user[/yellow]")
