@@ -145,7 +145,11 @@ AI Decision: {level_description.get(level, f"Level {level}")}
 {commands_text}
 </read>
 
-After reading files, I will re-send your original request with the file content, and you should provide your main response based on the actual file content.
+After reading files, I will re-send your original request with the file content. You MUST then:
+1. Use the actual file content to understand the current state
+2. IMPLEMENT the requested changes using <code edit> for existing files or <code create> for new files
+3. Use <actions> for any needed shell commands
+4. NEVER stop without completing the implementation - provide the actual code/files requested
 """
                 return prompt + read_instruction, True
                 
@@ -175,7 +179,11 @@ Read Level: {level_description.get(read_level, f"Level {read_level}")}
 
 {suggested_reads}
 
-After reading files, I will re-send your original request with the file content, and you should provide your main response based on the actual file content.
+After reading files, I will re-send your original request with the file content. You MUST then:
+1. Use the actual file content to understand the current state
+2. IMPLEMENT the requested changes using <code edit> for existing files or <code create> for new files
+3. Use <actions> for any needed shell commands
+4. NEVER stop without completing the implementation - provide the actual code/files requested
 """
             return prompt + read_instruction, True
         
@@ -203,7 +211,16 @@ After reading files, I will re-send your original request with the file content,
 {file_content_text}
 --- End of file content ---
 
-Based on the file content above, please provide your response to: {original_prompt}"""
+NOW IMPLEMENT THE SOLUTION:
+Based on the file content above, you MUST implement the requested changes for: {original_prompt}
+
+CRITICAL REQUIREMENTS:
+1. Use <code edit filename="..."> to modify existing files 
+2. Use <code create filename="..."> to create new files
+3. Use <actions> for shell commands if needed
+4. NEVER stop without providing the actual implementation
+5. If you need to modify code, provide the complete updated code, not just explanations
+6. Ensure your solution works with the existing codebase structure shown above"""
             else:
                 # Se não há conteúdo de arquivos, usa prompt melhorado normal
                 enhanced_prompt_with_files = working_prompt

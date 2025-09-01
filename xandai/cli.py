@@ -38,6 +38,260 @@ from .cli_utils.file_editor import FileEditor
 console = Console()
 
 
+class ProjectModeDetector:
+    """
+    Automatically detects if the user wants to update an existing project 
+    or create a new project based on context and prompt
+    """
+    
+    def __init__(self, shell_executor):
+        self.shell_executor = shell_executor
+        
+        # Files that indicate existing projects
+        self.project_indicators = {
+            'web_frontend': ['package.json', 'yarn.lock', 'package-lock.json', 'index.html', 'src/index.js', 'src/App.js'],
+            'web_backend': ['app.py', 'main.py', 'server.js', 'requirements.txt', 'Pipfile', 'poetry.lock'],
+            'python': ['requirements.txt', 'setup.py', 'pyproject.toml', 'Pipfile', '__init__.py', 'main.py'],
+            'node': ['package.json', 'node_modules/', 'yarn.lock', 'package-lock.json'],
+            'react': ['package.json', 'src/App.js', 'src/index.js', 'public/index.html'],
+            'next': ['next.config.js', 'package.json', 'pages/', 'app/'],
+            'django': ['manage.py', 'settings.py', 'urls.py', 'requirements.txt'],
+            'flask': ['app.py', 'requirements.txt', 'templates/', 'static/'],
+            'go': ['go.mod', 'go.sum', 'main.go'],
+            'rust': ['Cargo.toml', 'Cargo.lock', 'src/main.rs'],
+            'java': ['pom.xml', 'build.gradle', 'src/main/java/'],
+            'docker': ['Dockerfile', 'docker-compose.yml', '.dockerignore'],
+            'git': ['.git/', '.gitignore', 'README.md']
+        }
+        
+        # Keywords that indicate editing/updating
+        self.edit_keywords = {
+            'explicit_edit': ['atualizar', 'modificar', 'editar', 'alterar', 'corrigir', 'ajustar', 'melhorar', 'otimizar', 'refatorar'],
+            'add_features': ['adicionar', 'incluir', 'implementar', 'inserir', 'acrescentar'],
+            'fix_issues': ['corrigir', 'consertar', 'resolver', 'debugar', 'reparar', 'solucionar'],
+            'update_existing': ['atualizar', 'renovar', 'modernizar', 'migrar', 'upgradar'],
+            'modify_behavior': ['modificar', 'alterar', 'mudar', 'adaptar', 'personalizar']
+        }
+        
+        # Keywords that indicate creation
+        self.create_keywords = {
+            'explicit_create': ['criar', 'gerar', 'construir', 'desenvolver', 'fazer', 'produzir', 'estabelecer'],
+            'new_project': ['novo', 'nova', 'from scratch', 'do zero', 'começar', 'iniciar'],
+            'project_types': ['aplicação', 'app', 'sistema', 'plataforma', 'website', 'site', 'api', 'microserviço']
+        }
+
+    def detect_existing_projects(self, directory: str = None) -> Dict[str, Any]:
+        """
+        Analyzes the current directory and detects existing project types
+        
+        Returns:
+            Dict with information about detected projects
+        """
+        if not directory:
+            directory = self.shell_executor.get_current_directory()
+        
+        try:
+            # List files in current directory
+            success, files_output = self.shell_executor.execute_command('dir /b' if os.name == 'nt' else 'ls -la')
+            if not success:
+                return {'has_project': False, 'confidence': 0, 'types': [], 'indicators': []}
+            
+            # List files recursively limited (only 2 levels)
+            success2, recursive_output = self.shell_executor.execute_command(
+                'dir /s /b' if os.name == 'nt' else 'find . -maxdepth 2 -type f'
+            )
+            
+            all_files = files_output.lower() + '\n' + (recursive_output.lower() if success2 else '')
+            
+            detected_types = []
+            found_indicators = []
+            confidence_score = 0
+            
+            # Analyze each project type
+            for project_type, indicators in self.project_indicators.items():
+                type_score = 0
+                type_indicators = []
+                
+                for indicator in indicators:
+                    if indicator.lower() in all_files or indicator.replace('/', '\\').lower() in all_files:
+                        type_indicators.append(indicator)
+                        # Main files have higher weight
+                        if indicator in ['package.json', 'requirements.txt', 'Cargo.toml', 'go.mod', 'pom.xml']:
+                            type_score += 30
+                        else:
+                            type_score += 10
+                
+                if type_score > 0:
+                    detected_types.append({
+                        'type': project_type,
+                        'confidence': min(type_score, 100),
+                        'indicators': type_indicators
+                    })
+                    found_indicators.extend(type_indicators)
+                    confidence_score = max(confidence_score, type_score)
+            
+            # Check if it has typical directory structure
+            common_dirs = ['src', 'lib', 'app', 'components', 'utils', 'config', 'static', 'templates']
+            for dir_name in common_dirs:
+                if dir_name in all_files:
+                    confidence_score += 5
+            
+            has_project = confidence_score > 15  # Threshold to consider there's a project
+            
+            return {
+                'has_project': has_project,
+                'confidence': min(confidence_score, 100),
+                'types': sorted(detected_types, key=lambda x: x['confidence'], reverse=True),
+                'indicators': list(set(found_indicators)),
+                'directory': directory
+            }
+            
+        except Exception as e:
+            return {'has_project': False, 'confidence': 0, 'types': [], 'indicators': [], 'error': str(e)}
+
+    def analyze_user_intent(self, prompt: str) -> Dict[str, Any]:
+        """
+        Analyzes the user prompt to detect intention of editing vs creating
+        
+        Returns:
+            Dict with user intention analysis
+        """
+        prompt_lower = prompt.lower()
+        
+        edit_score = 0
+        create_score = 0
+        detected_edit_keywords = []
+        detected_create_keywords = []
+        
+        # Analyze edit keywords
+        for category, keywords in self.edit_keywords.items():
+            for keyword in keywords:
+                if keyword in prompt_lower:
+                    detected_edit_keywords.append(keyword)
+                    # Explicit edit words have higher weight
+                    if category == 'explicit_edit':
+                        edit_score += 25
+                    else:
+                        edit_score += 15
+        
+        # Analyze creation keywords
+        for category, keywords in self.create_keywords.items():
+            for keyword in keywords:
+                if keyword in prompt_lower:
+                    detected_create_keywords.append(keyword)
+                    # Explicit creation words have higher weight
+                    if category == 'explicit_create':
+                        create_score += 25
+                    else:
+                        create_score += 15
+        
+        # Specific patterns that indicate editing
+        edit_patterns = [
+            r'no\s+(arquivo|código|projeto)\s+atual',
+            r'neste\s+(arquivo|código|projeto)',
+            r'arquivo\s+existente',
+            r'código\s+que\s+já\s+existe'
+        ]
+        
+        for pattern in edit_patterns:
+            if re.search(pattern, prompt_lower):
+                edit_score += 20
+                detected_edit_keywords.append(f"pattern: {pattern}")
+        
+        # Specific patterns that indicate creation
+        create_patterns = [
+            r'criar\s+um\s+novo',
+            r'fazer\s+uma?\s+nova?',
+            r'desenvolver\s+um',
+            r'from\s+scratch',
+            r'do\s+zero'
+        ]
+        
+        for pattern in create_patterns:
+            if re.search(pattern, prompt_lower):
+                create_score += 30
+                detected_create_keywords.append(f"pattern: {pattern}")
+        
+        # Determine main intention
+        if edit_score > create_score and edit_score > 20:
+            intent = 'edit'
+            confidence = min(edit_score, 100)
+        elif create_score > edit_score and create_score > 20:
+            intent = 'create'
+            confidence = min(create_score, 100)
+        else:
+            intent = 'ambiguous'
+            confidence = max(edit_score, create_score)
+        
+        return {
+            'intent': intent,
+            'confidence': confidence,
+            'edit_score': edit_score,
+            'create_score': create_score,
+            'edit_keywords': detected_edit_keywords,
+            'create_keywords': detected_create_keywords
+        }
+
+    def make_mode_decision(self, prompt: str, directory: str = None) -> Dict[str, Any]:
+        """
+        Makes the final decision about mode (edit vs create) based on all factors
+        
+        Returns:
+            Dict with final decision and justification
+        """
+        # Analyze existing project
+        project_info = self.detect_existing_projects(directory)
+        
+        # Analyze user intention
+        intent_info = self.analyze_user_intent(prompt)
+        
+        # Decision logic
+        final_mode = 'create'  # default
+        confidence = 0
+        reasoning = []
+        
+        # If there's an existing project with high confidence
+        if project_info['has_project'] and project_info['confidence'] > 30:
+            reasoning.append(f"Existing project detected (confidence: {project_info['confidence']}%)")
+            
+            # If intention is ambiguous or explicitly edit, prefer editing
+            if intent_info['intent'] in ['ambiguous', 'edit']:
+                final_mode = 'edit'
+                confidence = project_info['confidence'] + intent_info['confidence']
+                reasoning.append(f"User intention favors editing (score: {intent_info['edit_score']})")
+            
+            # If intention is explicitly creation with high confidence, keep creation
+            elif intent_info['intent'] == 'create' and intent_info['confidence'] > 60:
+                final_mode = 'create'
+                confidence = intent_info['confidence']
+                reasoning.append(f"Explicit creation intention overrides existing project")
+            
+            # Default case: if there's existing project, prefer editing
+            else:
+                final_mode = 'edit'
+                confidence = project_info['confidence'] + (intent_info['confidence'] * 0.5)
+                reasoning.append("Default: existing project indicates edit mode")
+        
+        # If there's no existing project
+        else:
+            if intent_info['intent'] == 'edit' and intent_info['confidence'] > 40:
+                final_mode = 'edit'
+                confidence = intent_info['confidence'] * 0.7  # Reduced because no project
+                reasoning.append("Edit intention but no existing project detected")
+            else:
+                final_mode = 'create'
+                confidence = max(50, intent_info['confidence'])  # Minimum 50% for creation
+                reasoning.append("No existing project detected, creation mode")
+        
+        return {
+            'mode': final_mode,
+            'confidence': min(confidence, 100),
+            'reasoning': reasoning,
+            'project_info': project_info,
+            'intent_info': intent_info
+        }
+
+
 class XandAICompleter(Completer):
     """Custom completer for XandAI CLI that handles both commands and file paths"""
     
@@ -107,6 +361,7 @@ class XandAICLI:
         # Novos sistemas
         self.auto_read_structure = AutoReadStructure(self.shell_exec)
         self.file_editor = FileEditor(self.file_ops)
+        self.project_mode_detector = ProjectModeDetector(self.shell_exec)
         # TagProcessor e AutoRecovery serão inicializados depois que o modelo for selecionado
         self.tag_processor = None
         self.auto_recovery = None
@@ -618,45 +873,67 @@ Enhanced Request:"""
         
         return resolved_path
     
-    def _extract_code_blocks(self, response: str) -> List[Tuple[str, str]]:
+    def _extract_code_blocks(self, response: str) -> List[Tuple[str, str, str]]:
         """
-        Extrai blocos de código da resposta com melhor tratamento de erros
+        Extrai blocos de código da resposta com suporte para <code edit> e <code create>
         
         Args:
             response: Resposta do modelo
             
         Returns:
-            Lista de tuplas (filename, code_content)
+            Lista de tuplas (action_type, filename, code_content) onde action_type é 'edit' ou 'create'
         """
         code_blocks = []
         
-        # Padrão mais robusto para tags code
-        pattern = r'<code\s+filename\s*=\s*["\']([^"\']+)["\']>\s*(.*?)\s*</code>'
+        # Padrão para novas tags específicas: <code edit> e <code create>
+        new_pattern = r'<code\s+(edit|create)\s+filename\s*=\s*["\']([^"\']+)["\']>\s*(.*?)\s*</code>'
         
-        # Primeiro, tenta o padrão padrão
-        matches = re.findall(pattern, response, re.DOTALL | re.IGNORECASE)
+        # Primeiro, tenta o novo padrão com edit/create
+        new_matches = re.findall(new_pattern, response, re.DOTALL | re.IGNORECASE)
         
-        if matches:
-            for filename, content in matches:
+        if new_matches:
+            for action_type, filename, content in new_matches:
                 # Valida o filename
                 clean_filename = filename.strip()
                 if clean_filename and self._is_valid_filename(clean_filename):
-                    code_blocks.append((clean_filename, content))
+                    code_blocks.append((action_type.lower(), clean_filename, content))
+                else:
+                    console.print(f"[yellow]⚠️  Invalid filename skipped: {filename}[/yellow]")
+        
+        # Compatibilidade com padrão antigo (sem edit/create) - assume 'create' como padrão
+        old_pattern = r'<code\s+filename\s*=\s*["\']([^"\']+)["\']>\s*(.*?)\s*</code>'
+        old_matches = re.findall(old_pattern, response, re.DOTALL | re.IGNORECASE)
+        
+        if old_matches:
+            for filename, content in old_matches:
+                # Valida o filename
+                clean_filename = filename.strip()
+                if clean_filename and self._is_valid_filename(clean_filename):
+                    # Verifica se o arquivo já existe para decidir o tipo de ação
+                    current_dir = Path(self.shell_exec.get_current_directory())
+                    file_path = self._resolve_file_path(clean_filename, current_dir)
+                    action_type = 'edit' if file_path.exists() else 'create'
+                    code_blocks.append((action_type, clean_filename, content))
                 else:
                     console.print(f"[yellow]⚠️  Invalid filename skipped: {filename}[/yellow]")
         
         # Se não encontrou nada, tenta padrões alternativos para tags mal formatadas
         if not code_blocks:
             # Busca por tags incompletas ou mal fechadas
-            alt_pattern = r'<code\s+filename\s*=\s*["\']([^"\']+)["\']>\s*(.*?)(?:</code>|$)'
+            alt_pattern = r'<code\s+(edit|create)?\s*filename\s*=\s*["\']([^"\']+)["\']>\s*(.*?)(?:</code>|$)'
             alt_matches = re.findall(alt_pattern, response, re.DOTALL | re.IGNORECASE)
             
-            for filename, content in alt_matches:
+            for action_type, filename, content in alt_matches:
                 clean_filename = filename.strip()
                 if clean_filename and self._is_valid_filename(clean_filename):
                     # Remove possível texto misturado após o código
                     cleaned_content = self._remove_mixed_content(content)
-                    code_blocks.append((clean_filename, cleaned_content))
+                    # Se action_type está vazio, determina baseado na existência do arquivo
+                    if not action_type:
+                        current_dir = Path(self.shell_exec.get_current_directory())
+                        file_path = self._resolve_file_path(clean_filename, current_dir)
+                        action_type = 'edit' if file_path.exists() else 'create'
+                    code_blocks.append((action_type.lower(), clean_filename, cleaned_content))
         
         return code_blocks
     
@@ -1223,16 +1500,64 @@ Enhanced Request:"""
             console.print(f"\n[bold cyan]🔄 Re-executing prompt with file content...[/bold cyan]")
             self._reprocess_with_file_content(original_prompt, read_content)
         
-        # Processa tags <code> com melhor tratamento
+        # Processa tags <code edit> e <code create> com tratamento específico
         code_blocks = self._extract_code_blocks(response)
         if code_blocks:
-            console.print(f"\n[bold green]💾 Creating {len(code_blocks)} file(s)...[/bold green]")
+            # Separa blocos por tipo de ação
+            edit_blocks = [(filename, content) for action_type, filename, content in code_blocks if action_type == 'edit']
+            create_blocks = [(filename, content) for action_type, filename, content in code_blocks if action_type == 'create']
+            
+            total_blocks = len(code_blocks)
+            console.print(f"\n[bold green]💾 Processing {total_blocks} file(s): {len(edit_blocks)} edit(s), {len(create_blocks)} create(s)...[/bold green]")
             processed_something = True
             
-            created_count = 0
+            processed_count = 0
             current_dir = Path(self.shell_exec.get_current_directory())
             
-            for filename, code_content in code_blocks:
+            # Processa edições primeiro
+            for filename, code_content in edit_blocks:
+                try:
+                    # Remove espaços em branco desnecessários e valida o conteúdo
+                    clean_code = self._clean_code_content(code_content)
+                    
+                    if not clean_code.strip():
+                        console.print(f"[yellow]⚠️  Skipping empty edit: {filename}[/yellow]")
+                        continue
+                    
+                    # Resolve caminho do arquivo relativo ao diretório atual
+                    file_path = self._resolve_file_path(filename, current_dir)
+                    
+                    # Verifica se arquivo existe para edição
+                    if not file_path.exists():
+                        console.print(f"[yellow]⚠️  File does not exist for edit, creating instead: {filename}[/yellow]")
+                    
+                    console.print(f"[blue]✏️  Editing: {filename}[/blue]")
+                    
+                    # Preview das mudanças para edições
+                    preview = self.file_editor.preview_file_changes(str(file_path), clean_code)
+                    console.print(f"[dim]{preview}[/dim]")
+                    
+                    # Usa modo de edição inteligente
+                    success, message = self.file_editor.smart_file_update(
+                        str(file_path), 
+                        clean_code, 
+                        update_mode="smart_merge"  # Modo inteligente para edições
+                    )
+                    
+                    if success:
+                        console.print(f"[green]✅ {message}[/green]")
+                        # Git commit com mensagem específica de edição
+                        self.git_manager.commit_file_operation("edited", file_path)
+                    else:
+                        console.print(f"[red]❌ Failed to edit {filename}: {message}[/red]")
+                        continue
+                    processed_count += 1
+                    
+                except FileOperationError as e:
+                    console.print(f"[red]❌ Error editing {filename}: {e}[/red]")
+            
+            # Processa criações depois
+            for filename, code_content in create_blocks:
                 try:
                     # Remove espaços em branco desnecessários e valida o conteúdo
                     clean_code = self._clean_code_content(code_content)
@@ -1244,38 +1569,42 @@ Enhanced Request:"""
                     # Resolve caminho do arquivo relativo ao diretório atual
                     file_path = self._resolve_file_path(filename, current_dir)
                     
-                    # *** NEW: Usa FileEditor robusto para edição/criação ***
-                    # Preview das mudanças
+                    # Avisa se arquivo já existe na criação
+                    if file_path.exists():
+                        console.print(f"[yellow]⚠️  File already exists, overwriting: {filename}[/yellow]")
+                    
+                    console.print(f"[green]🆕 Creating: {filename}[/green]")
+                    
+                    # Preview das mudanças para criações
                     preview = self.file_editor.preview_file_changes(str(file_path), clean_code)
                     console.print(f"[dim]{preview}[/dim]")
                     
-                    # Usa sistema robusto de edição/criação
+                    # Usa modo de substituição para criações
                     success, message = self.file_editor.smart_file_update(
                         str(file_path), 
                         clean_code, 
-                        update_mode="replace"  # Modo replace para compatibilidade com <code>
+                        update_mode="replace"  # Modo replace para criações
                     )
                     
                     if success:
                         console.print(f"[green]✅ {message}[/green]")
-                        # Git commit automático
-                        operation = "edited" if file_path.exists() else "created"
-                        self.git_manager.commit_file_operation(operation, file_path)
+                        # Git commit com mensagem específica de criação
+                        self.git_manager.commit_file_operation("created", file_path)
                     else:
-                        console.print(f"[red]❌ Failed to process {filename}: {message}[/red]")
+                        console.print(f"[red]❌ Failed to create {filename}: {message}[/red]")
                         continue
-                    created_count += 1
+                    processed_count += 1
                     
                 except FileOperationError as e:
-                    console.print(f"[red]❌ Error processing {filename}: {e}[/red]")
+                    console.print(f"[red]❌ Error creating {filename}: {e}[/red]")
             
-            if created_count > 0:
-                console.print(f"[bold green]✅ {created_count} file(s) created successfully![/bold green]")
+            if processed_count > 0:
+                console.print(f"[bold green]✅ {processed_count} file(s) processed successfully![/bold green]")
         
         # Debug: inform if no special tags were processed
         if not processed_something:
             console.print("[dim]⚠️  No special tags found in response[/dim]")
-            console.print("[dim]💡 The model should use <actions>, <read> or <code> for actions[/dim]")
+            console.print("[dim]💡 The model should use <actions>, <read>, <code edit> or <code create> for actions[/dim]")
         
         return processed_something
     
@@ -2311,6 +2640,23 @@ mkdir new_project
             structure_info = self.auto_read_structure.read_current_structure()
             structure_context = self.auto_read_structure.format_structure_for_context(structure_info)
             
+            # *** NEW: AUTOMATIC PROJECT MODE DETECTION ***
+            console.print("[dim]🤖 Analyzing project context and user intent...[/dim]")
+            mode_decision = self.project_mode_detector.make_mode_decision(prompt_text)
+            
+            # Add mode-specific instructions to the prompt
+            mode_instructions = self._generate_mode_instructions(mode_decision)
+            if mode_instructions:
+                structure_context += "\n\n" + mode_instructions
+                
+            # Debug mode: show detection details
+            if self.debug_mode:
+                self._show_mode_detection_debug(mode_decision)
+            else:
+                # Show brief mode indication
+                mode_emoji = "✏️" if mode_decision['mode'] == 'edit' else "🆕"
+                console.print(f"[dim]{mode_emoji} Mode: {mode_decision['mode']} (confidence: {mode_decision['confidence']:.0f}%)[/dim]")
+            
             # Step 1: Check if input is an error message and create specialized prompt
             error_info = self.prompt_enhancer.detect_error_type(prompt_text)
             if error_info:
@@ -2657,18 +3003,23 @@ mkdir new_project
              ```
    ❌ WRONG: Just describing: "Create a folder called my-project"
 
-2. For creating/editing files:
-   ✅ RIGHT: <code filename="app.py">
+2. For editing existing files:
+   ✅ RIGHT: <code edit filename="app.py">
              from flask import Flask
              app = Flask(__name__)
+             if __name__ == '__main__':
+                 app.run(debug=True)
              </code>
-   ❌ WRONG: ```python
-             from flask import Flask
-             app = Flask(__name__)
-             ```
-   ❌ WRONG: Just describing: "Create an app.py file with Flask imports"
+   ❌ WRONG: <code filename="app.py"> (missing edit/create)
+   
+3. For creating new files:
+   ✅ RIGHT: <code create filename="config.py">
+             DEBUG = True
+             SECRET_KEY = 'dev-key'
+             </code>
+   ❌ WRONG: <code filename="config.py"> (missing edit/create)
 
-3. For reading existing files:
+4. For reading existing files:
    ✅ RIGHT: <read>cat app.py</read>
    ✅ RIGHT: <read>ls -la</read>
    ❌ WRONG: ```bash
@@ -2678,10 +3029,12 @@ mkdir new_project
 
 CRITICAL RULES:
 - ALWAYS use <actions> for commands (mkdir, pip, npm, git, etc.)
-- ALWAYS use <code filename="..."> for file creation/editing
+- ALWAYS use <code edit filename="..."> for editing existing files
+- ALWAYS use <code create filename="..."> for creating new files
 - ALWAYS use <read> for examining files
-- NEVER use ``` blocks for files that should be created
+- NEVER use ``` blocks for files that should be created/edited
 - NEVER just describe actions - use the tags!
+- The old <code filename="..."> format is deprecated - always specify edit or create
 """
     
     def _add_read_first_instruction(self, prompt: str) -> tuple[str, bool]:
@@ -2711,14 +3064,99 @@ CRITICAL RULES:
         )
         
         if full_response:
+            # Verifica se a resposta contém implementação real (tags de ação)
+            has_implementation = self._check_if_response_has_implementation(full_response)
+            
+            if not has_implementation:
+                console.print("\n[yellow]⚠️  AI response lacks implementation. Requesting explicit implementation...[/yellow]")
+                # Força uma nova tentativa com instruções mais explícitas
+                full_response = self._force_implementation_request(original_prompt, working_prompt, read_content, full_response)
+            
             # Exibe a resposta final
             console.print("\n[bold cyan]Response:[/bold cyan]\n")
             
             # Processa resposta para tags especiais
-            self._process_special_tags(full_response, original_prompt)
+            implementation_found = self._process_special_tags(full_response, original_prompt)
+            
+            # Se ainda não há implementação, avisa o usuário
+            if not implementation_found:
+                console.print("\n[red]⚠️  Warning: The AI provided explanations but no actual implementation.[/red]")
+                console.print("[yellow]💡 Try being more specific about what files/code you want created or modified.[/yellow]")
             
             # Exibe a resposta formatada
             self._display_formatted_response(full_response)
+    
+    def _check_if_response_has_implementation(self, response: str) -> bool:
+        """
+        Verifica se a resposta contém implementação real (tags de ação)
+        
+        Args:
+            response: Resposta do AI
+            
+        Returns:
+            True se contém implementação, False se apenas texto explicativo
+        """
+        # Verifica por tags de implementação
+        implementation_patterns = [
+            r'<code\s+(edit|create)\s+filename=',  # Novas tags específicas
+            r'<code\s+filename=',  # Tag tradicional
+            r'<actions>.*</actions>',  # Comandos shell
+        ]
+        
+        for pattern in implementation_patterns:
+            if re.search(pattern, response, re.DOTALL | re.IGNORECASE):
+                return True
+        
+        return False
+    
+    def _force_implementation_request(self, original_prompt: str, working_prompt: str, read_content: list, previous_response: str) -> str:
+        """
+        Força uma nova tentativa quando o AI não implementou a solução
+        
+        Args:
+            original_prompt: Prompt original do usuário
+            working_prompt: Prompt melhorado
+            read_content: Conteúdo dos arquivos lidos
+            previous_response: Resposta anterior que não tinha implementação
+            
+        Returns:
+            Nova resposta do AI com implementação forçada
+        """
+        console.print("[blue]🔄 Forcing implementation with more explicit instructions...[/blue]")
+        
+        # Cria um prompt muito mais direto e específico
+        file_content_text = "\n\n".join(read_content) if read_content else ""
+        
+        force_prompt = f"""PREVIOUS RESPONSE REJECTED - YOU ONLY PROVIDED EXPLANATIONS
+The user requested: {original_prompt}
+
+FILES AVAILABLE:
+{file_content_text}
+
+YOUR PREVIOUS RESPONSE (REJECTED):
+{previous_response[:500]}{'...' if len(previous_response) > 500 else ''}
+
+MANDATORY INSTRUCTIONS - NO EXCEPTIONS:
+1. You MUST provide concrete implementation using the exact tags below
+2. For existing files: <code edit filename="filename.ext">COMPLETE_CODE_HERE</code>
+3. For new files: <code create filename="filename.ext">COMPLETE_CODE_HERE</code>
+4. For shell commands: <actions>command_here</actions>
+5. NO explanations without implementation
+6. NO "here's how you could do it" - ACTUALLY DO IT
+7. Provide complete, working code that implements: {original_prompt}
+
+IMPLEMENT NOW - NO MORE EXPLANATIONS:"""
+        
+        try:
+            with console.status("[bold red]🔄 Forcing implementation...", spinner="dots") as status:
+                forced_response = ""
+                for chunk in self.api.generate(self.selected_model, force_prompt):
+                    forced_response += chunk
+                
+                return forced_response
+        except Exception as e:
+            console.print(f"[red]❌ Error forcing implementation: {e}[/red]")
+            return previous_response  # Retorna resposta original se falhar
     
     def load_previous_session(self):
         """
@@ -3129,3 +3567,143 @@ CRITICAL RULES:
         else:
             console.print(f"[red]Unknown context command: {args[0]}[/red]")
             console.print("[yellow]Available commands: status, show, settings, clear, config[/yellow]")
+    
+    def _generate_mode_instructions(self, mode_decision: Dict[str, Any]) -> str:
+        """
+        Gera instruções específicas baseadas no modo detectado (edit vs create)
+        
+        Args:
+            mode_decision: Resultado da detecção automática de modo
+            
+        Returns:
+            String com instruções específicas para o modo
+        """
+        mode = mode_decision['mode']
+        confidence = mode_decision['confidence']
+        project_info = mode_decision['project_info']
+        
+        if mode == 'edit' and confidence > 30:
+            instructions = [
+                "\n## EDIT MODE DETECTED",
+                "IMPORTANT: The user wants to UPDATE/MODIFY an existing project, NOT create a new one!",
+                "",
+                "**Instructions for Edit Mode:**",
+                "- ALWAYS read existing files first using <read> tags",
+                "- Identify the current project structure before making changes",
+                "- Make incremental modifications preserving existing code",
+                "- Use <code edit filename=\"...\"> to modify existing files",
+                "- Use <code create filename=\"...\"> only for completely new files",
+                "- Maintain consistency with already established patterns and conventions",
+                "- If you find similar files (package.json, requirements.txt), UPDATE instead of creating new ones",
+                ""
+            ]
+            
+            # Add information about detected project types
+            if project_info['types']:
+                instructions.append("**Detected Project(s):**")
+                for proj_type in project_info['types'][:3]:  # Top 3
+                    instructions.append(f"- {proj_type['type']} (confidence: {proj_type['confidence']}%)")
+                    if proj_type['indicators']:
+                        instructions.append(f"  Indicators: {', '.join(proj_type['indicators'][:5])}")
+                instructions.append("")
+            
+            instructions.extend([
+                "**NEVER:**",
+                "- Create new projects or structures from scratch",
+                "- Overwrite important files without analyzing current content",
+                "- Ignore existing configurations (package.json, requirements.txt, etc.)",
+                "- Drastically change architecture without understanding current context",
+                "- Provide only explanations - ALWAYS implement with real code",
+                "- Stop without providing the complete requested implementation"
+            ])
+            
+        elif mode == 'create' and confidence > 30:
+            instructions = [
+                "\n## CREATE MODE DETECTED", 
+                "The user wants to CREATE a new project/functionality.",
+                "",
+                "**Instructions for Create Mode:**",
+                "- Create a new and organized structure",
+                "- Use <code create filename=\"...\"> for all new files",
+                "- Use best practices for the chosen technology",
+                "- Include necessary configuration files (package.json, requirements.txt, etc.)",
+                "- Organize code in logical directory structure",
+                "- Include basic documentation (README.md)",
+                "- ALWAYS provide complete implementation, not just explanations",
+                "- NEVER stop without creating the requested files and code",
+                ""
+            ]
+            
+            # If there's an existing project but intention is to create
+            if project_info['has_project']:
+                instructions.extend([
+                    "**ATTENTION:** Existing project detected, but user wants to create something new.",
+                    "- Create in subdirectory or use unique names to avoid conflicts",
+                    "- Consider integration with existing project if relevant",
+                    ""
+                ])
+        else:
+            # Ambiguous mode or low confidence
+            instructions = [
+                "\n## DEFAULT MODE (low detection confidence)",
+                f"Detected mode: {mode} (confidence: {confidence:.0f}%)",
+                "",
+                "**General Instructions:**",
+                "- ALWAYS read existing files first if relevant",
+                "- If important existing files exist, use <code edit filename=\"...\"> instead of creating new ones",
+                "- If no relevant structure exists, use <code create filename=\"...\"> to create a new organized one",
+                "- Use good judgment based on the user prompt context",
+                "- ALWAYS provide real implementation with functional code",
+                "- NEVER stop without completing the requested task",
+                ""
+            ]
+        
+        return "\n".join(instructions)
+    
+    def _show_mode_detection_debug(self, mode_decision: Dict[str, Any]) -> None:
+        """
+        Shows detailed mode detection information for debugging
+        
+        Args:
+            mode_decision: Result from automatic mode detection
+        """
+        console.print("\n[bold blue]🔍 DEBUG: Automatic Mode Detection[/bold blue]")
+        
+        # General information
+        mode = mode_decision['mode']
+        confidence = mode_decision['confidence']
+        console.print(f"[green]📋 Final Decision: {mode.upper()} (confidence: {confidence:.1f}%)[/green]")
+        
+        # Existing project
+        project_info = mode_decision['project_info']
+        console.print(f"\n[cyan]📁 Project Analysis:[/cyan]")
+        console.print(f"  • Project detected: {project_info['has_project']}")
+        console.print(f"  • Confidence: {project_info['confidence']}%")
+        console.print(f"  • Directory: {project_info['directory']}")
+        
+        if project_info['types']:
+            console.print("  • Detected types:")
+            for proj_type in project_info['types'][:3]:
+                console.print(f"    - {proj_type['type']} ({proj_type['confidence']}%)")
+                console.print(f"      Indicators: {', '.join(proj_type['indicators'])}")
+        
+        # User intention
+        intent_info = mode_decision['intent_info']
+        console.print(f"\n[yellow]🎯 Intent Analysis:[/yellow]")
+        console.print(f"  • Intent: {intent_info['intent']}")
+        console.print(f"  • Confidence: {intent_info['confidence']}%")
+        console.print(f"  • Edit Score: {intent_info['edit_score']}")
+        console.print(f"  • Create Score: {intent_info['create_score']}")
+        
+        if intent_info['edit_keywords']:
+            console.print(f"  • Edit keywords: {', '.join(intent_info['edit_keywords'][:5])}")
+        
+        if intent_info['create_keywords']:
+            console.print(f"  • Create keywords: {', '.join(intent_info['create_keywords'][:5])}")
+        
+        # Reasoning
+        console.print(f"\n[magenta]🧠 Reasoning:[/magenta]")
+        for i, reason in enumerate(mode_decision['reasoning'], 1):
+            console.print(f"  {i}. {reason}")
+        
+        console.print("")  # Empty line
