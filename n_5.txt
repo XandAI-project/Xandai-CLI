@@ -1,0 +1,2 @@
+cd ..
+   dir /s examples
