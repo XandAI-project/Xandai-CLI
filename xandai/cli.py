@@ -2696,7 +2696,12 @@ mkdir new_project
                     enhanced_prompt = structure_context + "\n\n" + enhanced_prompt
                 
                 # *** NEW FEATURE: Always suggest reading files first (unless file content already provided)
-                enhanced_prompt, needs_read_first = self._add_read_first_instruction(enhanced_prompt)
+                # *** SIMPLE FIX: Force read-first for edit mode ***
+                if mode_decision['mode'] == 'edit':
+                    console.print("[blue]🔧 Edit mode detected - FORCING file reading first[/blue]")
+                    enhanced_prompt, needs_read_first = self._add_read_first_instruction(enhanced_prompt, force_read=True)
+                else:
+                    enhanced_prompt, needs_read_first = self._add_read_first_instruction(enhanced_prompt)
             
             # ALWAYS track context regardless of enhancement settings
             if hasattr(self.prompt_enhancer, 'add_to_context_history'):
@@ -3037,11 +3042,11 @@ CRITICAL RULES:
 - The old <code filename="..."> format is deprecated - always specify edit or create
 """
     
-    def _add_read_first_instruction(self, prompt: str) -> tuple[str, bool]:
+    def _add_read_first_instruction(self, prompt: str, force_read: bool = False) -> tuple[str, bool]:
         """
-        Adiciona instrução para sempre começar com <read> exceto quando já há contexto de arquivos
+        Adds instruction to always start with <read> except when there's already file context
         """
-        return self.tag_processor.add_read_first_instruction(prompt, self.read_levels_manager)
+        return self.tag_processor.add_read_first_instruction(prompt, self.read_levels_manager, force_read)
     
     def _get_suggested_read_commands(self, prompt: str) -> str:
         """

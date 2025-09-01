@@ -78,25 +78,52 @@ class TagProcessor:
             return match.group(1)
         return None
     
-    def add_read_first_instruction(self, prompt: str, read_levels_manager) -> Tuple[str, bool]:
+    def add_read_first_instruction(self, prompt: str, read_levels_manager, force_read: bool = False) -> Tuple[str, bool]:
         """
-        Adiciona instrução para sempre começar com <read> baseado na decisão da IA
+        Adds instruction to always start with <read> based on AI decision
         
         Args:
-            prompt: Prompt (possivelmente já melhorado)
-            read_levels_manager: Instância do ReadLevelsManager (fallback)
+            prompt: Prompt (possibly already enhanced)
+            read_levels_manager: ReadLevelsManager instance (fallback)
+            force_read: If True, forces read instruction regardless of existing context
             
         Returns:
-            Tuple (prompt_com_read_instruction, needs_read_first)
+            Tuple (prompt_with_read_instruction, needs_read_first)
         """
-        # Verifica se já há contexto persistente de arquivos
+        # If force_read is True, skip all checks and force reading
+        if force_read:
+            console.print("[yellow]🔧 FORCING read-first due to edit mode[/yellow]")
+            suggested_reads = read_levels_manager.get_suggested_read_commands(prompt)
+            if not suggested_reads:
+                # Fallback to basic reads if no specific suggestions
+                suggested_reads = """<read>
+ls -la
+find . -name "*.py" -o -name "*.js" -o -name "*.html" -o -name "*.css" | head -10
+</read>"""
+            
+            read_instruction = f"""
+
+[FORCED READ-FIRST FOR EDIT MODE]
+CRITICAL: You are in EDIT MODE. You MUST start by reading existing files before making any changes.
+
+{suggested_reads}
+
+After reading files, I will re-send your request with the file content. You MUST then:
+1. Analyze the existing code structure and patterns
+2. Make INCREMENTAL changes that preserve existing functionality
+3. Use <code edit filename="..."> to modify existing files
+4. NEVER create new files unless specifically requested
+"""
+            return prompt + read_instruction, True
+        
+        # Check if there's already persistent file context
         has_existing_context = self.file_context_manager.has_context()
         if has_existing_context:
-            # Já temos contexto persistente, injeta e não precisa de read
+            # Already have persistent context, inject it and don't need read
             persistent_context = self.file_context_manager.format_context_for_injection()
             return prompt + persistent_context, False
         
-        # Verifica se já há contexto de arquivos no prompt atual
+        # Check if there's already file context in current prompt
         has_file_content = any(marker in prompt for marker in [
             "[FILES READ - INJECTED CONTENT:]",
             "--- Output from:",
