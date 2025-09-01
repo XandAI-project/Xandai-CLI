@@ -1252,6 +1252,111 @@ Enhanced Request:"""
         
         return processed_something
     
+    def _execute_read_tags_only(self, response: str) -> list:
+        """
+        Executa apenas as tags <read> e retorna o conteúdo lido
+        
+        Args:
+            response: Resposta que contém tags <read>
+            
+        Returns:
+            Lista de dicionários com command e content dos arquivos lidos
+        """
+        read_content = []
+        read_blocks = re.findall(r'<read>(.*?)</read>', response, re.DOTALL | re.IGNORECASE)
+        
+        if read_blocks:
+            console.print("\n[bold blue]📖 Reading files...[/bold blue]")
+            for reads in read_blocks:
+                # Remove comentários e linhas vazias
+                lines = [line.strip() for line in reads.strip().split('\n') 
+                         if line.strip() and not line.strip().startswith('#')]
+                
+                # Filtra apenas comandos válidos
+                commands = []
+                for line in lines:
+                    cleaned_line = line.strip().strip('"').strip("'")
+                    if self._is_valid_command_syntax(cleaned_line):
+                        if self.shell_exec.is_shell_command(cleaned_line) or any(cleaned_line.startswith(cmd) for cmd in ['cat ', 'type ', 'ls ', 'dir ', 'head ', 'tail ']):
+                            commands.append(cleaned_line)
+                
+                for cmd in commands:
+                    converted_cmd = self.shell_exec.convert_command(cmd)
+                    
+                    with console.status(f"[dim]$ {converted_cmd}[/dim]", spinner="dots"):
+                        success, output = self.shell_exec.execute_command(converted_cmd)
+                    
+                    if success:
+                        if output.strip():
+                            console.print(output)
+                            read_content.append({
+                                'command': converted_cmd,
+                                'content': output.strip()
+                            })
+                    else:
+                        console.print(f"[red]❌ {output}[/red]")
+        
+        return read_content
+    
+    def _restart_generation_with_content(self, original_prompt: str, enhanced_prompt: str, read_content: list, previous_response: str = ""):
+        """
+        Reinicia a geração com o conteúdo dos arquivos injetado
+        
+        Args:
+            original_prompt: Prompt original do usuário
+            enhanced_prompt: Prompt melhorado (pode ter contexto adicional)
+            read_content: Lista de conteúdos lidos
+            previous_response: Resposta parcial antes da tag <read>
+        """
+        try:
+            # Constrói contexto com o conteúdo dos arquivos
+            file_context_parts = ["\n[FILES READ - INJECTED CONTENT:]"]
+            
+            for item in read_content:
+                file_context_parts.append(f"\n--- Output from: {item['command']} ---")
+                file_context_parts.append(item['content'])
+                file_context_parts.append("--- End of file content ---\n")
+            
+            file_context = '\n'.join(file_context_parts)
+            
+            # Inclui resposta parcial anterior se houver
+            context_parts = []
+            if previous_response:
+                context_parts.append(f"[PREVIOUS PARTIAL RESPONSE:]\n{previous_response}\n")
+            
+            context_parts.append(f"[ORIGINAL REQUEST:]\n{original_prompt}")
+            context_parts.append(file_context)
+            context_parts.append("\nIMPORTANT: Complete your response using the file content above. Continue from where you left off.")
+            
+            restart_prompt = '\n'.join(context_parts)
+            
+            console.print("[dim]🔄 Restarting generation with file content...[/dim]")
+            
+            # Reinicia a geração
+            full_response = ""
+            try:
+                with console.status("[bold green]🔄 Continuing with file content...", spinner="dots") as status:
+                    for chunk in self.api.generate(self.selected_model, restart_prompt):
+                        full_response += chunk
+            except KeyboardInterrupt:
+                console.print("\n[yellow]💡 Restarted generation interrupted by user[/yellow]")
+                return
+            
+            # Exibe a resposta final
+            console.print("\n[bold cyan]📋 Complete Response with File Content:[/bold cyan]\n")
+            
+            # Processa novamente para tags especiais
+            self._process_special_tags(full_response, original_prompt)
+            
+            # Exibe a resposta formatada
+            self._display_formatted_response(full_response)
+            
+        except Exception as e:
+            console.print(f"[red]Error restarting generation with file content: {e}[/red]")
+            if self.debug_mode:
+                import traceback
+                console.print(f"[dim]Debug traceback: {traceback.format_exc()}[/dim]")
+    
     def _reprocess_with_file_content(self, original_prompt: str, read_content: list):
         """
         Re-executa o prompt original com o conteúdo dos arquivos lidos injetado
@@ -2240,6 +2345,13 @@ mkdir new_project
                         full_response += chunk
                         line_count += chunk.count('\n')
                         
+                        # *** CRITICAL: Check for complete <read> tags ***
+                        read_match = re.search(r'<read>(.*?)</read>', full_response, re.DOTALL | re.IGNORECASE)
+                        if read_match:
+                            console.print(f"\n[bold blue]📖 Read tag detected - stopping generation and executing reads...[/bold blue]")
+                            # Stop the generation loop immediately
+                            break
+                        
                         # Extrai a última linha completa para mostrar no status
                         lines = full_response.split('\n')
                         if len(lines) > 1:
@@ -2276,6 +2388,9 @@ mkdir new_project
                             elif 'test' in full_response.lower():
                                 base_status = "[bold blue]🧪 Preparing tests"
                                 spinner_type = "dots"
+                            elif '<read>' in full_response.lower():
+                                base_status = "[bold blue]📖 Preparing to read files"
+                                spinner_type = "dots3"
                             elif '<actions>' in full_response.lower():
                                 base_status = "[bold cyan]⚡ Preparing commands"
                                 spinner_type = "dots2"
@@ -2301,6 +2416,24 @@ mkdir new_project
                     console.print("[dim]Processing partial response...[/dim]")
                 else:
                     console.print("[dim]No response generated[/dim]")
+                    return
+            
+            # *** SPECIAL CASE: Check if generation was stopped due to <read> tag ***
+            read_match = re.search(r'<read>(.*?)</read>', full_response, re.DOTALL | re.IGNORECASE)
+            if read_match:
+                # Display partial response first
+                console.print("\n[bold cyan]Partial Response:[/bold cyan]")
+                response_before_read = full_response.split('<read>')[0].strip()
+                if response_before_read:
+                    self._display_formatted_response(response_before_read)
+                
+                # Process the read tags immediately
+                console.print(f"\n[bold blue]📖 Processing read tags and restarting generation...[/bold blue]")
+                read_content = self._execute_read_tags_only(full_response)
+                
+                if read_content:
+                    # Restart generation with file content injected
+                    self._restart_generation_with_content(prompt_text, enhanced_prompt, read_content, response_before_read)
                     return
             
             # Exibe resposta completa formatada
