@@ -2323,6 +2323,9 @@ mkdir new_project
                         console.print("[dim]💡 Added basic tag instructions (enhancement disabled)[/dim]")
                     else:
                         enhanced_prompt = working_prompt
+                
+                # *** NEW FEATURE: Always suggest reading files first (unless file content already provided)
+                enhanced_prompt = self._add_read_first_instruction(enhanced_prompt)
             
             # ALWAYS track context regardless of enhancement settings
             if hasattr(self.prompt_enhancer, 'add_to_context_history'):
@@ -2611,6 +2614,139 @@ CRITICAL RULES:
 - NEVER use ``` blocks for files that should be created
 - NEVER just describe actions - use the tags!
 """
+    
+    def _add_read_first_instruction(self, prompt: str) -> str:
+        """
+        Adiciona instrução para sempre começar com <read> exceto quando já há contexto de arquivos
+        
+        Args:
+            prompt: Prompt (possivelmente já melhorado)
+            
+        Returns:
+            Prompt com instrução para ler arquivos primeiro
+        """
+        # Verifica se já há contexto de arquivos no prompt
+        has_file_content = any(marker in prompt for marker in [
+            "[FILES READ - INJECTED CONTENT:]",
+            "--- Output from:",
+            "--- End of file content ---",
+            "[Existing File Structure]",
+            "[CURRENT PROJECT STRUCTURE:]"
+        ])
+        
+        if has_file_content:
+            # Já tem contexto de arquivos, não adiciona instrução read
+            return prompt
+        
+        # Detecta tipo de projeto/contexto para sugerir leituras relevantes
+        suggested_reads = self._get_suggested_read_commands(prompt)
+        
+        if suggested_reads:
+            read_instruction = f"""
+
+[MANDATORY FIRST STEP - READ FILES]
+CRITICAL: Before responding, you MUST first examine relevant files to understand the current context.
+Start your response with a <read> tag containing appropriate commands:
+
+{suggested_reads}
+
+ONLY after reading files should you provide your main response. Use the actual file content to give accurate, context-aware answers.
+"""
+            return prompt + read_instruction
+        
+        return prompt
+    
+    def _get_suggested_read_commands(self, prompt: str) -> str:
+        """
+        Sugere comandos de leitura baseados no contexto do prompt
+        
+        Args:
+            prompt: Prompt do usuário
+            
+        Returns:
+            String com comandos de leitura sugeridos
+        """
+        prompt_lower = prompt.lower()
+        
+        # Comandos base para qualquer situação
+        os_info = self.shell_exec.get_os_info().lower()
+        is_windows = "windows" in os_info
+        base_commands = ["dir"] if is_windows else ["ls -la"]
+        
+        suggested_commands = []
+        
+        # Adiciona comando de listagem primeiro
+        suggested_commands.extend(base_commands)
+        
+        # Detecta contexto específico e sugere leituras relevantes
+        if any(word in prompt_lower for word in ['analyze', 'review', 'check', 'examine', 'debug', 'fix', 'error']):
+            # Análise/Debug - ler arquivos principais
+            if is_windows:
+                suggested_commands.extend([
+                    "type *.py 2>nul || echo No Python files",
+                    "type *.js 2>nul || echo No JavaScript files", 
+                    "type *.html 2>nul || echo No HTML files",
+                    "type package.json 2>nul || echo No package.json",
+                    "type requirements.txt 2>nul || echo No requirements.txt"
+                ])
+            else:
+                suggested_commands.extend([
+                    "cat *.py 2>/dev/null || echo 'No Python files'",
+                    "cat *.js 2>/dev/null || echo 'No JavaScript files'", 
+                    "cat *.html 2>/dev/null || echo 'No HTML files'",
+                    "cat package.json 2>/dev/null || echo 'No package.json'",
+                    "cat requirements.txt 2>/dev/null || echo 'No requirements.txt'"
+                ])
+        
+        elif any(word in prompt_lower for word in ['flask', 'django', 'python', 'api']):
+            # Projeto Python
+            if is_windows:
+                suggested_commands.extend([
+                    "type app.py 2>nul || type main.py 2>nul || echo No main Python file",
+                    "type requirements.txt 2>nul || echo No requirements.txt"
+                ])
+            else:
+                suggested_commands.extend([
+                    "cat app.py 2>/dev/null || cat main.py 2>/dev/null || echo 'No main Python file'",
+                    "cat requirements.txt 2>/dev/null || echo 'No requirements.txt'"
+                ])
+        
+        elif any(word in prompt_lower for word in ['react', 'vue', 'angular', 'node', 'npm', 'javascript']):
+            # Projeto JavaScript/Node
+            if is_windows:
+                suggested_commands.extend([
+                    "type package.json 2>nul || echo No package.json",
+                    "type src\\App.js 2>nul || type app.js 2>nul || echo No main JS file"
+                ])
+            else:
+                suggested_commands.extend([
+                    "cat package.json 2>/dev/null || echo 'No package.json'",
+                    "cat src/App.js 2>/dev/null || cat app.js 2>/dev/null || echo 'No main JS file'"
+                ])
+        
+        else:
+            # Contexto geral - ler arquivos comuns
+            if is_windows:
+                suggested_commands.extend([
+                    "type README.md 2>nul || echo No README",
+                    "type *.py 2>nul || type *.js 2>nul || echo No common code files"
+                ])
+            else:
+                suggested_commands.extend([
+                    "cat README.md 2>/dev/null || echo 'No README'",
+                    "ls *.py *.js *.html 2>/dev/null || echo 'No common code files'"
+                ])
+        
+        # Limita número de comandos (máximo 4)
+        suggested_commands = suggested_commands[:4]
+        
+        if suggested_commands:
+            commands_text = "\n".join(suggested_commands)
+            return f"""<read>
+{commands_text}
+</read>"""
+        
+        return ""
     
     def load_previous_session(self):
         """
