@@ -104,15 +104,23 @@ find . -name "*.py" -o -name "*.js" -o -name "*.html" -o -name "*.css" | head -1
             read_instruction = f"""
 
 [FORCED READ-FIRST FOR EDIT MODE]
-CRITICAL: You are in EDIT MODE. You MUST start by reading existing files before making any changes.
+🚨 CRITICAL: You are in EDIT MODE. You MUST start by reading existing files before making any changes.
 
 {suggested_reads}
 
-After reading files, I will re-send your request with the file content. You MUST then:
-1. Analyze the existing code structure and patterns
-2. Make INCREMENTAL changes that preserve existing functionality
-3. Use <code edit filename="..."> to modify existing files
-4. NEVER create new files unless specifically requested
+After reading files, I will re-send your request with the EXISTING code content. You MUST then:
+1. PRESERVE ALL existing code: endpoints, functions, classes, imports, variables
+2. Analyze the existing code structure and patterns carefully
+3. Make ONLY the specific changes requested - keep everything else identical
+4. Use <code edit filename="..."> to modify existing files (include COMPLETE file)
+5. NEVER delete or remove existing functionality unless explicitly requested
+6. When editing, provide the FULL file with existing code + your changes
+7. NEVER create new files unless specifically requested
+
+PRESERVATION RULE: If existing code has endpoints A, B, C and you need to add D:
+- Keep A, B, C exactly as they are
+- Add D properly integrated
+- Provide complete file with A, B, C, D all included
 """
             return prompt + read_instruction, True
         
@@ -230,24 +238,46 @@ After reading files, I will re-send your original request with the file content.
         try:
             # Constrói prompt com conteúdo dos arquivos injetado
             if read_content:
-                file_content_text = "\n\n".join(read_content)
+                # Add emphasis that this is EXISTING code to be preserved
+                formatted_content = []
+                for content in read_content:
+                    if content.strip():
+                        formatted_content.append(f"📁 EXISTING CODE (MUST BE PRESERVED):\n{content.strip()}")
+                file_content_text = "\n\n" + "="*60 + "\n".join(formatted_content) + "\n" + "="*60
                 
                 enhanced_prompt_with_files = f"""{working_prompt}
 
-[FILES READ - INJECTED CONTENT:]
+[EXISTING CODEBASE - READ FROM FILES:]
 {file_content_text}
---- End of file content ---
+--- End of existing code content ---
 
 NOW IMPLEMENT THE SOLUTION:
-Based on the file content above, you MUST implement the requested changes for: {original_prompt}
+Based on the EXISTING code shown above, you MUST implement the requested changes for: {original_prompt}
 
-CRITICAL REQUIREMENTS:
-1. Use <code edit filename="..."> to modify existing files 
-2. Use <code create filename="..."> to create new files
+🚨 CRITICAL PRESERVATION REQUIREMENTS:
+1. PRESERVE ALL EXISTING CODE: Keep every function, endpoint, class, and variable that already exists
+2. ONLY ADD/MODIFY what was specifically requested - DO NOT delete or remove existing functionality
+3. MAINTAIN all existing endpoints, routes, API functions, and features
+4. When editing files, include the COMPLETE file with both:
+   - ALL existing code (unchanged)
+   - Your new additions/modifications (clearly marked)
+
+IMPLEMENTATION RULES:
+1. Use <code edit filename="..."> to modify existing files (include FULL file content)
+2. Use <code create filename="..."> only for completely new files
 3. Use <actions> for shell commands if needed
-4. NEVER stop without providing the actual implementation
-5. If you need to modify code, provide the complete updated code, not just explanations
-6. Ensure your solution works with the existing codebase structure shown above"""
+4. When modifying existing files, show the COMPLETE file including:
+   - All existing imports, functions, classes, endpoints
+   - All existing code (preserved exactly as-is)
+   - Your new additions/changes integrated properly
+5. NEVER provide partial code - always provide the complete updated file
+6. Mark your changes with comments like // NEW: or // MODIFIED: for clarity
+
+EXAMPLE of correct editing:
+If existing file has endpoints A, B, C and you need to add endpoint D:
+- Keep endpoints A, B, C exactly as they are
+- Add endpoint D in the appropriate location
+- Provide the complete file with A, B, C, D all included"""
             else:
                 # Se não há conteúdo de arquivos, usa prompt melhorado normal
                 enhanced_prompt_with_files = working_prompt

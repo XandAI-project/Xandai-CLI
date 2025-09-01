@@ -3606,16 +3606,25 @@ IMPLEMENT NOW - NO MORE EXPLANATIONS:"""
         if mode == 'edit' and confidence > 30:
             instructions = [
                 "\n## EDIT MODE DETECTED",
-                "IMPORTANT: The user wants to UPDATE/MODIFY an existing project, NOT create a new one!",
+                "🚨 CRITICAL: The user wants to UPDATE/MODIFY an existing project, NOT create a new one!",
                 "",
-                "**Instructions for Edit Mode:**",
+                "**PRESERVATION-FIRST Edit Mode Instructions:**",
                 "- ALWAYS read existing files first using <read> tags",
-                "- Identify the current project structure before making changes",
-                "- Make incremental modifications preserving existing code",
-                "- Use <code edit filename=\"...\"> to modify existing files",
-                "- Use <code create filename=\"...\"> only for completely new files",
-                "- Maintain consistency with already established patterns and conventions",
-                "- If you find similar files (package.json, requirements.txt), UPDATE instead of creating new ones",
+                "- PRESERVE ALL existing code: functions, endpoints, classes, variables, imports",
+                "- NEVER delete or remove existing functionality unless explicitly requested",
+                "- Make ONLY the specific changes requested - keep everything else identical",
+                "- When editing files, provide the COMPLETE file including all existing code",
+                "- Use <code edit filename=\"...\"> for modifying existing files (FULL file content required)",
+                "- Use <code create filename=\"...\"> ONLY for completely new files",
+                "- Mark new additions with comments like // NEW: or // ADDED: for clarity",
+                "- Maintain consistency with existing patterns and conventions",
+                "- If you find config files (package.json, requirements.txt), UPDATE instead of creating new ones",
+                "",
+                "**ENDPOINT/API PRESERVATION:**",
+                "- Keep ALL existing API endpoints, routes, and handlers",
+                "- When adding new endpoints, integrate them without affecting existing ones",
+                "- Preserve all existing middleware, error handlers, and utilities",
+                "- Maintain existing database schemas, models, and connections",
                 ""
             ]
             
@@ -3630,9 +3639,12 @@ IMPLEMENT NOW - NO MORE EXPLANATIONS:"""
             
             instructions.extend([
                 "**NEVER:**",
-                "- Create new projects or structures from scratch",
-                "- Overwrite important files without analyzing current content",
-                "- Ignore existing configurations (package.json, requirements.txt, etc.)",
+                "- Delete or remove existing endpoints, functions, or features",
+                "- Create new projects or structures from scratch when editing",
+                "- Overwrite files without preserving existing functionality",
+                "- Ignore or remove existing API routes, handlers, or middleware",
+                "- Remove existing imports, dependencies, or configurations",
+                "- Provide partial code that excludes existing functionality",
                 "- Drastically change architecture without understanding current context",
                 "- Provide only explanations - ALWAYS implement with real code",
                 "- Stop without providing the complete requested implementation"
