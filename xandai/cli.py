@@ -1142,7 +1142,7 @@ Enhanced Request:"""
         # Processa tags <code> com melhor tratamento
         code_blocks = self._extract_code_blocks(response)
         if code_blocks:
-            console.print(f"\n[bold green]💾 Criando {len(code_blocks)} arquivo(s)...[/bold green]")
+                            console.print(f"\n[bold green]💾 Creating {len(code_blocks)} file(s)...[/bold green]")
             processed_something = True
             
             created_count = 0
