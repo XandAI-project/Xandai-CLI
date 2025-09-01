@@ -3014,7 +3014,7 @@ mkdir new_project
         """
         return """
 
-[MANDATORY TAGS FOR ACTIONS]
+[MANDATORY TAGS FOR ACTIONS - CLEAN CODE ONLY]
 
 1. For shell/terminal commands:
    ✅ RIGHT: <actions>mkdir my-project</actions>
@@ -3032,6 +3032,7 @@ mkdir new_project
                  app.run(debug=True)
              </code>
    ❌ WRONG: <code filename="app.py"> (missing edit/create)
+   ❌ WRONG: Adding explanations at end of file
    
 3. For creating new files:
    ✅ RIGHT: <code create filename="config.py">
@@ -3056,6 +3057,14 @@ CRITICAL RULES:
 - NEVER use ``` blocks for files that should be created/edited
 - NEVER just describe actions - use the tags!
 - The old <code filename="..."> format is deprecated - always specify edit or create
+
+🚫 CLEAN CODE FORMATTING RULES:
+- Code blocks must contain ONLY the file content - no explanations or summaries
+- NEVER add markdown blocks (```) inside source files
+- NEVER add implementation descriptions at the end of files
+- Keep files in their proper format (HTML files = HTML, JS files = JavaScript, etc.)
+- Do NOT mix markdown with other formats (no markdown inside HTML/CSS/JS files)
+- Provide clean, executable code without embedded documentation
 """
     
     def _add_read_first_instruction(self, prompt: str, force_read: bool = False) -> tuple[str, bool]:
@@ -3620,6 +3629,13 @@ IMPLEMENT NOW - NO MORE EXPLANATIONS:"""
                 "- Maintain consistency with existing patterns and conventions",
                 "- If you find config files (package.json, requirements.txt), UPDATE instead of creating new ones",
                 "",
+                "**CLEAN CODE FORMATTING:**",
+                "- Provide ONLY executable code in <code> blocks - NO explanations inside files",
+                "- NEVER add markdown blocks (```) inside source files",
+                "- NEVER add implementation summaries or feature descriptions at end of files",
+                "- Keep files in their proper format (HTML=HTML, JS=JS, CSS=CSS, not markdown)",
+                "- Code blocks must contain ONLY the file content, no external commentary",
+                "",
                 "**ENDPOINT/API PRESERVATION:**",
                 "- Keep ALL existing API endpoints, routes, and handlers",
                 "- When adding new endpoints, integrate them without affecting existing ones",
@@ -3645,6 +3661,10 @@ IMPLEMENT NOW - NO MORE EXPLANATIONS:"""
                 "- Ignore or remove existing API routes, handlers, or middleware",
                 "- Remove existing imports, dependencies, or configurations",
                 "- Provide partial code that excludes existing functionality",
+                "- Add markdown blocks (```) inside source code files",
+                "- Add implementation explanations or summaries at the end of files",
+                "- Include feature descriptions or documentation inside code files",
+                "- Mix file formats (don't put markdown in HTML/JS/CSS files)",
                 "- Drastically change architecture without understanding current context",
                 "- Provide only explanations - ALWAYS implement with real code",
                 "- Stop without providing the complete requested implementation"
@@ -3664,6 +3684,13 @@ IMPLEMENT NOW - NO MORE EXPLANATIONS:"""
                 "- Include basic documentation (README.md)",
                 "- ALWAYS provide complete implementation, not just explanations",
                 "- NEVER stop without creating the requested files and code",
+                "",
+                "**CLEAN CODE FORMATTING:**",
+                "- Provide ONLY executable code in <code> blocks - NO explanations inside files",
+                "- NEVER add markdown blocks (```) inside source files",
+                "- NEVER add implementation summaries or feature descriptions at end of files",
+                "- Keep files in their proper format (HTML=HTML, JS=JS, CSS=CSS, not markdown)",
+                "- Code blocks must contain ONLY the file content, no external commentary",
                 ""
             ]
             

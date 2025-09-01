@@ -273,6 +273,14 @@ IMPLEMENTATION RULES:
 5. NEVER provide partial code - always provide the complete updated file
 6. Mark your changes with comments like // NEW: or // MODIFIED: for clarity
 
+🚫 CODE FORMATTING RULES:
+1. Provide ONLY clean, executable code - NO explanations or descriptions inside code blocks
+2. NEVER add markdown blocks (```) inside source files
+3. NEVER add implementation summaries or feature lists at the end of files
+4. Code blocks should contain ONLY the file content - no external commentary
+5. Keep files in their proper format (HTML files should be valid HTML, not markdown)
+6. If you need to explain changes, do it OUTSIDE the code blocks, not inside files
+
 EXAMPLE of correct editing:
 If existing file has endpoints A, B, C and you need to add endpoint D:
 - Keep endpoints A, B, C exactly as they are
