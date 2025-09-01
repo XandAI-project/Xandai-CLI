@@ -9,6 +9,8 @@ from .context_commands import ContextCommands
 from .tag_processor import TagProcessor
 from .ai_read_decision import AIReadDecision
 from .auto_recovery import AutoRecovery
+from .auto_read_structure import AutoReadStructure
+from .file_editor import FileEditor
 
 __all__ = [
     'FileContextManager',
@@ -16,5 +18,7 @@ __all__ = [
     'ContextCommands',
     'TagProcessor',
     'AIReadDecision',
-    'AutoRecovery'
+    'AutoRecovery',
+    'AutoReadStructure',
+    'FileEditor'
 ]

@@ -31,6 +31,8 @@ from .cli_utils.read_levels import ReadLevelsManager
 from .cli_utils.context_commands import ContextCommands
 from .cli_utils.tag_processor import TagProcessor
 from .cli_utils.auto_recovery import AutoRecovery
+from .cli_utils.auto_read_structure import AutoReadStructure
+from .cli_utils.file_editor import FileEditor
 
 
 console = Console()
@@ -102,6 +104,9 @@ class XandAICLI:
         self.file_context_manager = FileContextManager()
         self.read_levels_manager = ReadLevelsManager(self.shell_exec)
         self.context_commands = ContextCommands(self.file_context_manager)
+        # Novos sistemas
+        self.auto_read_structure = AutoReadStructure(self.shell_exec)
+        self.file_editor = FileEditor(self.file_ops)
         # TagProcessor e AutoRecovery serão inicializados depois que o modelo for selecionado
         self.tag_processor = None
         self.auto_recovery = None
@@ -1239,17 +1244,26 @@ Enhanced Request:"""
                     # Resolve caminho do arquivo relativo ao diretório atual
                     file_path = self._resolve_file_path(filename, current_dir)
                     
-                    # Verifica se arquivo já existe e decide entre criar ou editar
-                    if file_path.exists():
-                        console.print(f"[yellow]📝 Editing: {file_path.name}[/yellow]")
-                        self.file_ops.edit_file(file_path, clean_code)
+                    # *** NEW: Usa FileEditor robusto para edição/criação ***
+                    # Preview das mudanças
+                    preview = self.file_editor.preview_file_changes(str(file_path), clean_code)
+                    console.print(f"[dim]{preview}[/dim]")
+                    
+                    # Usa sistema robusto de edição/criação
+                    success, message = self.file_editor.smart_file_update(
+                        str(file_path), 
+                        clean_code, 
+                        update_mode="replace"  # Modo replace para compatibilidade com <code>
+                    )
+                    
+                    if success:
+                        console.print(f"[green]✅ {message}[/green]")
                         # Git commit automático
-                        self.git_manager.commit_file_operation("edited", file_path)
+                        operation = "edited" if file_path.exists() else "created"
+                        self.git_manager.commit_file_operation(operation, file_path)
                     else:
-                        console.print(f"[green]📄 Creating: {file_path.name}[/green]")
-                        self.file_ops.create_file(file_path, clean_code)
-                        # Git commit automático
-                        self.git_manager.commit_file_operation("created", file_path)
+                        console.print(f"[red]❌ Failed to process {filename}: {message}[/red]")
+                        continue
                     created_count += 1
                     
                 except FileOperationError as e:
@@ -2292,6 +2306,11 @@ mkdir new_project
             return
         
         try:
+            # *** NEW: ALWAYS read project structure first ***
+            console.print("[dim]📁 Reading project structure for context...[/dim]")
+            structure_info = self.auto_read_structure.read_current_structure()
+            structure_context = self.auto_read_structure.format_structure_for_context(structure_info)
+            
             # Step 1: Check if input is an error message and create specialized prompt
             error_info = self.prompt_enhancer.detect_error_type(prompt_text)
             if error_info:
@@ -2301,6 +2320,8 @@ mkdir new_project
                     error_info, 
                     self.shell_exec.get_current_directory()
                 )
+                # Inject structure context into error fix prompt
+                enhanced_prompt = structure_context + "\n\n" + enhanced_prompt
             else:
                 # Step 2: Better prompting - analyze and enhance user request
                 working_prompt = prompt_text
@@ -2314,6 +2335,8 @@ mkdir new_project
                         self.shell_exec.get_current_directory(),
                         self.shell_exec.get_os_info()
                     )
+                    # Inject structure context AFTER enhancement
+                    enhanced_prompt = structure_context + "\n\n" + enhanced_prompt
                 else:
                     # *** CRITICAL FIX: Even if enhancement is disabled, add basic tag instructions ***
                     # for prompts that suggest code/file creation or shell commands
@@ -2323,6 +2346,8 @@ mkdir new_project
                         console.print("[dim]💡 Added basic tag instructions (enhancement disabled)[/dim]")
                     else:
                         enhanced_prompt = working_prompt
+                    # Inject structure context even when enhancement is disabled
+                    enhanced_prompt = structure_context + "\n\n" + enhanced_prompt
                 
                 # *** NEW FEATURE: Always suggest reading files first (unless file content already provided)
                 enhanced_prompt, needs_read_first = self._add_read_first_instruction(enhanced_prompt)
