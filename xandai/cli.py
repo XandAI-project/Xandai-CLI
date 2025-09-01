@@ -88,7 +88,7 @@ class XandAICLI:
         self.user_initial_dir = Path.cwd()
         self.shell_exec = ShellExecutor(initial_dir=self.user_initial_dir)
         self.prompt_enhancer = PromptEnhancer()
-        self.task_manager = TaskManager()
+        self.task_manager = TaskManager(prompt_enhancer=self.prompt_enhancer)
         self.git_manager = GitManager(self.user_initial_dir)
         self.session_manager = SessionManager()
         self.selected_model = None
@@ -182,8 +182,10 @@ class XandAICLI:
         console.print(f"[green]✓ Better prompting system {status}[/green]")
         if self.better_prompting:
             console.print("[dim]Your prompts will be analyzed and enhanced for better results[/dim]")
+            console.print("[dim]💡 Press Ctrl+C to cancel analysis or use /better to disable[/dim]")
         else:
             console.print("[dim]Prompts will be sent directly to the LLM[/dim]")
+            console.print("[dim]💡 Enable with /better for enhanced prompt analysis[/dim]")
     
     def analyze_and_enhance_prompt(self, original_prompt: str) -> str:
         """
@@ -228,8 +230,21 @@ Enhanced Request:"""
             
             # Send to LLM for analysis
             response = ""
-            for chunk in self.api.generate(self.selected_model, analysis_prompt, stream=True):
-                response += chunk
+            chunk_count = 0
+            
+            with console.status("[dim]Analyzing prompt...", spinner="dots") as status:
+                for chunk in self.api.generate(self.selected_model, analysis_prompt, stream=True):
+                    response += chunk
+                    chunk_count += 1
+                    
+                    # Update status periodically
+                    if chunk_count % 20 == 0:
+                        status.update(f"[dim]Analyzing... ({chunk_count} chunks received)", spinner="dots")
+            
+            # Check if we got a valid response
+            if not response.strip():
+                console.print("[yellow]⚠️ Empty response from analysis, using original prompt[/yellow]")
+                return original_prompt
             
             # Extract the enhanced request from the response
             enhanced_prompt = response.strip()
@@ -251,6 +266,10 @@ Enhanced Request:"""
             
             return enhanced_prompt
             
+        except KeyboardInterrupt:
+            console.print("\n[yellow]⚠️ Prompt analysis interrupted by user[/yellow]")
+            console.print("[dim]Using original prompt[/dim]")
+            return original_prompt
         except Exception as e:
             console.print(f"[yellow]⚠️ Prompt enhancement failed: {e}[/yellow]")
             console.print("[dim]Falling back to original prompt[/dim]")
@@ -1356,6 +1375,11 @@ Enhanced Request:"""
         console.print("\n[bold blue]🎯 Complex Task Mode Activated[/bold blue]")
         console.print(f"[dim]Analyzing: {args}[/dim]\n")
         
+        # *** CRITICAL: Set working directory context for task manager ***
+        current_working_dir = str(Path.cwd())
+        self.task_manager.set_working_directory(current_working_dir)
+        console.print(f"[dim]Working directory: {current_working_dir}[/dim]")
+        
         # Step 1: Apply better prompting to enhance task description
         enhanced_args = args
         if self.better_prompting:
@@ -1443,9 +1467,9 @@ Enhanced Request:"""
                 console.print("\n[dim]Executing task...[/dim]")
                 self._execute_task(task_prompt, task)
                 
-                # Mark as completed
+                # Mark as completed and refresh context
                 task['status'] = 'completed'
-                self.task_manager.completed_tasks.append(task)
+                self.task_manager.add_task_completion_info(task)
                 
                 # Small pause between tasks
                 if i < len(tasks) - 1:
@@ -2102,7 +2126,14 @@ mkdir new_project
                         self.shell_exec.get_os_info()
                     )
                 else:
-                    enhanced_prompt = working_prompt
+                    # *** CRITICAL FIX: Even if enhancement is disabled, add basic tag instructions ***
+                    # for prompts that suggest code/file creation or shell commands
+                    needs_tag_instructions = self._prompt_needs_special_tags(working_prompt)
+                    if needs_tag_instructions:
+                        enhanced_prompt = working_prompt + self._get_basic_tag_instructions()
+                        console.print("[dim]💡 Added basic tag instructions (enhancement disabled)[/dim]")
+                    else:
+                        enhanced_prompt = working_prompt
             
             # ALWAYS track context regardless of enhancement settings
             if hasattr(self.prompt_enhancer, 'add_to_context_history'):
@@ -2189,6 +2220,14 @@ mkdir new_project
             has_traditional_code = '```' in full_response
             
             if not (has_actions or has_read or has_code or has_traditional_code):
+                # Check if the user's prompt expected actions but model didn't provide tags
+                expected_tags = self._prompt_needs_special_tags(prompt_text)
+                if expected_tags:
+                    console.print(f"[yellow]⚠️  Model response missing expected action tags[/yellow]")
+                    console.print(f"[dim]💡 The model should have used <actions>, <read>, or <code> tags[/dim]")
+                    if not self.enhance_prompts:
+                        console.print(f"[dim]💡 Try enabling enhancements with /enhance for better tag compliance[/dim]")
+                
                 # Debug: mostra parte da resposta para diagnóstico
                 if self.debug_mode:
                     console.print(f"[dim]🔍 Response without code/actions detected.[/dim]")
@@ -2231,7 +2270,15 @@ mkdir new_project
             if not special_processed and not full_response.strip():
                 console.print("[yellow]⚠️  Resposta vazia recebida do modelo[/yellow]")
             elif not special_processed and full_response.strip():
-                console.print("[dim]💡 Tip: Use commands like 'create a Python file' or 'install flask' for automatic actions[/dim]")
+                # Check if this was a prompt that should have generated actions
+                expected_tags = self._prompt_needs_special_tags(prompt_text)
+                if expected_tags:
+                    console.print("[yellow]💡 The model provided text instead of actionable code/commands[/yellow]")
+                    console.print("[dim]Tip: The model should have used <actions>, <code>, or <read> tags for automatic execution[/dim]")
+                    if not self.enhance_prompts:
+                        console.print("[dim]Try enabling enhancements with '/enhance' for better results[/dim]")
+                else:
+                    console.print("[dim]💡 Tip: Use commands like 'create a Python file' or 'install flask' for automatic actions[/dim]")
             
             # Verifica se estamos em modo enhancement e se o AI usou as tags corretamente
             if hasattr(self, '_enhancement_mode') and self._enhancement_mode:
@@ -2259,6 +2306,85 @@ mkdir new_project
             console.print(f"[red]Error generating response: {e}[/red]")
         except KeyboardInterrupt:
             console.print("\n[yellow]Response interrupted.[/yellow]")
+    
+    def _prompt_needs_special_tags(self, prompt: str) -> bool:
+        """
+        Detecta se um prompt precisa de instruções de tags especiais
+        
+        Args:
+            prompt: Prompt do usuário
+            
+        Returns:
+            True se o prompt indica criação de código/arquivos ou comandos
+        """
+        prompt_lower = prompt.lower()
+        
+        # Keywords que indicam necessidade de tags especiais
+        code_creation_keywords = [
+            'create', 'make', 'write', 'build', 'implement', 'generate',
+            'file', 'script', 'code', 'function', 'class', 'app',
+            'project', 'website', 'api', 'database', 'html', 'css', 'js',
+            'python', 'flask', 'django', 'react', 'node'
+        ]
+        
+        command_keywords = [
+            'install', 'run', 'execute', 'setup', 'configure', 'mkdir',
+            'cd', 'pip', 'npm', 'git', 'docker', 'start', 'stop'
+        ]
+        
+        return (
+            any(keyword in prompt_lower for keyword in code_creation_keywords) or
+            any(keyword in prompt_lower for keyword in command_keywords) or
+            'app.py' in prompt_lower or
+            'requirements.txt' in prompt_lower or
+            'package.json' in prompt_lower
+        )
+    
+    def _get_basic_tag_instructions(self) -> str:
+        """
+        Retorna instruções básicas sobre tags especiais
+        
+        Returns:
+            String com instruções básicas sobre tags
+        """
+        return """
+
+[MANDATORY TAGS FOR ACTIONS]
+
+1. For shell/terminal commands:
+   ✅ RIGHT: <actions>mkdir my-project</actions>
+   ✅ RIGHT: <actions>pip install flask</actions>
+   ❌ WRONG: ```bash
+             mkdir my-project
+             ```
+   ❌ WRONG: Just describing: "Create a folder called my-project"
+
+2. For creating/editing files:
+   ✅ RIGHT: <code filename="app.py">
+             from flask import Flask
+             app = Flask(__name__)
+             </code>
+   ❌ WRONG: ```python
+             from flask import Flask
+             app = Flask(__name__)
+             ```
+   ❌ WRONG: Just describing: "Create an app.py file with Flask imports"
+
+3. For reading existing files:
+   ✅ RIGHT: <read>cat app.py</read>
+   ✅ RIGHT: <read>ls -la</read>
+   ❌ WRONG: ```bash
+             cat app.py
+             ```
+   ❌ WRONG: Just describing: "Check the contents of app.py"
+
+CRITICAL RULES:
+- ALWAYS use <actions> for commands (mkdir, pip, npm, git, etc.)
+- ALWAYS use <code filename="..."> for file creation/editing
+- ALWAYS use <read> for examining files
+- NEVER use ``` blocks for files that should be created
+- NEVER just describe actions - use the tags!
+"""
     
     def load_previous_session(self):
         """

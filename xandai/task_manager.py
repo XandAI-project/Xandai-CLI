@@ -4,6 +4,7 @@ Module for complex task management
 
 import re
 from typing import List, Dict, Optional, Tuple
+from pathlib import Path
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
@@ -15,15 +16,21 @@ console = Console()
 class TaskManager:
     """Manages execution of complex tasks divided into sub-tasks"""
     
-    def __init__(self):
-        """Initializes the task manager"""
+    def __init__(self, prompt_enhancer=None):
+        """Initializes the task manager
+        
+        Args:
+            prompt_enhancer: PromptEnhancer instance for file structure context
+        """
         self.current_tasks: List[Dict] = []
         self.completed_tasks: List[Dict] = []
         self.task_mode_active = False
+        self.prompt_enhancer = prompt_enhancer
         self.global_context = {
             'language': None,
             'framework': None,
-            'original_request': None
+            'original_request': None,
+            'working_directory': None
         }
         
     def parse_task_breakdown(self, response: str) -> List[Dict]:
@@ -197,6 +204,104 @@ class TaskManager:
         # By default, consider essential (especially the first task)
         return 'essential'
     
+    def _get_file_structure_context(self, current_dir: str = None) -> str:
+        """
+        Get file structure context using PromptEnhancer
+        
+        Args:
+            current_dir: Current working directory
+            
+        Returns:
+            File structure context string
+        """
+        if not self.prompt_enhancer:
+            return ""
+        
+        try:
+            # Use current directory or stored working directory
+            directory = current_dir or self.global_context.get('working_directory') or str(Path.cwd())
+            
+            # Get file structure using PromptEnhancer
+            file_structure = self.prompt_enhancer._get_file_structure(directory)
+            
+            if file_structure:
+                context_parts = [
+                    "\n[CURRENT PROJECT STRUCTURE:]",
+                    file_structure,
+                    "\n[IMPORTANT: Always check existing files before creating new ones]",
+                    "[CRITICAL: Do not overwrite existing files unless explicitly asked]",
+                    "[Context: Files listed above already exist in the project]"
+                ]
+                return '\n'.join(context_parts)
+        except Exception as e:
+            console.print(f"[yellow]Warning: Could not get file structure: {e}[/yellow]")
+        
+        return ""
+    
+    def _get_recent_files_context(self) -> str:
+        """
+        Get context about recently created files from completed tasks
+        
+        Returns:
+            Context string about recently created files
+        """
+        if not self.completed_tasks:
+            return ""
+        
+        recent_files = []
+        for task in self.completed_tasks[-5:]:  # Last 5 tasks
+            # Extract file patterns from task description
+            if any(keyword in task['description'].lower() for keyword in ['create', 'file', 'implement', 'write']):
+                recent_files.append(f"- Task {task['number']}: {task['description']}")
+        
+        if recent_files:
+            context_parts = [
+                "\n[RECENTLY COMPLETED TASKS:]"
+            ]
+            context_parts.extend(recent_files)
+            context_parts.append("[IMPORTANT: Build upon the work already done above]")
+            return '\n'.join(context_parts)
+        
+        return ""
+    
+    def set_working_directory(self, directory: str):
+        """
+        Set the working directory for context
+        
+        Args:
+            directory: Working directory path
+        """
+        self.global_context['working_directory'] = str(Path(directory).resolve())
+    
+    def refresh_file_context(self):
+        """
+        Refresh the file structure context after task execution
+        This ensures the next task sees any newly created files
+        """
+        if self.prompt_enhancer and hasattr(self.prompt_enhancer, 'file_structure_cache'):
+            # Clear cache to force refresh
+            self.prompt_enhancer.file_structure_cache.clear()
+    
+    def add_task_completion_info(self, task: Dict, files_created: List[str] = None):
+        """
+        Add information about completed task including files created
+        
+        Args:
+            task: Completed task dictionary
+            files_created: List of files created/modified during task
+        """
+        # Store additional info about files created
+        if files_created:
+            task['files_created'] = files_created
+            console.print(f"[dim]✓ Task {task['number']} created/modified: {', '.join(files_created)}[/dim]")
+        
+        # Add to completed tasks
+        if task not in self.completed_tasks:
+            self.completed_tasks.append(task)
+        
+        # Refresh file context for next task
+        self.refresh_file_context()
+    
     def format_task_prompt(self, task: Dict, context: Optional[str] = None) -> str:
         """
         Formats a prompt for a specific task
@@ -216,6 +321,10 @@ class TaskManager:
         if self.global_context['framework']:
             prompt_parts.append(f"[Framework: {self.global_context['framework']}]")
         
+        # Add working directory context
+        if self.global_context.get('working_directory'):
+            prompt_parts.append(f"[Working Directory: {self.global_context['working_directory']}]")
+        
         # Add context if provided
         if context:
             prompt_parts.append(f"[Context: {context}]")
@@ -223,6 +332,16 @@ class TaskManager:
         # Add task information
         prompt_parts.append(f"[Task {task['number']} of {len(self.current_tasks)}]")
         prompt_parts.append(f"[Type: {task['type']}]")
+        
+        # *** CRITICAL ADDITION: Add file structure context ***
+        file_structure_context = self._get_file_structure_context()
+        if file_structure_context:
+            prompt_parts.append(file_structure_context)
+        
+        # Add recent files context from completed tasks
+        recent_files_context = self._get_recent_files_context()
+        if recent_files_context:
+            prompt_parts.append(recent_files_context)
         
         # If it's the first task (Documentation.md), add special context
         if task['number'] == 1 and 'documentation' in task['description'].lower():
