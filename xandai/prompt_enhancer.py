@@ -4,6 +4,8 @@ Module to enhance prompts with coding context
 
 import re
 import os
+import time
+import hashlib
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Set
 from rich.console import Console
@@ -175,6 +177,19 @@ class PromptEnhancer:
         # Context preservation settings
         self.preserve_recent_messages = 5  # Keep last 5 interactions
         self.preserve_system_context = True  # Always keep system/rules context
+        
+        # File structure cache and settings
+        self.file_structure_cache = {}
+        self.cache_expiry_time = 300  # Cache expires after 5 minutes
+        self.full_context_mode = True  # By default, provide full context
+        self.max_files_threshold = 1000  # Switch to limited mode if more than 1000 files
+        self.max_depth_default = None  # No depth limit by default
+        self.show_file_sizes = True  # Show file sizes for important files
+        
+        # Customizable filters
+        self.custom_ignore_dirs = set()  # Additional directories to ignore
+        self.custom_include_extensions = set()  # Additional extensions to include
+        self.custom_exclude_extensions = set()  # Extensions to exclude
     
     def _load_coding_rules(self):
         """Load all coding rules from the coding-rules directory"""
@@ -517,16 +532,243 @@ class PromptEnhancer:
         
         return context
     
-    def _get_file_structure(self, directory: str, max_depth: int = 2) -> str:
+    def _get_cached_file_structure(self, directory: str, max_depth: int = None, include_all: bool = None) -> str:
         """
-        Gets file structure including parent directory
+        Gets file structure with caching for better performance
         
         Args:
             directory: Directory to list
-            max_depth: Maximum search depth
+            max_depth: Maximum search depth (None for unlimited)
+            include_all: If True, includes all files and folders recursively (None for auto-detect)
             
         Returns:
-            String formatada com a estrutura de arquivos
+            Cached or freshly generated file structure
+        """
+        if include_all is None:
+            include_all = self.full_context_mode
+        
+        # Create cache key
+        dir_path = Path(directory).resolve()
+        cache_key = hashlib.md5(f"{dir_path}_{max_depth}_{include_all}".encode()).hexdigest()
+        
+        # Check cache
+        current_time = time.time()
+        if cache_key in self.file_structure_cache:
+            cached_data = self.file_structure_cache[cache_key]
+            if current_time - cached_data['timestamp'] < self.cache_expiry_time:
+                return cached_data['structure']
+        
+        # Generate new structure
+        structure = self._get_file_structure(directory, max_depth, include_all)
+        
+        # Cache the result
+        self.file_structure_cache[cache_key] = {
+            'structure': structure,
+            'timestamp': current_time
+        }
+        
+        # Clean old cache entries
+        self._clean_cache()
+        
+        return structure
+    
+    def _clean_cache(self):
+        """Remove expired cache entries"""
+        current_time = time.time()
+        expired_keys = [
+            key for key, data in self.file_structure_cache.items()
+            if current_time - data['timestamp'] >= self.cache_expiry_time
+        ]
+        for key in expired_keys:
+            del self.file_structure_cache[key]
+    
+    def _estimate_project_size(self, directory: str) -> Dict[str, int]:
+        """
+        Estimates project size to determine if full context should be used
+        
+        Returns:
+            Dictionary with file and directory counts
+        """
+        try:
+            dir_path = Path(directory).resolve()
+            file_count = 0
+            dir_count = 0
+            
+            # Quick estimation by sampling first few levels
+            for item in dir_path.rglob("*"):
+                if item.is_file():
+                    file_count += 1
+                elif item.is_dir():
+                    dir_count += 1
+                
+                # Stop counting if we've already exceeded threshold
+                if file_count > self.max_files_threshold:
+                    break
+            
+            return {'files': file_count, 'directories': dir_count}
+        except Exception:
+            return {'files': 0, 'directories': 0}
+    
+    def _get_file_structure(self, directory: str, max_depth: int = None, include_all: bool = True) -> str:
+        """
+        Gets complete file structure with full recursive listing
+        
+        Args:
+            directory: Directory to list
+            max_depth: Maximum search depth (None for unlimited)
+            include_all: If True, includes all files and folders recursively
+            
+        Returns:
+            String formatada com a estrutura completa de arquivos
+        """
+        try:
+            dir_path = Path(directory).resolve()
+            if not dir_path.exists():
+                return ""
+            
+            structure = []
+            total_files = 0
+            total_dirs = 0
+            
+            # Important file extensions to highlight
+            important_extensions = {
+                '.py', '.js', '.ts', '.tsx', '.jsx', '.java', '.c', '.cpp', '.go', '.rb', '.php', 
+                '.html', '.css', '.scss', '.sass', '.json', '.xml', '.yaml', '.yml', '.md', '.txt',
+                '.vue', '.svelte', '.dart', '.swift', '.kt', '.scala', '.clj', '.rs', '.r', '.m',
+                '.sql', '.sh', '.bat', '.ps1', '.dockerfile', '.toml', '.ini', '.cfg', '.conf'
+            }
+            
+            # Directories to ignore for cleaner output
+            ignore_dirs = {
+                '__pycache__', 'node_modules', '.git', '.vscode', '.idea', 'venv', '.venv', 
+                'env', '.env', 'dist', 'build', 'target', '.gradle', '.mvn', 'vendor',
+                '.next', '.nuxt', 'coverage', '.nyc_output', '.pytest_cache', '.cache',
+                'logs', 'tmp', 'temp', '.tmp', '.sass-cache', '.parcel-cache'
+            }
+            
+            # Add parent directory information
+            parent_dir = dir_path.parent
+            if parent_dir != dir_path:  # Not at root
+                structure.append(f"[Parent Directory: {parent_dir}]")
+                
+                # List important files in parent directory
+                parent_files = []
+                try:
+                    for item in parent_dir.iterdir():
+                        if (item.is_file() and not item.name.startswith('.') and 
+                            item.suffix.lower() in important_extensions):
+                            parent_files.append(f"  ../{item.name}")
+                            if len(parent_files) >= 5:  # Show up to 5 parent files
+                                break
+                except PermissionError:
+                    pass
+                
+                if parent_files:
+                    structure.append("Parent directory files:")
+                    structure.extend(parent_files)
+                    structure.append("")  # Blank line
+            
+            # Start recursive structure listing
+            structure.append(f"[Current Directory: {dir_path}]")
+            
+            def build_tree(path: Path, prefix: str = "", depth: int = 0, is_last: bool = True):
+                nonlocal total_files, total_dirs
+                
+                if max_depth is not None and depth > max_depth:
+                    return []
+                
+                items = []
+                try:
+                    # Get all items and sort them (directories first, then files)
+                    all_items = list(path.iterdir())
+                    dirs = [item for item in all_items if item.is_dir() and not item.name.startswith('.') and item.name not in ignore_dirs]
+                    files = [item for item in all_items if item.is_file() and not item.name.startswith('.')]
+                    
+                    # Sort alphabetically
+                    dirs.sort(key=lambda x: x.name.lower())
+                    files.sort(key=lambda x: x.name.lower())
+                    
+                    all_sorted = dirs + files
+                    
+                    for i, item in enumerate(all_sorted):
+                        is_last_item = (i == len(all_sorted) - 1)
+                        current_prefix = "└── " if is_last_item else "├── "
+                        next_prefix = prefix + ("    " if is_last_item else "│   ")
+                        
+                        if item.is_dir():
+                            total_dirs += 1
+                            items.append(f"{prefix}{current_prefix}{item.name}/")
+                            
+                            # Recursively add subdirectory contents
+                            if include_all:
+                                sub_items = build_tree(item, next_prefix, depth + 1, is_last_item)
+                                items.extend(sub_items)
+                        
+                        elif item.is_file():
+                            total_files += 1
+                            file_info = item.name
+                            
+                            # Add file size for important files
+                            if item.suffix.lower() in important_extensions:
+                                try:
+                                    size = item.stat().st_size
+                                    if size > 1024 * 1024:  # > 1MB
+                                        file_info += f" ({size // (1024*1024)}MB)"
+                                    elif size > 1024:  # > 1KB
+                                        file_info += f" ({size // 1024}KB)"
+                                except (OSError, PermissionError):
+                                    pass
+                            
+                            items.append(f"{prefix}{current_prefix}{file_info}")
+                            
+                except PermissionError:
+                    items.append(f"{prefix}├── [Permission Denied]")
+                except Exception as e:
+                    items.append(f"{prefix}├── [Error: {str(e)[:50]}]")
+                
+                return items
+            
+            # Build the complete tree structure
+            if include_all:
+                tree_items = build_tree(dir_path)
+                structure.extend(tree_items)
+            else:
+                # Fallback to original limited structure for very large projects
+                return self._get_limited_file_structure(directory, max_depth)
+            
+            # Add summary
+            if structure:
+                summary = f"\n📊 Project Summary: {total_files} files in {total_dirs + 1} directories"
+                
+                # Add technology detection summary
+                tech_files = {}
+                try:
+                    for file_path in dir_path.rglob("*"):
+                        if file_path.is_file() and file_path.suffix:
+                            ext = file_path.suffix.lower()
+                            if ext in important_extensions:
+                                tech_files[ext] = tech_files.get(ext, 0) + 1
+                except Exception:
+                    pass
+                
+                if tech_files:
+                    top_techs = sorted(tech_files.items(), key=lambda x: x[1], reverse=True)[:5]
+                    tech_summary = ", ".join([f"{ext}({count})" for ext, count in top_techs])
+                    summary += f"\n📁 File Types: {tech_summary}"
+                
+                structure.append(summary)
+                return "\n".join(structure)
+            else:
+                return "Empty directory"
+                
+        except Exception as e:
+            console.print(f"[yellow]Warning: Error building file structure: {e}[/yellow]")
+            return self._get_limited_file_structure(directory, max_depth)
+    
+    def _get_limited_file_structure(self, directory: str, max_depth: int = 2) -> str:
+        """
+        Fallback method for limited file structure (original implementation)
+        Used when complete structure is too large or causes errors
         """
         try:
             dir_path = Path(directory).resolve()
@@ -548,13 +790,13 @@ class PromptEnhancer:
                     if item.is_file() and not item.name.startswith('.'):
                         if item.suffix in ['.py', '.js', '.json', '.yml', '.yaml', '.toml', '.md']:
                             parent_files.append(f"  ../{item.name}")
-                            if len(parent_files) >= 3:  # Limita a 3 arquivos do pai
+                            if len(parent_files) >= 3:
                                 break
                 
                 if parent_files:
                     structure.append("Parent directory files:")
                     structure.extend(parent_files)
-                    structure.append("")  # Linha em branco
+                    structure.append("")
             
             # Lista arquivos importantes na raiz
             structure.append(f"[Current Directory: {dir_path}]")
@@ -563,7 +805,6 @@ class PromptEnhancer:
             
             for item in dir_path.iterdir():
                 if item.is_file() and not item.name.startswith('.'):
-                    # Ignore system and temporary files
                     if item.suffix in ['.py', '.js', '.ts', '.java', '.c', '.cpp', '.go', '.rb', '.php', 
                                       '.html', '.css', '.json', '.xml', '.yaml', '.yml', '.md', '.txt']:
                         root_files.append(f"  - {item.name}")
@@ -574,12 +815,12 @@ class PromptEnhancer:
             
             # Adiciona arquivos da raiz
             if root_files:
-                structure.extend(root_files[:10])  # Limita a 10 arquivos da raiz
+                structure.extend(root_files[:10])
                 if len(root_files) > 10:
                     structure.append(f"  ... ({len(root_files) - 10} more files)")
             
             # List subdirectories with some files
-            for subdir in subdirs[:5]:  # Limit to 5 subdirectories
+            for subdir in subdirs[:5]:
                 subdir_files = []
                 sub_file_count = 0
                 
@@ -589,7 +830,7 @@ class PromptEnhancer:
                             subdir_files.append(f"    - {subitem.name}")
                             sub_file_count += 1
                             file_count += 1
-                            if len(subdir_files) >= 3:  # Limita a 3 arquivos por subdir
+                            if len(subdir_files) >= 3:
                                 break
                 
                 structure.append(f"  - {subdir.name}/ ({sub_file_count} files)")
@@ -651,13 +892,32 @@ class PromptEnhancer:
                 if current_location:
                     enhanced_parts.append(f"[CONTEXT: {current_location} - DO NOT create another '{component}' folder]")
             
-            # Add existing file structure
-            file_structure = self._get_file_structure(current_dir)
+            # Add existing file structure with smart context detection
+            project_size = self._estimate_project_size(current_dir)
+            
+            # Determine if we should use full context or limited context
+            use_full_context = (
+                self.full_context_mode and 
+                project_size['files'] <= self.max_files_threshold
+            )
+            
+            file_structure = self._get_cached_file_structure(
+                current_dir, 
+                max_depth=self.max_depth_default,
+                include_all=use_full_context
+            )
+            
             if file_structure:
                 enhanced_parts.append(f"\n[Existing File Structure:]")
                 enhanced_parts.append(file_structure)
                 enhanced_parts.append("\n[CRITICAL: DO NOT recreate existing directories or files!]")
                 enhanced_parts.append("[CRITICAL: Choose a UNIQUE project name that doesn't exist in the path!]")
+                
+                # Add context mode information
+                if use_full_context:
+                    enhanced_parts.append("[CONTEXT MODE: Full recursive structure provided]")
+                else:
+                    enhanced_parts.append(f"[CONTEXT MODE: Limited structure (project has {project_size['files']} files)]")
         
         # Add file context and complete content if they exist
         if context['files']:
@@ -738,9 +998,18 @@ ALWAYS use these tags to structure your response when applicable:
    pip install flask
    </actions>
    
-   IMPORTANT: Only put ACTUAL COMMANDS inside <actions>, not descriptions!
+   CRITICAL COMMAND SYNTAX RULES:
+   ✅ One command per line - no mixing commands on same line
+   ✅ No explanatory text inside tags - commands only
+   ✅ Use proper command syntax for the operating system
+   ✅ No quotes around folder/file names unless absolutely necessary
+   ✅ Use simple folder names without spaces or special characters
+   
    ❌ WRONG: <actions>Create a folder to hold templates\nmkdir templates</actions>
+   ❌ WRONG: <actions>mkdir "my project" && cd "my project"</actions>
+   ❌ WRONG: <actions>mkdir project; cd project; pip install flask</actions>
    ✅ RIGHT: <actions>mkdir templates</actions>
+   ✅ RIGHT: <actions>mkdir project\ncd project\npip install flask</actions>
 
 2. For reading/examining existing files (executed automatically):
    <read>
@@ -749,9 +1018,15 @@ ALWAYS use these tags to structure your response when applicable:
    dir
    </read>
    
-   IMPORTANT: Only put ACTUAL COMMANDS inside <read>, not descriptions!
+   CRITICAL READ COMMAND RULES:
+   ✅ One command per line only
+   ✅ No explanatory text - commands only
+   ✅ Use appropriate OS commands (dir for Windows, ls for Unix)
+   
    ❌ WRONG: <read>Let's check the contents\ncat app.py</read>
+   ❌ WRONG: <read>cat app.py && ls -la</read>
    ✅ RIGHT: <read>cat app.py</read>
+   ✅ RIGHT: <read>cat app.py\nls -la</read>
 
 3. For creating or editing files (files created/updated automatically):
    <code filename="app.py">
@@ -842,7 +1117,40 @@ This creates a basic Flask application...
         # Add instruction about OS-specific commands
         if os_info:
             if 'Windows' in os_info:
-                enhanced_parts.append("\n[OS Commands: Use Windows commands like dir, type, copy, move, del, cls, where, etc.]")
+                enhanced_parts.append("""
+[WINDOWS COMMAND RULES - CRITICAL]
+✅ Use Windows-specific commands only:
+   - dir (not ls)
+   - type filename.txt (not cat)
+   - copy file1 file2 (not cp)
+   - move file1 file2 (not mv)
+   - del filename (not rm)
+   - cls (not clear)
+   - where command (not which)
+   - cd directory (same)
+   - mkdir directory (same)
+   - echo text (same)
+
+❌ NEVER use Unix commands on Windows:
+   - Do NOT use: ls, cat, cp, mv, rm, clear, which
+   - Do NOT use: bash syntax like && or ;
+   - Do NOT use: forward slashes in paths (use backslashes)
+
+✅ EXAMPLE CORRECT WINDOWS COMMANDS:
+   <actions>
+   mkdir myproject
+   cd myproject
+   echo. > app.py
+   dir
+   </actions>
+
+❌ WRONG - Unix commands that will fail:
+   <actions>
+   mkdir myproject && cd myproject
+   ls -la
+   cat app.py
+   </actions>
+""")
             else:
                 enhanced_parts.append("\n[OS Commands: Use Unix commands like ls, cat, cp, mv, rm, clear, which, etc.]")
         
@@ -896,7 +1204,7 @@ This creates a basic Flask application...
             enhanced_parts.append(f"[Working Directory: {current_dir}]")
             
             # Adiciona estrutura de arquivos
-            file_structure = self._get_file_structure(current_dir)
+            file_structure = self._get_cached_file_structure(current_dir, include_all=True)
             if file_structure:
                 enhanced_parts.append(f"\n[Existing File Structure:]")
                 enhanced_parts.append(file_structure)

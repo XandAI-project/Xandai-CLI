@@ -108,7 +108,7 @@ class XandAICLI:
             '/enhance_code': self.enhance_code_command,
             '/task': self.task_command,
             '/flush': self.flush_context,
-            '/context': self.show_context_status,
+            '/context': self.context_command_new,
             '/debug': self.toggle_debug_mode,
             '/better': self.toggle_better_prompting,
             '/session': self.session_command
@@ -566,6 +566,55 @@ Enhanced Request:"""
         
         return resolved_path
     
+    def _is_valid_command_syntax(self, command: str) -> bool:
+        """
+        Verifica se um comando tem sintaxe válida
+        
+        Args:
+            command: Comando a verificar
+            
+        Returns:
+            True se a sintaxe do comando for válida
+        """
+        if not command or not command.strip():
+            return False
+            
+        # Remove espaços extras
+        command = command.strip()
+        
+        # Verifica se é apenas texto descritivo (frases em linguagem natural)
+        descriptive_patterns = [
+            r'^(create|make|build|install|setup|configure|add|update|modify)',
+            r'(folder|directory|file|project|application|app)',
+            r'^(let\'s|we|now|first|then|next|after)',
+            r'(and then|followed by|in order to)',
+        ]
+        
+        for pattern in descriptive_patterns:
+            if re.search(pattern, command, re.IGNORECASE):
+                # Se contém palavras descritivas, verifica se é realmente um comando
+                words = command.split()
+                if len(words) > 0:
+                    first_word = words[0].lower()
+                    # Verifica se a primeira palavra é um comando válido conhecido
+                    if first_word not in ['mkdir', 'cd', 'pip', 'npm', 'git', 'python', 'node', 'ls', 'dir', 'cat', 'type', 'echo', 'touch']:
+                        return False
+        
+        # Verifica se contém múltiplos comandos em uma linha (&&, ;, |)
+        if re.search(r'&&|;\s*\w|^\s*\w.*\|\s*\w', command):
+            return False
+        
+        # Verifica se tem aspas desbalanceadas
+        if command.count('"') % 2 != 0 or command.count("'") % 2 != 0:
+            return False
+        
+        # Verifica se contém caracteres de controle inválidos
+        invalid_chars = ['\t', '\r', '\n', '\x00']
+        if any(char in command for char in invalid_chars):
+            return False
+        
+        return True
+    
     def _is_dangerous_command(self, code: str) -> bool:
         """
         Verifica se o código contém comandos perigosos
@@ -742,13 +791,21 @@ Enhanced Request:"""
                 # Filtra apenas comandos válidos (ignora descrições em linguagem natural)
                 commands = []
                 for line in lines:
-                    # Verifica se é um comando shell válido
-                    if self.shell_exec.is_shell_command(line) or any(line.startswith(cmd) for cmd in ['cd ', 'mkdir ', 'touch ', 'pip ', 'npm ', 'git ']):
-                        commands.append(line)
+                    # Remove aspas desnecessárias e limpa o comando
+                    cleaned_line = line.strip().strip('"').strip("'")
+                    
+                    # Verifica se contém caracteres inválidos para comandos
+                    if self._is_valid_command_syntax(cleaned_line):
+                        # Verifica se é um comando shell válido
+                        if self.shell_exec.is_shell_command(cleaned_line) or any(cleaned_line.startswith(cmd) for cmd in ['cd ', 'mkdir ', 'touch ', 'pip ', 'npm ', 'git ', 'python ', 'node ']):
+                            commands.append(cleaned_line)
+                        else:
+                            # Se não é comando, pode ser descrição - ignora
+                            if self.debug_mode:
+                                console.print(f"[dim]Ignoring non-command: {line}[/dim]")
                     else:
-                        # Se não é comando, pode ser descrição - ignora
                         if self.debug_mode:
-                            console.print(f"[dim]Ignoring description: {line}[/dim]")
+                            console.print(f"[dim]Ignoring invalid syntax: {line}[/dim]")
                 
                 for cmd in commands:
                     # Converte comando para o OS apropriado
@@ -804,13 +861,21 @@ Enhanced Request:"""
                 # Filtra apenas comandos válidos (ignora descrições em linguagem natural)
                 commands = []
                 for line in lines:
-                    # Verifica se é um comando de leitura válido
-                    if self.shell_exec.is_shell_command(line) or any(line.startswith(cmd) for cmd in ['cat ', 'type ', 'ls ', 'dir ', 'head ', 'tail ']):
-                        commands.append(line)
+                    # Remove aspas desnecessárias e limpa o comando
+                    cleaned_line = line.strip().strip('"').strip("'")
+                    
+                    # Verifica se contém caracteres inválidos para comandos
+                    if self._is_valid_command_syntax(cleaned_line):
+                        # Verifica se é um comando de leitura válido
+                        if self.shell_exec.is_shell_command(cleaned_line) or any(cleaned_line.startswith(cmd) for cmd in ['cat ', 'type ', 'ls ', 'dir ', 'head ', 'tail ']):
+                            commands.append(cleaned_line)
+                        else:
+                            # Se não é comando, pode ser descrição - ignora
+                            if self.debug_mode:
+                                console.print(f"[dim]Ignoring non-command: {line}[/dim]")
                     else:
-                        # Se não é comando, pode ser descrição - ignora
                         if self.debug_mode:
-                            console.print(f"[dim]Ignoring description: {line}[/dim]")
+                            console.print(f"[dim]Ignoring invalid syntax: {line}[/dim]")
                 
                 for cmd in commands:
                     # Converte comando para o OS apropriado
@@ -1635,48 +1700,36 @@ mkdir new_project
         if len(text) > 150:
             return None
         
-        # Skip if it contains question words or complex phrases indicating LLM queries
-        question_indicators = ['what', 'how', 'why', 'when', 'where', 'which', 'who', 'can you', 'please', 'help', '?', 'explain', 'show me', 'tell me', 'create', 'make', 'generate', 'write', 'build']
         text_lower = text.lower()
+        
+        # Skip if it contains question words or complex phrases indicating LLM queries
+        question_indicators = ['what', 'how', 'why', 'when', 'where', 'which', 'who', 'can you', 'please', 'help', '?', 'explain', 'show me', 'tell me', 'create', 'make', 'generate', 'write', 'build', 'fix', 'error', 'problema', 'bug', 'issue', 'broken', 'not working']
         if any(indicator in text_lower for indicator in question_indicators):
             return None
         
-        # Common shell commands that should be executed directly
-        simple_commands = [
-            # Navigation
-            'ls', 'dir', 'pwd', 'cd', 'pushd', 'popd',
-            # File operations  
-            'mkdir', 'rmdir', 'rm', 'del', 'cp', 'copy', 'mv', 'move', 'rename',
-            'cat', 'type', 'more', 'less', 'head', 'tail',
-            # Display/info
-            'echo', 'clear', 'cls', 'date', 'time', 'whoami', 'hostname',
-            # File listing/search
-            'find', 'grep', 'findstr', 'tree', 'where', 'which',
-            # Process/system
-            'ps', 'kill', 'killall', 'top', 'htop', 'tasklist', 'taskkill',
-            # Network
-            'ping', 'curl', 'wget', 'netstat',
-            # Archive
-            'zip', 'unzip', 'tar', 'gzip', 'gunzip',
-            # Version control
-            'git', 'svn', 'hg',
-            # Package managers
-            'npm', 'yarn', 'pip', 'conda', 'brew', 'apt', 'yum',
-            # Development tools
-            'node', 'python', 'python3', 'java', 'javac', 'gcc', 'make', 'cmake',
-            # Text editors (when just opening)
-            'vim', 'vi', 'nano', 'emacs', 'code'
+        # Early return for obviously non-command patterns (error messages, webpack, etc.)
+        if any(pattern in text_lower for pattern in ['error', 'compiled with', 'webpack', 'ts2307', 'cannot find module', 'fix this', 'help with', 'module not found']):
+            return None
+        
+        # ONLY basic shell commands that should be executed directly
+        shell_commands = [
+            'ls', 'dir', 'cd', 'pwd', 'mkdir', 'rmdir', 'rm', 'cp', 'mv', 'cat', 'type',
+            'echo', 'touch', 'grep', 'find', 'ps', 'kill', 'chmod', 'chown', 'which',
+            'whereis', 'date', 'time', 'whoami', 'hostname', 'uname', 'df', 'du',
+            'free', 'top', 'htop', 'clear', 'cls', 'exit', 'logout', 'history',
+            'tree', 'nano', 'vim', 'vi', 'less', 'more', 'head', 'tail', 'wc',
+            'sort', 'uniq', 'cut', 'awk', 'sed', 'tar', 'zip', 'unzip', 'gzip',
+            'gunzip', 'wget', 'curl', 'ping', 'traceroute', 'nslookup', 'dig',
+            'ifconfig', 'ipconfig', 'netstat', 'ss', 'route', 'arp', 'git',
+            'npm', 'pip', 'python', 'python3', 'node', 'java', 'javac', 'gcc',
+            'g++', 'make', 'cmake', 'cargo', 'rustc', 'go', 'docker', 'kubectl'
         ]
         
-        # Check if it starts with a simple command
-        first_word = text.split()[0].lower() if text.split() else ""
-        if first_word in simple_commands:
-            # Additional check: avoid complex pipes or programming constructs
-            if not any(complex_indicator in text for complex_indicator in ['&&', '||', '>', '>>', '|', ';', 'if', 'for', 'while', 'function']):
-                return text
+        # Check if the first word is a shell command
+        first_word = text.split()[0] if text else ""
         
-        # Special case: single-word commands
-        if len(text.split()) == 1 and first_word in simple_commands:
+        # Check exact command match - be very strict
+        if first_word.lower() in shell_commands:
             return text
             
         # Pattern matching for common command structures
@@ -1794,30 +1847,68 @@ mkdir new_project
             full_response = ""
             code_count = 0
             line_count = 0
+            last_line = ""
             
-            # Gera resposta com status dinâmico
-            with console.status("[bold green]Thinking...", spinner="dots") as status:
+            # Gera resposta com status dinâmico mostrando sempre a última linha
+            with console.status("[bold green]🤔 Thinking...", spinner="dots") as status:
                 for chunk in self.api.generate(self.selected_model, enhanced_prompt):
                     full_response += chunk
                     line_count += chunk.count('\n')
                     
-                    # Atualiza status baseado no conteúdo
+                    # Extrai a última linha completa para mostrar no status
+                    lines = full_response.split('\n')
+                    if len(lines) > 1:
+                        # Pega a penúltima linha se ela for mais substancial
+                        last_line = lines[-2].strip() if lines[-2].strip() else lines[-1].strip()
+                    else:
+                        last_line = lines[0].strip()
+                    
+                    # Limita o tamanho da linha mostrada no status
+                    if len(last_line) > 80:
+                        display_line = last_line[:77] + "..."
+                    else:
+                        display_line = last_line
+                    
+                    # Atualiza status baseado no conteúdo com a última linha
+                    base_status = ""
+                    spinner_type = "dots"
+                    
                     if '```' in chunk:
                         code_count += 1
                         if code_count % 2 == 1:
-                            status.update("[bold yellow]Writing code...", spinner="dots2")
+                            base_status = "[bold yellow]💻 Writing code"
+                            spinner_type = "dots2"
                         else:
-                            status.update("[bold green]Analyzing...", spinner="dots")
-                    elif len(full_response) > 100 and line_count % 5 == 0:
-                        # Alternate status periodically
+                            base_status = "[bold green]📝 Analyzing"
+                    elif len(full_response) > 100:
+                        # Determina status baseado no conteúdo
                         if 'code' in full_response.lower() or 'function' in full_response or 'def ' in full_response:
-                            status.update("[bold yellow]Writing code...", spinner="dots2")
+                            base_status = "[bold yellow]💻 Writing code"
+                            spinner_type = "dots2"
                         elif 'error' in full_response.lower() or 'bug' in full_response.lower():
-                            status.update("[bold red]Analyzing error...", spinner="dots3")
+                            base_status = "[bold red]🔍 Analyzing error"
+                            spinner_type = "dots3"
                         elif 'test' in full_response.lower():
-                            status.update("[bold blue]Preparing tests...", spinner="dots")
+                            base_status = "[bold blue]🧪 Preparing tests"
+                            spinner_type = "dots"
+                        elif '<actions>' in full_response.lower():
+                            base_status = "[bold cyan]⚡ Preparing commands"
+                            spinner_type = "dots2"
+                        elif '<code' in full_response.lower():
+                            base_status = "[bold yellow]📄 Creating files"
+                            spinner_type = "dots2"
                         else:
-                            status.update("[bold green]Processing...", spinner="dots")
+                            base_status = "[bold green]🤔 Processing"
+                    else:
+                        base_status = "[bold green]🤔 Thinking"
+                    
+                    # Monta status completo com a última linha
+                    if display_line:
+                        status_text = f"{base_status}...\n[dim]💬 {display_line}[/dim]"
+                    else:
+                        status_text = f"{base_status}..."
+                    
+                    status.update(status_text, spinner=spinner_type)
             
             # Exibe resposta completa formatada
             console.print("\n[bold cyan]Assistente:[/bold cyan]\n")
@@ -2161,3 +2252,119 @@ mkdir new_project
                 console.print(f"[dim]Debug traceback:[/dim]")
                 console.print(f"[dim]{traceback.format_exc()}[/dim]")
             console.print("[dim]Exiting...[/dim]")
+    
+    def context_command_new(self, args: List[str] = None):
+        """
+        Gerencia contexto de arquivos e estrutura do projeto
+        
+        Subcomandos:
+        - status: Mostra status atual do contexto
+        - show: Mostra estrutura completa do projeto
+        - settings: Mostra configurações atuais
+        - clear: Limpa cache de estrutura de arquivos
+        - config: Configura opções de contexto
+        """
+        if not args:
+            args = []
+        
+        if len(args) == 0 or args[0] == 'status':
+            # Mostra status do contexto
+            if hasattr(self.prompt_enhancer, 'get_context_status'):
+                status = self.prompt_enhancer.get_context_status()
+                console.print(f"[cyan]📊 Context Usage: {status}[/cyan]")
+                
+                # Mostra também settings de arquivo
+                if hasattr(self.prompt_enhancer, 'get_current_settings'):
+                    settings = self.prompt_enhancer.get_current_settings()
+                    console.print(f"[cyan]📁 File Context: {'Full' if settings['full_context_mode'] else 'Limited'} mode[/cyan]")
+                    console.print(f"[dim]   Max files: {settings['max_files_threshold']}, Cache: {settings['cache_size']} entries[/dim]")
+            else:
+                console.print("[yellow]Context status not available[/yellow]")
+        
+        elif args[0] == 'show':
+            # Mostra estrutura completa forçada
+            try:
+                current_dir = self.shell_exec.get_current_directory()
+                if hasattr(self.prompt_enhancer, 'get_full_project_context'):
+                    full_context = self.prompt_enhancer.get_full_project_context(current_dir)
+                    console.print("[bold green]🌳 Complete Project Structure:[/bold green]")
+                    console.print(full_context)
+                else:
+                    console.print("[yellow]Full project context not available[/yellow]")
+            except Exception as e:
+                console.print(f"[red]Error generating project context: {e}[/red]")
+        
+        elif args[0] == 'settings':
+            # Mostra configurações atuais
+            if hasattr(self.prompt_enhancer, 'get_current_settings'):
+                settings = self.prompt_enhancer.get_current_settings()
+                
+                table = Table(title="File Context Settings")
+                table.add_column("Setting", style="cyan")
+                table.add_column("Value", style="green")
+                
+                table.add_row("Full Context Mode", str(settings['full_context_mode']))
+                table.add_row("Max Files Threshold", str(settings['max_files_threshold']))
+                table.add_row("Max Depth", str(settings['max_depth_default']))
+                table.add_row("Cache Expiry (seconds)", str(settings['cache_expiry_time']))
+                table.add_row("Show File Sizes", str(settings['show_file_sizes']))
+                table.add_row("Cache Size", str(settings['cache_size']))
+                table.add_row("Custom Ignore Dirs", str(len(settings['custom_ignore_dirs'])))
+                table.add_row("Custom Include Ext", str(len(settings['custom_include_extensions'])))
+                table.add_row("Custom Exclude Ext", str(len(settings['custom_exclude_extensions'])))
+                
+                console.print(table)
+            else:
+                console.print("[yellow]Settings not available[/yellow]")
+        
+        elif args[0] == 'clear':
+            # Limpa cache
+            if hasattr(self.prompt_enhancer, 'clear_cache'):
+                self.prompt_enhancer.clear_cache()
+            else:
+                console.print("[yellow]Cache clearing not available[/yellow]")
+        
+        elif args[0] == 'config':
+            # Configura opções
+            if len(args) < 2:
+                console.print("[yellow]Usage: /context config <option> <value>[/yellow]")
+                console.print("[dim]Options: full_context, max_files, max_depth, cache_expiry[/dim]")
+                return
+            
+            option = args[1]
+            
+            if len(args) < 3:
+                if hasattr(self.prompt_enhancer, 'get_current_settings'):
+                    settings = self.prompt_enhancer.get_current_settings()
+                    if option == 'full_context':
+                        console.print(f"[yellow]Current {option}: {settings['full_context_mode']}[/yellow]")
+                    elif option in settings:
+                        console.print(f"[yellow]Current {option}: {settings[option]}[/yellow]")
+                    else:
+                        console.print(f"[red]Unknown option: {option}[/red]")
+                return
+            
+            value = args[2]
+            
+            if hasattr(self.prompt_enhancer, 'configure_file_context'):
+                try:
+                    if option == 'full_context':
+                        bool_value = value.lower() in ['true', '1', 'yes', 'on']
+                        self.prompt_enhancer.configure_file_context(full_context=bool_value)
+                    elif option == 'max_files':
+                        self.prompt_enhancer.configure_file_context(max_files_threshold=int(value))
+                    elif option == 'max_depth':
+                        depth_value = None if value.lower() in ['none', 'null', 'unlimited'] else int(value)
+                        self.prompt_enhancer.configure_file_context(max_depth=depth_value)
+                    elif option == 'cache_expiry':
+                        self.prompt_enhancer.configure_file_context(cache_expiry=int(value))
+                    else:
+                        console.print(f"[red]Unknown option: {option}[/red]")
+                except ValueError as e:
+                    console.print(f"[red]Invalid value for {option}: {value} ({e})[/red]")
+            else:
+                console.print("[yellow]Configuration not available[/yellow]")
+        
+        else:
+            console.print(f"[red]Unknown context command: {args[0]}[/red]")
+            console.print("[yellow]Available commands: status, show, settings, clear, config[/yellow]")
