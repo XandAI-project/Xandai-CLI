@@ -903,9 +903,17 @@ Enhanced Request:"""
                     if converted_cmd.strip().startswith('mkdir '):
                         dir_name = converted_cmd.strip()[6:].strip().strip('"').strip("'")
                         current_path = self.shell_exec.get_current_directory()
+                        current_dir_name = Path(current_path).name
                         
-                        # Check if the directory name already exists in the current path
-                        if dir_name.lower() in current_path.lower():
+                        # Check if trying to create a directory with same name as current directory
+                        if dir_name.lower() == current_dir_name.lower():
+                            console.print(f"[red]❌ Skipping: Cannot create directory '{dir_name}' - already inside '{current_dir_name}'![/red]")
+                            console.print(f"[yellow]Current path: {current_path}[/yellow]")
+                            console.print(f"[dim]💡 Tip: Use a different unique name for the new directory[/dim]")
+                            continue  # Skip this command
+                        
+                        # Check if the directory name already exists in the current path components
+                        elif dir_name.lower() in current_path.lower():
                             console.print(f"[yellow]⚠️  Warning: Directory '{dir_name}' already exists in path![/yellow]")
                             console.print(f"[yellow]Current path: {current_path}[/yellow]")
                             console.print(f"[yellow]Consider using a unique name instead[/yellow]")
@@ -1044,9 +1052,17 @@ Enhanced Request:"""
                     if converted_cmd.strip().startswith('mkdir '):
                         dir_name = converted_cmd.strip()[6:].strip().strip('"').strip("'")
                         current_path = self.shell_exec.get_current_directory()
+                        current_dir_name = Path(current_path).name
                         
-                        # Check if the directory name already exists in the current path
-                        if dir_name.lower() in current_path.lower():
+                        # Check if trying to create a directory with same name as current directory
+                        if dir_name.lower() == current_dir_name.lower():
+                            console.print(f"[red]❌ Skipping: Cannot create directory '{dir_name}' - already inside '{current_dir_name}'![/red]")
+                            console.print(f"[yellow]Current path: {current_path}[/yellow]")
+                            console.print(f"[dim]💡 Tip: Use a different unique name for the new directory[/dim]")
+                            continue  # Skip this command
+                        
+                        # Check if the directory name already exists in the current path components
+                        elif dir_name.lower() in current_path.lower():
                             console.print(f"[yellow]⚠️  Warning: Directory '{dir_name}' already exists in path![/yellow]")
                             console.print(f"[yellow]Current path: {current_path}[/yellow]")
                             console.print(f"[yellow]Consider using a unique name instead[/yellow]")
@@ -1080,7 +1096,7 @@ Enhanced Request:"""
         # Processa tags <read>
         read_blocks = re.findall(r'<read>(.*?)</read>', response, re.DOTALL | re.IGNORECASE)
         if read_blocks:
-            console.print("\n[bold blue]📖 Lendo arquivos...[/bold blue]")
+            console.print("\n[bold blue]📖 Reading files...[/bold blue]")
             processed_something = True
             for reads in read_blocks:
                 # Remove comentários e linhas vazias
@@ -1114,9 +1130,17 @@ Enhanced Request:"""
                     if converted_cmd.strip().startswith('mkdir '):
                         dir_name = converted_cmd.strip()[6:].strip().strip('"').strip("'")
                         current_path = self.shell_exec.get_current_directory()
+                        current_dir_name = Path(current_path).name
                         
-                        # Check if the directory name already exists in the current path
-                        if dir_name.lower() in current_path.lower():
+                        # Check if trying to create a directory with same name as current directory
+                        if dir_name.lower() == current_dir_name.lower():
+                            console.print(f"[red]❌ Skipping: Cannot create directory '{dir_name}' - already inside '{current_dir_name}'![/red]")
+                            console.print(f"[yellow]Current path: {current_path}[/yellow]")
+                            console.print(f"[dim]💡 Tip: Use a different unique name for the new directory[/dim]")
+                            continue  # Skip this command
+                        
+                        # Check if the directory name already exists in the current path components
+                        elif dir_name.lower() in current_path.lower():
                             console.print(f"[yellow]⚠️  Warning: Directory '{dir_name}' already exists in path![/yellow]")
                             console.print(f"[yellow]Current path: {current_path}[/yellow]")
                             console.print(f"[yellow]Consider using a unique name instead[/yellow]")
@@ -1162,12 +1186,12 @@ Enhanced Request:"""
                     
                     # Verifica se arquivo já existe e decide entre criar ou editar
                     if file_path.exists():
-                        console.print(f"[yellow]📝 Editando: {file_path.name}[/yellow]")
+                        console.print(f"[yellow]📝 Editing: {file_path.name}[/yellow]")
                         self.file_ops.edit_file(file_path, clean_code)
                         # Git commit automático
                         self.git_manager.commit_file_operation("edited", file_path)
                     else:
-                        console.print(f"[green]📄 Criando: {file_path.name}[/green]")
+                        console.print(f"[green]📄 Creating: {file_path.name}[/green]")
                         self.file_ops.create_file(file_path, clean_code)
                         # Git commit automático
                         self.git_manager.commit_file_operation("created", file_path)
@@ -1743,11 +1767,11 @@ mkdir new_project
                     
                     console.print(table)
                 else:
-                    console.print(f"[yellow]Nenhum arquivo encontrado em {directory}[/yellow]")
+                    console.print(f"[yellow]No files found in {directory}[/yellow]")
                     
             elif subcommand == "search":
                 if len(parts) < 2:
-                    console.print("[red]Uso: /file search <nome_arquivo>[/red]")
+                    console.print("[red]Usage: /file search <filename>[/red]")
                     return
                 
                 filename = parts[1]
@@ -1758,7 +1782,7 @@ mkdir new_project
                 if found_path:
                     # Pergunta se quer ler o arquivo
                     from rich.prompt import Confirm
-                    if Confirm.ask(f"Deseja ler o arquivo {found_path}?"):
+                    if Confirm.ask(f"Do you want to read the file {found_path}?"):
                         content = self.file_ops.read_file(found_path)
                         console.print(Panel(
                             Syntax(content, "auto", theme="monokai", line_numbers=True),
@@ -1808,14 +1832,14 @@ mkdir new_project
                     
                     # Mostra arquivos similares encontrados
                     if results['files']:
-                        console.print("\n[bold cyan]📄 Arquivos similares encontrados:[/bold cyan]")
+                        console.print("\n[bold cyan]📄 Similar files found:[/bold cyan]")
                         for i, file_path in enumerate(results['files'][:5], 1):
                             console.print(f"  {i}. {file_path}")
                         
                         # Pergunta se quer abrir algum arquivo similar
                         if len(results['files']) == 1:
                             from rich.prompt import Confirm
-                            if Confirm.ask(f"\nDeseja ler {results['files'][0]}?"):
+                            if Confirm.ask(f"\nDo you want to read {results['files'][0]}?"):
                                 content = self.file_ops.read_file(results['files'][0])
                                 console.print(Panel(
                                     Syntax(content, "auto", theme="monokai", line_numbers=True),
@@ -1824,7 +1848,7 @@ mkdir new_project
                                 ))
                         else:
                             try:
-                                choice = console.input("\n[cyan]Digite o número do arquivo para ler (ou Enter para cancelar): [/cyan]")
+                                choice = console.input("\n[cyan]Enter the file number to read (or Enter to cancel): [/cyan]")
                                 if choice.strip():
                                     idx = int(choice) - 1
                                     if 0 <= idx < len(results['files']):
@@ -2201,7 +2225,7 @@ mkdir new_project
             if hasattr(self, '_enhancement_mode') and self._enhancement_mode:
                 if not has_code:
                     console.print("\n[bold red]⚠️  ERROR: The AI did not follow the correct format![/bold red]")
-                    console.print("[yellow]O AI deveria ter usado tags <code filename=\"...\"> para editar os arquivos.[/yellow]")
+                    console.print("[yellow]The AI should have used <code filename=\"...\"> tags to edit the files.[/yellow]")
                     console.print("[yellow]Try again with a more specific description or use a different model.[/yellow]")
                     console.print("\n[dim]💡 Example: /enhance_code transform into professional SAAS landing page[/dim]")
             
