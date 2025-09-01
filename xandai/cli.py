@@ -1126,6 +1126,7 @@ Enhanced Request:"""
         
         # Processa tags <read>
         read_blocks = re.findall(r'<read>(.*?)</read>', response, re.DOTALL | re.IGNORECASE)
+        read_content = []  # Acumula conteúdo lido para injetar no contexto
         if read_blocks:
             console.print("\n[bold blue]📖 Reading files...[/bold blue]")
             processed_something = True
@@ -1183,6 +1184,11 @@ Enhanced Request:"""
                     if success:
                         if output.strip():
                             console.print(output)
+                            # Captura conteúdo para injetar no contexto do LLM
+                            read_content.append({
+                                'command': converted_cmd,
+                                'content': output.strip()
+                            })
                     else:
                         console.print(f"[red]❌ {output}[/red]")
                         # Send error back to LLM for automatic fix
@@ -1193,6 +1199,11 @@ Enhanced Request:"""
                         self.auto_execute_shell = False
                         self.process_prompt(error_prompt)
                         self.auto_execute_shell = temp_auto_execute
+        
+        # Se houve leitura de arquivos, re-executa o prompt original com o conteúdo
+        if read_content:
+            console.print(f"\n[bold cyan]🔄 Re-executing prompt with file content...[/bold cyan]")
+            self._reprocess_with_file_content(original_prompt, read_content)
         
         # Processa tags <code> com melhor tratamento
         code_blocks = self._extract_code_blocks(response)
@@ -1240,6 +1251,61 @@ Enhanced Request:"""
             console.print("[dim]💡 The model should use <actions>, <read> or <code> for actions[/dim]")
         
         return processed_something
+    
+    def _reprocess_with_file_content(self, original_prompt: str, read_content: list):
+        """
+        Re-executa o prompt original com o conteúdo dos arquivos lidos injetado
+        
+        Args:
+            original_prompt: Prompt original do usuário
+            read_content: Lista de dicionários com command e content dos arquivos lidos
+        """
+        try:
+            # Constrói contexto com o conteúdo dos arquivos
+            file_context_parts = ["\n[FILES READ - INJECTED CONTENT:]"]
+            
+            for item in read_content:
+                file_context_parts.append(f"\n--- Output from: {item['command']} ---")
+                file_context_parts.append(item['content'])
+                file_context_parts.append("--- End of file content ---\n")
+            
+            file_context = '\n'.join(file_context_parts)
+            
+            # Cria prompt expandido com conteúdo dos arquivos
+            enhanced_prompt_with_files = f"""
+{original_prompt}
+
+{file_context}
+
+IMPORTANT: Use the file content above to provide a complete and accurate response to the original request.
+"""
+            
+            console.print("[dim]Sending enhanced prompt with file content to model...[/dim]")
+            
+            # Re-executa o prompt com o conteúdo dos arquivos
+            try:
+                full_response = ""
+                with console.status("[bold green]🔄 Processing with file content...", spinner="dots") as status:
+                    for chunk in self.api.generate(self.selected_model, enhanced_prompt_with_files):
+                        full_response += chunk
+            except KeyboardInterrupt:
+                console.print("\n[yellow]💡 Reprocessing interrupted by user[/yellow]")
+                return
+            
+            # Exibe a resposta final
+            console.print("\n[bold cyan]📋 Response with File Content:[/bold cyan]\n")
+            
+            # Processa novamente para tags especiais (recursivamente)
+            self._process_special_tags(full_response, original_prompt)
+            
+            # Exibe a resposta formatada
+            self._display_formatted_response(full_response)
+            
+        except Exception as e:
+            console.print(f"[red]Error reprocessing with file content: {e}[/red]")
+            if self.debug_mode:
+                import traceback
+                console.print(f"[dim]Debug traceback: {traceback.format_exc()}[/dim]")
     
     def session_command(self, args: str = ""):
         """
@@ -1396,10 +1462,14 @@ Enhanced Request:"""
         
         try:
             # Generate breakdown without showing the whole process
-            with console.status("[bold yellow]Analyzing and dividing into sub-tasks...", spinner="dots"):
-                breakdown_response = ""
-                for chunk in self.api.generate(self.selected_model, breakdown_prompt):
-                    breakdown_response += chunk
+            try:
+                with console.status("[bold yellow]Analyzing and dividing into sub-tasks...", spinner="dots"):
+                    breakdown_response = ""
+                    for chunk in self.api.generate(self.selected_model, breakdown_prompt):
+                        breakdown_response += chunk
+            except KeyboardInterrupt:
+                console.print("\n[yellow]💡 Task breakdown interrupted by user[/yellow]")
+                return
             
             # Extract tasks from response
             tasks = self.task_manager.parse_task_breakdown(breakdown_response)
@@ -1506,18 +1576,32 @@ Enhanced Request:"""
             
             # Se é tarefa de texto, mostra em tempo real
             if task_info['type'] == 'text':
-                with console.status("[bold green]Generating explanation...", spinner="dots") as status:
-                    for chunk in self.api.generate(self.selected_model, enhanced_prompt):
-                        full_response += chunk
+                try:
+                    with console.status("[bold green]Generating explanation...", spinner="dots") as status:
+                        for chunk in self.api.generate(self.selected_model, enhanced_prompt):
+                            full_response += chunk
+                except KeyboardInterrupt:
+                    console.print("\n[yellow]💡 Task generation interrupted by user[/yellow]")
+                    if full_response.strip():
+                        console.print("[dim]Processing partial response...[/dim]")
+                    else:
+                        return
                 
                 # Exibe como texto formatado
                 console.print("\n[bold cyan]Resposta:[/bold cyan]\n")
                 console.print(Panel(Markdown(full_response), border_style="cyan"))
             else:
                 # Para código/shell, usa processamento normal
-                with console.status("[bold green]Generating solution...", spinner="dots") as status:
-                    for chunk in self.api.generate(self.selected_model, enhanced_prompt):
-                        full_response += chunk
+                try:
+                    with console.status("[bold green]Generating solution...", spinner="dots") as status:
+                        for chunk in self.api.generate(self.selected_model, enhanced_prompt):
+                            full_response += chunk
+                except KeyboardInterrupt:
+                    console.print("\n[yellow]💡 Task generation interrupted by user[/yellow]")
+                    if full_response.strip():
+                        console.print("[dim]Processing partial response...[/dim]")
+                    else:
+                        return
                 
                 # Processa resposta normalmente
                 console.print("\n[bold cyan]Solution:[/bold cyan]\n")
@@ -2150,65 +2234,74 @@ mkdir new_project
             last_line = ""
             
             # Gera resposta com status dinâmico mostrando sempre a última linha
-            with console.status("[bold green]🤔 Thinking...", spinner="dots") as status:
-                for chunk in self.api.generate(self.selected_model, enhanced_prompt):
-                    full_response += chunk
-                    line_count += chunk.count('\n')
-                    
-                    # Extrai a última linha completa para mostrar no status
-                    lines = full_response.split('\n')
-                    if len(lines) > 1:
-                        # Pega a penúltima linha se ela for mais substancial
-                        last_line = lines[-2].strip() if lines[-2].strip() else lines[-1].strip()
-                    else:
-                        last_line = lines[0].strip()
-                    
-                    # Limita o tamanho da linha mostrada no status
-                    if len(last_line) > 80:
-                        display_line = last_line[:77] + "..."
-                    else:
-                        display_line = last_line
-                    
-                    # Atualiza status baseado no conteúdo com a última linha
-                    base_status = ""
-                    spinner_type = "dots"
-                    
-                    if '```' in chunk:
-                        code_count += 1
-                        if code_count % 2 == 1:
-                            base_status = "[bold yellow]💻 Writing code"
-                            spinner_type = "dots2"
+            try:
+                with console.status("[bold green]🤔 Thinking...", spinner="dots") as status:
+                    for chunk in self.api.generate(self.selected_model, enhanced_prompt):
+                        full_response += chunk
+                        line_count += chunk.count('\n')
+                        
+                        # Extrai a última linha completa para mostrar no status
+                        lines = full_response.split('\n')
+                        if len(lines) > 1:
+                            # Pega a penúltima linha se ela for mais substancial
+                            last_line = lines[-2].strip() if lines[-2].strip() else lines[-1].strip()
                         else:
-                            base_status = "[bold green]📝 Analyzing"
-                    elif len(full_response) > 100:
-                        # Determina status baseado no conteúdo
-                        if 'code' in full_response.lower() or 'function' in full_response or 'def ' in full_response:
-                            base_status = "[bold yellow]💻 Writing code"
-                            spinner_type = "dots2"
-                        elif 'error' in full_response.lower() or 'bug' in full_response.lower():
-                            base_status = "[bold red]🔍 Analyzing error"
-                            spinner_type = "dots3"
-                        elif 'test' in full_response.lower():
-                            base_status = "[bold blue]🧪 Preparing tests"
-                            spinner_type = "dots"
-                        elif '<actions>' in full_response.lower():
-                            base_status = "[bold cyan]⚡ Preparing commands"
-                            spinner_type = "dots2"
-                        elif '<code' in full_response.lower():
-                            base_status = "[bold yellow]📄 Creating files"
-                            spinner_type = "dots2"
+                            last_line = lines[0].strip()
+                        
+                        # Limita o tamanho da linha mostrada no status
+                        if len(last_line) > 80:
+                            display_line = last_line[:77] + "..."
                         else:
-                            base_status = "[bold green]🤔 Processing"
-                    else:
-                        base_status = "[bold green]🤔 Thinking"
-                    
-                    # Monta status completo com a última linha
-                    if display_line:
-                        status_text = f"{base_status}...\n[dim]💬 {display_line}[/dim]"
-                    else:
-                        status_text = f"{base_status}..."
-                    
-                    status.update(status_text, spinner=spinner_type)
+                            display_line = last_line
+                        
+                        # Atualiza status baseado no conteúdo com a última linha
+                        base_status = ""
+                        spinner_type = "dots"
+                        
+                        if '```' in chunk:
+                            code_count += 1
+                            if code_count % 2 == 1:
+                                base_status = "[bold yellow]💻 Writing code"
+                                spinner_type = "dots2"
+                            else:
+                                base_status = "[bold green]📝 Analyzing"
+                        elif len(full_response) > 100:
+                            # Determina status baseado no conteúdo
+                            if 'code' in full_response.lower() or 'function' in full_response or 'def ' in full_response:
+                                base_status = "[bold yellow]💻 Writing code"
+                                spinner_type = "dots2"
+                            elif 'error' in full_response.lower() or 'bug' in full_response.lower():
+                                base_status = "[bold red]🔍 Analyzing error"
+                                spinner_type = "dots3"
+                            elif 'test' in full_response.lower():
+                                base_status = "[bold blue]🧪 Preparing tests"
+                                spinner_type = "dots"
+                            elif '<actions>' in full_response.lower():
+                                base_status = "[bold cyan]⚡ Preparing commands"
+                                spinner_type = "dots2"
+                            elif '<code' in full_response.lower():
+                                base_status = "[bold yellow]📄 Creating files"
+                                spinner_type = "dots2"
+                            else:
+                                base_status = "[bold green]🤔 Processing"
+                        else:
+                            base_status = "[bold green]🤔 Thinking"
+                        
+                        # Monta status completo com a última linha
+                        if display_line:
+                            status_text = f"{base_status}...\n[dim]💬 {display_line}[/dim]"
+                        else:
+                            status_text = f"{base_status}..."
+                        
+                        status.update(status_text, spinner=spinner_type)
+            except KeyboardInterrupt:
+                console.print("\n[yellow]💡 Response generation interrupted by user[/yellow]")
+                # Use any partial response received so far
+                if full_response.strip():
+                    console.print("[dim]Processing partial response...[/dim]")
+                else:
+                    console.print("[dim]No response generated[/dim]")
+                    return
             
             # Exibe resposta completa formatada
             console.print("\n[bold cyan]Assistente:[/bold cyan]\n")
