@@ -94,7 +94,7 @@ class XandAICLI:
         self.selected_model = None
         self.history_file = Path.home() / ".xandai_history"
         self.auto_execute_shell = True  # Flag for automatic command execution
-        self.enhance_prompts = True     # Flag para melhorar prompts automaticamente
+        self.enhance_prompts = True     # Flag to improve prompts automatically
         self.better_prompting = True    # Flag for better prompting system
         self.commands = {
             '/help': self.show_help,
@@ -132,13 +132,13 @@ class XandAICLI:
     def toggle_shell_execution(self):
         """Toggles automatic shell command execution"""
         self.auto_execute_shell = not self.auto_execute_shell
-        status = "ativada" if self.auto_execute_shell else "desativada"
+        status = "enabled" if self.auto_execute_shell else "disabled"
         console.print(f"[green]✓ Automatic shell command execution {status}[/green]")
     
     def toggle_prompt_enhancement(self):
         """Toggles automatic prompt enhancement"""
         self.enhance_prompts = not self.enhance_prompts
-        status = "ativada" if self.enhance_prompts else "desativada"
+        status = "enabled" if self.enhance_prompts else "disabled"
         console.print(f"[green]✓ Automatic prompt enhancement {status}[/green]")
     
     def flush_context(self):
@@ -322,7 +322,7 @@ Enhanced Request:"""
                     lang_line = lines[0][3:].strip()
                     code_content = '\n'.join(lines[1:-1])
                     
-                    # Detecta linguagem
+                    # Detect language
                     lang = lang_line if lang_line else 'text'
                     
                     # Mapeia linguagens comuns
@@ -1317,8 +1317,8 @@ Enhanced Request:"""
             console.print("[red]No model selected. Use /models to select one.[/red]")
             return
         
-        console.print("\n[bold blue]🎯 Modo de Tarefa Complexa Ativado[/bold blue]")
-        console.print(f"[dim]Analisando: {args}[/dim]\n")
+        console.print("\n[bold blue]🎯 Complex Task Mode Activated[/bold blue]")
+        console.print(f"[dim]Analyzing: {args}[/dim]\n")
         
         # Step 1: Apply better prompting to enhance task description
         enhanced_args = args
@@ -1328,23 +1328,23 @@ Enhanced Request:"""
             if hasattr(self.prompt_enhancer, 'add_to_context_history'):
                 self.prompt_enhancer.add_to_context_history("user", f"Task: {args}")
         
-        # Detecta linguagem e framework na requisição melhorada
+        # Detect language and framework in enhanced request
         self.task_manager.detect_and_update_context(enhanced_args)
         
-        # Passo 1: Pedir ao modelo para quebrar em sub-tarefas usando a versão melhorada
+        # Step 1: Ask model to break down into sub-tasks using improved version
         breakdown_prompt = self.task_manager.get_breakdown_prompt(enhanced_args)
         
         try:
-            # Gera breakdown sem mostrar todo o processo
-            with console.status("[bold yellow]Analisando e dividindo em sub-tarefas...", spinner="dots"):
+            # Generate breakdown without showing the whole process
+            with console.status("[bold yellow]Analyzing and dividing into sub-tasks...", spinner="dots"):
                 breakdown_response = ""
                 for chunk in self.api.generate(self.selected_model, breakdown_prompt):
                     breakdown_response += chunk
             
-            # Extrai tarefas da resposta
+            # Extract tasks from response
             tasks = self.task_manager.parse_task_breakdown(breakdown_response)
             
-            # Detecta linguagem e framework no breakdown também
+            # Detect language and framework in breakdown too
             self.task_manager.detect_and_update_context(breakdown_response)
             
             if not tasks:
@@ -1359,63 +1359,63 @@ Enhanced Request:"""
             console.print("[bold green]✅ Execution Plan Created![/bold green]\n")
             self.task_manager.display_task_progress()
             
-            # Conta tarefas essenciais e opcionais
+            # Count essential and optional tasks
             essential_count = sum(1 for t in tasks if t.get('priority', 'essential') == 'essential')
             optional_count = sum(1 for t in tasks if t.get('priority') == 'optional')
             
-            console.print(f"\n[bold]📊 Resumo:[/bold]")
-            console.print(f"   [green]Essenciais: {essential_count} tarefas[/green]")
-            console.print(f"   [yellow]Opcionais: {optional_count} tarefas[/yellow]")
+            console.print(f"\n[bold]📊 Summary:[/bold]")
+            console.print(f"   [green]Essential: {essential_count} tasks[/green]")
+            console.print(f"   [yellow]Optional: {optional_count} tasks[/yellow]")
             
-            # Menu de escolha
+            # Choice menu
             console.print("\n[bold cyan]Choose an option:[/bold cyan]")
-            console.print("  1. Executar apenas tarefas ESSENCIAIS")
-            console.print("  2. Executar TODAS as tarefas (essenciais + opcionais)")
-            console.print("  3. Cancelar")
+            console.print("  1. Execute ESSENTIAL tasks only")
+            console.print("  2. Execute ALL tasks (essential + optional)")
+            console.print("  3. Cancel")
             
-            choice = console.input("\n[cyan]Sua escolha (1/2/3): [/cyan]")
+            choice = console.input("\n[cyan]Your choice (1/2/3): [/cyan]")
             
             if choice == '1':
-                # Filtra apenas tarefas essenciais
+                # Filter only essential tasks
                 tasks_to_execute = [t for t in tasks if t.get('priority', 'essential') == 'essential']
-                console.print(f"\n[green]✓ Executando {len(tasks_to_execute)} tarefas essenciais[/green]")
+                console.print(f"\n[green]✓ Executing {len(tasks_to_execute)} essential tasks[/green]")
             elif choice == '2':
-                # Executa todas as tarefas
+                # Execute all tasks
                 tasks_to_execute = tasks
-                console.print(f"\n[green]✓ Executando todas as {len(tasks_to_execute)} tarefas[/green]")
+                console.print(f"\n[green]✓ Executing all {len(tasks_to_execute)} tasks[/green]")
             else:
                 console.print("[yellow]Execution cancelled.[/yellow]")
                 return
             
             console.print("\n[bold blue]🚀 Starting task execution...[/bold blue]\n")
             
-            # Passo 2: Executar cada tarefa
+            # Step 2: Execute each task
             for i, task in enumerate(tasks_to_execute):
-                priority_indicator = "[ESSENCIAL]" if task.get('priority', 'essential') == 'essential' else "[OPCIONAL]"
-                console.print(f"\n[bold yellow]━━━ Tarefa {i+1}/{len(tasks_to_execute)} {priority_indicator} ━━━[/bold yellow]")
+                priority_indicator = "[ESSENTIAL]" if task.get('priority', 'essential') == 'essential' else "[OPTIONAL]"
+                console.print(f"\n[bold yellow]━━━ Task {i+1}/{len(tasks_to_execute)} {priority_indicator} ━━━[/bold yellow]")
                 console.print(f"[cyan]{task['description']}[/cyan]")
-                console.print(f"[dim]Tipo detectado: {task['type']}[/dim]\n")
+                console.print(f"[dim]Detected type: {task['type']}[/dim]\n")
                 
-                # Atualiza status
+                # Update status
                 task['status'] = 'in_progress'
                 self.task_manager.display_task_progress()
                 
-                # Cria prompt específico para a tarefa
+                # Create specific prompt for the task
                 task_prompt = self.task_manager.format_task_prompt(task, context=args)
                 
-                # Executa a tarefa
-                console.print("\n[dim]Executando tarefa...[/dim]")
+                # Execute the task
+                console.print("\n[dim]Executing task...[/dim]")
                 self._execute_task(task_prompt, task)
                 
-                # Marca como completa
+                # Mark as completed
                 task['status'] = 'completed'
                 self.task_manager.completed_tasks.append(task)
                 
-                # Pequena pausa entre tarefas
+                # Small pause between tasks
                 if i < len(tasks) - 1:
                     console.print("\n[dim]Preparing next task...[/dim]")
             
-            # Mostra resumo final
+            # Show final summary
             console.print("\n[bold green]🎉 All tasks completed![/bold green]")
             self.task_manager.display_task_progress()
             
@@ -1431,7 +1431,7 @@ Enhanced Request:"""
             task_info: Informações da tarefa
         """
         try:
-            # Se melhorias estão ativadas, aplica ao task prompt também
+            # If enhancements are enabled, apply to task prompt too
             if self.enhance_prompts:
                 enhanced_prompt = self.prompt_enhancer.enhance_prompt(
                     task_prompt,
@@ -1657,12 +1657,12 @@ mkdir new_project
                 
             elif subcommand == "read":
                 if len(parts) < 2:
-                    console.print("[red]Uso: /file read <caminho>[/red]")
+                    console.print("[red]Usage: /file read <path>[/red]")
                     return
                 filepath = self._resolve_file_path(parts[1], current_dir)
                 content = self.file_ops.read_file(filepath)
                 
-                # Detecta linguagem pela extensão
+                # Detect language by extension
                 lang = Path(filepath).suffix.lstrip('.')
                 if lang in ['py', 'python']:
                     lang = 'python'
