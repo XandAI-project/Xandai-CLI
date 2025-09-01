@@ -5,7 +5,7 @@ Interface CLI principal do XandAI
 import sys
 import os
 import re
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
@@ -566,6 +566,235 @@ Enhanced Request:"""
         
         return resolved_path
     
+    def _extract_code_blocks(self, response: str) -> List[Tuple[str, str]]:
+        """
+        Extrai blocos de código da resposta com melhor tratamento de erros
+        
+        Args:
+            response: Resposta do modelo
+            
+        Returns:
+            Lista de tuplas (filename, code_content)
+        """
+        code_blocks = []
+        
+        # Padrão mais robusto para tags code
+        pattern = r'<code\s+filename\s*=\s*["\']([^"\']+)["\']>\s*(.*?)\s*</code>'
+        
+        # Primeiro, tenta o padrão padrão
+        matches = re.findall(pattern, response, re.DOTALL | re.IGNORECASE)
+        
+        if matches:
+            for filename, content in matches:
+                # Valida o filename
+                clean_filename = filename.strip()
+                if clean_filename and self._is_valid_filename(clean_filename):
+                    code_blocks.append((clean_filename, content))
+                else:
+                    console.print(f"[yellow]⚠️  Invalid filename skipped: {filename}[/yellow]")
+        
+        # Se não encontrou nada, tenta padrões alternativos para tags mal formatadas
+        if not code_blocks:
+            # Busca por tags incompletas ou mal fechadas
+            alt_pattern = r'<code\s+filename\s*=\s*["\']([^"\']+)["\']>\s*(.*?)(?:</code>|$)'
+            alt_matches = re.findall(alt_pattern, response, re.DOTALL | re.IGNORECASE)
+            
+            for filename, content in alt_matches:
+                clean_filename = filename.strip()
+                if clean_filename and self._is_valid_filename(clean_filename):
+                    # Remove possível texto misturado após o código
+                    cleaned_content = self._remove_mixed_content(content)
+                    code_blocks.append((clean_filename, cleaned_content))
+        
+        return code_blocks
+    
+    def _is_valid_filename(self, filename: str) -> bool:
+        """
+        Verifica se um nome de arquivo é válido
+        
+        Args:
+            filename: Nome do arquivo
+            
+        Returns:
+            True se o filename for válido
+        """
+        if not filename or len(filename.strip()) == 0:
+            return False
+        
+        # Caracteres inválidos para nomes de arquivo
+        invalid_chars = ['<', '>', ':', '"', '|', '?', '*']
+        for char in invalid_chars:
+            if char in filename:
+                return False
+        
+        # Verifica se tem extensão válida
+        if '.' not in filename:
+            return False
+        
+        # Verifica se não é muito longo
+        if len(filename) > 255:
+            return False
+        
+        return True
+    
+    def _remove_mixed_content(self, content: str) -> str:
+        """
+        Remove conteúdo misturado após o código (como tags HTML ou texto descritivo)
+        
+        Args:
+            content: Conteúdo bruto
+            
+        Returns:
+            Conteúdo limpo
+        """
+        lines = content.split('\n')
+        clean_lines = []
+        
+        for line in lines:
+            # Para se encontrar uma tag HTML que não seja código
+            if re.match(r'^\s*<[/]?(code|actions|read)\b', line, re.IGNORECASE):
+                break
+            
+            # Para se encontrar texto descritivo típico (frases em inglês)
+            if re.match(r'^\s*(Now I\'ll|First|Next|Then|Let me|I\'ll)', line, re.IGNORECASE):
+                break
+            
+            clean_lines.append(line)
+        
+        return '\n'.join(clean_lines)
+    
+    def _clean_code_content(self, content: str) -> str:
+        """
+        Limpa o conteúdo do código removendo espaços desnecessários e validando
+        
+        Args:
+            content: Conteúdo bruto do código
+            
+        Returns:
+            Código limpo
+        """
+        if not content:
+            return ""
+        
+        # Remove espaços em branco no início e fim
+        cleaned = content.strip()
+        
+        # Remove possíveis caracteres de controle
+        cleaned = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', cleaned)
+        
+        # Verifica se o conteúdo parece ser código válido
+        if self._is_likely_code(cleaned):
+            return cleaned
+        else:
+            # Se não parece código, tenta extrair apenas a parte que parece código
+            return self._extract_code_portion(cleaned)
+    
+    def _is_likely_code(self, content: str) -> bool:
+        """
+        Verifica se o conteúdo parece ser código válido
+        
+        Args:
+            content: Conteúdo a verificar
+            
+        Returns:
+            True se parece ser código
+        """
+        if not content.strip():
+            return False
+        
+        # Indicadores de código válido
+        code_indicators = [
+            r'import\s+\w+',  # Python imports
+            r'from\s+\w+\s+import',  # Python imports
+            r'function\s+\w+',  # JavaScript functions
+            r'const\s+\w+',  # JavaScript/TypeScript
+            r'let\s+\w+',  # JavaScript/TypeScript
+            r'interface\s+\w+',  # TypeScript
+            r'class\s+\w+',  # Classes
+            r'def\s+\w+',  # Python functions
+            r'<\w+[^>]*>',  # HTML/JSX tags
+            r'{\s*\w+',  # Object syntax
+            r'export\s+(default\s+)?',  # ES6 exports
+        ]
+        
+        for pattern in code_indicators:
+            if re.search(pattern, content, re.MULTILINE):
+                return True
+        
+        return False
+    
+    def _extract_code_portion(self, content: str) -> str:
+        """
+        Extrai apenas a porção que parece ser código válido
+        
+        Args:
+            content: Conteúdo misto
+            
+        Returns:
+            Apenas a parte que parece código
+        """
+        lines = content.split('\n')
+        code_lines = []
+        found_code_start = False
+        
+        for line in lines:
+            # Se encontrou início de código
+            if not found_code_start and self._line_looks_like_code(line):
+                found_code_start = True
+                code_lines.append(line)
+            elif found_code_start:
+                # Se já está em código, para quando encontrar texto descritivo
+                if self._line_looks_like_description(line):
+                    break
+                code_lines.append(line)
+        
+        return '\n'.join(code_lines)
+    
+    def _line_looks_like_code(self, line: str) -> bool:
+        """Verifica se uma linha parece código"""
+        line = line.strip()
+        if not line:
+            return False
+        
+        # Padrões que indicam código
+        code_patterns = [
+            r'^import\s+',
+            r'^from\s+',
+            r'^export\s+',
+            r'^const\s+',
+            r'^let\s+',
+            r'^var\s+',
+            r'^function\s+',
+            r'^class\s+',
+            r'^def\s+',
+            r'^interface\s+',
+            r'^type\s+',
+            r'^\w+\s*=',
+            r'^<\w+',
+            r'^\/\/',
+            r'^\/\*',
+            r'^#',
+            r'^\s*{',
+            r'^\s*}',
+        ]
+        
+        return any(re.match(pattern, line) for pattern in code_patterns)
+    
+    def _line_looks_like_description(self, line: str) -> bool:
+        """Verifica se uma linha parece descrição em texto natural"""
+        line = line.strip()
+        if not line:
+            return False
+        
+        # Padrões que indicam texto descritivo
+        desc_patterns = [
+            r'^(Now|First|Next|Then|Finally|Let me|I\'ll|This)',
+            r'^<[/]?(actions|read|code)\b',
+            r'\w+\s+(will|can|should|might|creates?|updates?|modifies?)',
+        ]
+        
+        return any(re.match(pattern, line, re.IGNORECASE) for pattern in desc_patterns)
+    
     def _is_valid_command_syntax(self, command: str) -> bool:
         """
         Verifica se um comando tem sintaxe válida
@@ -910,19 +1139,23 @@ Enhanced Request:"""
                         self.process_prompt(error_prompt)
                         self.auto_execute_shell = temp_auto_execute
         
-        # Processa tags <code>
-        code_matches = re.findall(r'<code\s+filename=["\']([^"\']+)["\']>(.*?)</code>', response, re.DOTALL | re.IGNORECASE)
-        if code_matches:
-            console.print(f"\n[bold green]💾 Criando {len(code_matches)} arquivo(s)...[/bold green]")
+        # Processa tags <code> com melhor tratamento
+        code_blocks = self._extract_code_blocks(response)
+        if code_blocks:
+            console.print(f"\n[bold green]💾 Criando {len(code_blocks)} arquivo(s)...[/bold green]")
             processed_something = True
             
             created_count = 0
             current_dir = Path(self.shell_exec.get_current_directory())
             
-            for filename, code_content in code_matches:
+            for filename, code_content in code_blocks:
                 try:
-                    # Remove espaços em branco desnecessários
-                    clean_code = code_content.strip()
+                    # Remove espaços em branco desnecessários e valida o conteúdo
+                    clean_code = self._clean_code_content(code_content)
+                    
+                    if not clean_code.strip():
+                        console.print(f"[yellow]⚠️  Skipping empty file: {filename}[/yellow]")
+                        continue
                     
                     # Resolve caminho do arquivo relativo ao diretório atual
                     file_path = self._resolve_file_path(filename, current_dir)
