@@ -1334,13 +1334,14 @@ Enhanced Request:"""
                 if saved_count > 0:
                     console.print(f"[green]✓ {saved_count} file(s) saved[/green]")
     
-    def _process_special_tags(self, response: str, original_prompt: str):
+    def _process_special_tags(self, response: str, original_prompt: str, skip_read_tags: bool = False):
         """
         Processa tags especiais na resposta: <actions>, <read>, <code>
         
         Args:
             response: Resposta completa do modelo
             original_prompt: Prompt original do usuário
+            skip_read_tags: Se True, pula processamento de tags <read> para evitar loop infinito
         """
         processed_something = False
         
@@ -1422,9 +1423,18 @@ Enhanced Request:"""
                         self.process_prompt(error_prompt)
                         self.auto_execute_shell = temp_auto_execute
         
-        # Processa tags <read>
-        read_blocks = re.findall(r'<read>(.*?)</read>', response, re.DOTALL | re.IGNORECASE)
-        read_content = []  # Acumula conteúdo lido para injetar no contexto
+        # Processa tags <read> (only if not skipping to avoid infinite loop)
+        if not skip_read_tags:
+            read_blocks = re.findall(r'<read>(.*?)</read>', response, re.DOTALL | re.IGNORECASE)
+            read_content = []  # Acumula conteúdo lido para injetar no contexto
+        else:
+            read_blocks = []
+            read_content = []
+            # Check if response contains read tags that we're skipping
+            skipped_reads = re.findall(r'<read>(.*?)</read>', response, re.DOTALL | re.IGNORECASE)
+            if skipped_reads:
+                console.print(f"[dim]🔄 Skipping {len(skipped_reads)} read tag(s) to prevent infinite loop[/dim]")
+            
         if read_blocks:
             console.print("\n[bold blue]📖 Reading files...[/bold blue]")
             processed_something = True
@@ -2752,7 +2762,7 @@ mkdir new_project
                 if read_response.strip():
                     console.print("\n[bold cyan]Response:[/bold cyan]\n")
                     self._display_formatted_response(read_response)
-                    self._process_special_tags(read_response, prompt_text)
+                    self._process_special_tags(read_response, prompt_text, skip_read_tags=True)
                     return
             
             # Normal flow: Generate response without read-first requirement
@@ -3080,8 +3090,8 @@ CRITICAL RULES:
             # Exibe a resposta final
             console.print("\n[bold cyan]Response:[/bold cyan]\n")
             
-            # Processa resposta para tags especiais
-            implementation_found = self._process_special_tags(full_response, original_prompt)
+            # Processa resposta para tags especiais (skip read tags to avoid infinite loop)
+            implementation_found = self._process_special_tags(full_response, original_prompt, skip_read_tags=True)
             
             # Se ainda não há implementação, avisa o usuário
             if not implementation_found:

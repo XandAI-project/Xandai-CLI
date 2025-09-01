@@ -252,7 +252,6 @@ CRITICAL REQUIREMENTS:
                 # Se não há conteúdo de arquivos, usa prompt melhorado normal
                 enhanced_prompt_with_files = working_prompt
             
-            console.print(f"[green]🔄 Re-processing with file content...[/green]")
             
             # Gera resposta final com conteúdo dos arquivos
             full_response = ""
