@@ -3614,6 +3614,56 @@ CRITICAL RULES:
 - Provide clean, executable code without embedded documentation
 """
     
+    def _should_add_read_first_instruction(self, prompt: str) -> bool:
+        """
+        Determines if we should add read-first instruction based on prompt analysis
+        
+        Args:
+            prompt: The prompt to analyze
+            
+        Returns:
+            bool: True if should add read-first instruction
+        """
+        if not prompt:
+            return False
+        
+        prompt_lower = prompt.lower()
+        
+        # Keywords that indicate need to read files first
+        read_indicators = [
+            'fix', 'debug', 'error', 'bug', 'issue', 'problem',
+            'update', 'modify', 'change', 'edit', 'refactor',
+            'analyze', 'review', 'check', 'examine', 'inspect',
+            'improve', 'optimize', 'enhance', 'adjust',
+            'add to', 'remove from', 'delete from',
+            'current', 'existing', 'this file', 'this code',
+            'in the', 'from the', 'to the'
+        ]
+        
+        # Check if prompt contains read indicators
+        has_read_indicators = any(indicator in prompt_lower for indicator in read_indicators)
+        
+        # Keywords that indicate creating new things (might not need reading)
+        create_indicators = [
+            'create new', 'build new', 'generate new', 'make a new',
+            'start from scratch', 'from scratch', 'new project',
+            'new app', 'new application'
+        ]
+        
+        # Check if prompt is about creating new things
+        has_create_indicators = any(indicator in prompt_lower for indicator in create_indicators)
+        
+        # If it's clearly about creating new things, might not need reading
+        if has_create_indicators and not has_read_indicators:
+            return False
+        
+        # If it has read indicators, definitely need reading
+        if has_read_indicators:
+            return True
+        
+        # For ambiguous cases in edit mode, err on the side of reading
+        return True
+    
     def _add_read_first_instruction(self, prompt: str, force_read: bool = False) -> tuple[str, bool]:
         """
         Adds instruction to always start with <read> except when there's already file context

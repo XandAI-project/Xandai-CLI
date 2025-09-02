@@ -1,7 +1,7 @@
 {
   "id": "conv_20250902_154433",
   "created_at": "2025-09-02T15:44:33.536502",
-  "last_updated": "2025-09-02T15:47:28.446159",
+  "last_updated": "2025-09-02T15:47:28.436604",
   "messages": [
     {
       "id": "25bf0c23-46a5-4726-bb95-5e363de395e0",
@@ -57,30 +57,10 @@
       "model_used": null,
       "working_directory": null,
       "session_id": "conv_20250902_154433"
-    },
-    {
-      "id": "bb44aed5-3200-4cc9-b8dc-18dcbc4e3706",
-      "role": "user",
-      "content": "Subtask 1/8: Create main HTML structure with Bootstrap 5 framework including model dropdown, chat history display, input area, and send button",
-      "timestamp": "2025-09-02T15:47:28.446159",
-      "tokens": 33,
-      "message_type": "conversation",
-      "tool_calls": [],
-      "tool_results": [],
-      "metadata": {
-        "type": "subtask_start",
-        "task_index": 1,
-        "total_tasks": 8,
-        "priority": "essential",
-        "task_type": "code"
-      },
-      "model_used": "hf.co/unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF:IQ4_XS",
-      "working_directory": null,
-      "session_id": "conv_20250902_154433"
     }
   ],
   "summaries": [],
   "metadata": {},
-  "total_tokens": 579,
-  "total_messages": 4
+  "total_tokens": 546,
+  "total_messages": 3
 }

@@ -659,7 +659,7 @@ class TaskManager:
     
     def get_breakdown_prompt(self, original_request: str) -> str:
         """
-        Creates prompt to break task into sub-tasks
+        Creates prompt to break task into sub-tasks with intelligent project type detection
         
         Args:
             original_request: User's original request
@@ -670,47 +670,148 @@ class TaskManager:
         # Save original request in global context
         self.global_context['original_request'] = original_request
         
-        return f"""[Task Breakdown Request]
+        # *** NEW: Analyze project type from request ***
+        project_type = self._detect_project_type(original_request)
+        
+        base_prompt = f"""[INTELLIGENT TASK BREAKDOWN REQUEST]
 
-Please analyze the following request and break it down into smaller, specific tasks:
+Please carefully analyze the following request and break it down into smaller, specific tasks:
 
 <request>
 {original_request}
 </request>
 
-IMPORTANT: 
-1. THE FIRST TASK SHOULD ALWAYS BE:
-   1. [ESSENTIAL] Create Documentation.md file with complete project scope
+🎯 **CRITICAL ANALYSIS REQUIREMENTS:**
 
-2. MARK EACH TASK AS [ESSENTIAL] or [OPTIONAL]:
-   - [ESSENTIAL]: Fundamental tasks for basic functionality
-   - [OPTIONAL]: Improvements, optimizations, extra features
+1. **PROJECT TYPE DETECTION**: First determine what type of project this is:
+   - Frontend/Client-side (HTML/CSS/JS, React, Vue, static sites)
+   - Backend/Server-side (APIs, databases, server applications)
+   - Fullstack (both frontend and backend components)
+   - Desktop/Mobile application
+   - Data/Script/Tool (utility scripts, data processing)
 
-CRITERIA FOR ESSENTIAL TASKS:
-- Basic project structure
-- Environment configuration
-- Main functionalities
-- Data models
-- Basic authentication/security
-- Main APIs
+2. **INTELLIGENT TASK PRIORITIZATION**:
+   - [ESSENTIAL]: Core tasks needed for basic functionality
+   - [OPTIONAL]: Enhancements, optimizations, extra features
 
-CRITERIA FOR OPTIONAL TASKS:
-- Unit tests
-- Performance optimizations
-- Cache
-- Advanced logging
-- Additional documentation
-- Extra/advanced features
+🚨 **AVOID COMMON MISTAKES:**
 
-Expected format:
-1. [ESSENTIAL] Create Documentation.md file with complete project scope
-2. [ESSENTIAL] Configure environment and install dependencies
-3. [ESSENTIAL] Create basic project structure
-4. [OPTIONAL] Add unit tests
-5. [OPTIONAL] Implement cache system
-...
+- Do NOT assume backend frameworks (Flask/Django) unless explicitly mentioned
+- Do NOT force documentation files unless specifically requested
+- Do NOT suggest irrelevant dependencies or setup steps
+- Do NOT create generic backend tasks for frontend-only projects
+- CAREFULLY read what the user actually wants
 
-Be clear and direct. Mark ALL tasks with [ESSENTIAL] or [OPTIONAL]."""
+📋 **TASK BREAKDOWN EXAMPLES BY PROJECT TYPE:**
+
+**For Frontend/Client-side projects:**
+1. [ESSENTIAL] Create main HTML structure
+2. [ESSENTIAL] Implement CSS styling with [specified framework]
+3. [ESSENTIAL] Add JavaScript functionality for [specific features]
+4. [ESSENTIAL] Test basic functionality
+5. [OPTIONAL] Add responsive design improvements
+
+**For Backend/API projects:**
+1. [ESSENTIAL] Setup project structure and dependencies
+2. [ESSENTIAL] Create main application file
+3. [ESSENTIAL] Implement core API endpoints
+4. [ESSENTIAL] Add basic error handling
+5. [OPTIONAL] Add comprehensive testing
+
+**For Fullstack projects:**
+1. [ESSENTIAL] Create frontend interface
+2. [ESSENTIAL] Setup backend API
+3. [ESSENTIAL] Implement data flow between frontend/backend
+4. [ESSENTIAL] Test integration
+5. [OPTIONAL] Add advanced features
+
+🎯 **CURRENT REQUEST CONTEXT:**
+- Detected Language: {self.global_context.get('language', 'Not detected')}
+- Detected Framework: {self.global_context.get('framework', 'Not detected')}
+- Working Directory: {self.global_context.get('working_directory', 'Current folder')}
+
+📝 **OUTPUT FORMAT:**
+- Number each task clearly (1, 2, 3...)
+- Mark priority level [ESSENTIAL] or [OPTIONAL] 
+- Be specific and actionable
+- Focus on what user actually requested
+- Avoid assumptions about technologies not mentioned
+
+Generate ONLY the numbered task list. Be precise and relevant to the actual request."""
+        
+        return base_prompt
+    
+    def _detect_project_type(self, request_text: str) -> str:
+        """
+        Intelligently detects the project type from user request
+        
+        Args:
+            request_text: User's original request
+            
+        Returns:
+            Detected project type
+        """
+        request_lower = request_text.lower()
+        
+        # Frontend/Client-side indicators
+        frontend_indicators = [
+            'html', 'css', 'javascript', 'js', 'frontend', 'client-side', 'browser',
+            'web page', 'website', 'landing page', 'ui', 'user interface',
+            'bootstrap', 'tailwind', 'react', 'vue', 'angular', 'svelte',
+            'single page', 'spa', 'static site', 'web app interface',
+            'chat interface', 'web-based', 'responsive design', 'self-contained html'
+        ]
+        
+        # Backend/Server-side indicators
+        backend_indicators = [
+            'api', 'backend', 'server', 'database', 'db', 'rest api',
+            'endpoint', 'flask', 'django', 'express', 'fastapi',
+            'microservice', 'web service', 'crud', 'authentication',
+            'postgresql', 'mysql', 'mongodb', 'redis', 'docker'
+        ]
+        
+        # Fullstack indicators
+        fullstack_indicators = [
+            'full stack', 'fullstack', 'complete application', 'end-to-end',
+            'with database', 'frontend and backend', 'client and server'
+        ]
+        
+        # Mobile/Desktop indicators
+        mobile_desktop_indicators = [
+            'mobile app', 'android', 'ios', 'react native', 'flutter',
+            'desktop app', 'electron', 'tkinter', 'wpf', 'swing'
+        ]
+        
+        # Data/Script/Tool indicators
+        data_script_indicators = [
+            'script', 'automation', 'data processing', 'analysis',
+            'scraping', 'csv', 'json', 'xml', 'parse', 'process data',
+            'cli tool', 'command line', 'batch', 'cron job'
+        ]
+        
+        # Count matches for each category
+        frontend_score = sum(1 for indicator in frontend_indicators if indicator in request_lower)
+        backend_score = sum(1 for indicator in backend_indicators if indicator in request_lower)
+        fullstack_score = sum(1 for indicator in fullstack_indicators if indicator in request_lower)
+        mobile_desktop_score = sum(1 for indicator in mobile_desktop_indicators if indicator in request_lower)
+        data_script_score = sum(1 for indicator in data_script_indicators if indicator in request_lower)
+        
+        # Determine project type based on scores
+        if fullstack_score > 0 or (frontend_score > 0 and backend_score > 0):
+            return "fullstack"
+        elif frontend_score >= backend_score and frontend_score > 0:
+            return "frontend"
+        elif backend_score > 0:
+            return "backend"
+        elif mobile_desktop_score > 0:
+            return "mobile_desktop"
+        elif data_script_score > 0:
+            return "data_script"
+        else:
+            # Default based on context clues
+            if any(word in request_lower for word in ['create', 'build', 'make']) and any(word in request_lower for word in ['web', 'site', 'page', 'interface']):
+                return "frontend"
+            return "general"
     
     def should_display_as_text(self, response: str) -> bool:
         """
@@ -770,16 +871,15 @@ Be clear and direct. Mark ALL tasks with [ESSENTIAL] or [OPTIONAL]."""
                     console.print(f"[dim]🔍 Language detected: {lang}[/dim]")
                     break
         
-        # Detect framework if not yet detected
+        # *** IMPROVED: Contextual framework detection ***
         if not self.global_context['framework']:
-            frameworks = {
+            project_type = self._detect_project_type(text)
+            
+            # Backend frameworks - only detect if context suggests backend development
+            backend_frameworks = {
                 'django': 'Django',
-                'flask': 'Flask',
+                'flask': 'Flask', 
                 'fastapi': 'FastAPI',
-                'react': 'React',
-                'vue': 'Vue',
-                'angular': 'Angular',
-                'next': 'Next.js',
                 'express': 'Express',
                 'spring': 'Spring',
                 'laravel': 'Laravel',
@@ -788,8 +888,32 @@ Be clear and direct. Mark ALL tasks with [ESSENTIAL] or [OPTIONAL]."""
                 'symfony': 'Symfony'
             }
             
-            for fw_key, fw_name in frameworks.items():
-                if fw_key in text_lower:
-                    self.global_context['framework'] = fw_name
-                    console.print(f"[dim]🔍 Framework detected: {fw_name}[/dim]")
-                    break
+            # Frontend frameworks - detect if context suggests frontend development  
+            frontend_frameworks = {
+                'react': 'React',
+                'vue': 'Vue',
+                'angular': 'Angular',
+                'next': 'Next.js',
+                'svelte': 'Svelte',
+                'bootstrap': 'Bootstrap',
+                'tailwind': 'Tailwind CSS'
+            }
+            
+            # Only check backend frameworks if project appears to be backend/fullstack
+            if project_type in ['backend', 'fullstack', 'general']:
+                for fw_key, fw_name in backend_frameworks.items():
+                    if fw_key in text_lower:
+                        # Extra validation: make sure it's not just a random mention
+                        context_indicators = ['use', 'with', 'using', 'build', 'create', 'implement', 'framework', 'api']
+                        if any(indicator in text_lower for indicator in context_indicators):
+                            self.global_context['framework'] = fw_name
+                            console.print(f"[dim]🔍 Framework detected: {fw_name}[/dim]")
+                            break
+            
+            # Check frontend frameworks if project appears to be frontend/fullstack
+            if project_type in ['frontend', 'fullstack', 'general'] and not self.global_context['framework']:
+                for fw_key, fw_name in frontend_frameworks.items():
+                    if fw_key in text_lower:
+                        self.global_context['framework'] = fw_name
+                        console.print(f"[dim]🔍 Framework detected: {fw_name}[/dim]")
+                        break
