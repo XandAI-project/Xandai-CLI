@@ -1,7 +1,7 @@
 {
   "id": "conv_20250902_164925",
   "created_at": "2025-09-02T16:49:25.902245",
-  "last_updated": "2025-09-02T17:26:41.874075",
+  "last_updated": "2025-09-02T17:26:41.864031",
   "messages": [
     {
       "id": "4e57b5d2-dadf-4fa1-99d5-5378d76ad6ec",
@@ -183,30 +183,10 @@
       "model_used": null,
       "working_directory": null,
       "session_id": "conv_20250902_164925"
-    },
-    {
-      "id": "c57aa1db-11d3-475b-ac0c-57dc71bfae57",
-      "role": "user",
-      "content": "Subtask 3/14: Add model selection dropdown populated dynamically from Ollama API",
-      "timestamp": "2025-09-02T17:26:41.874075",
-      "tokens": 16,
-      "message_type": "conversation",
-      "tool_calls": [],
-      "tool_results": [],
-      "metadata": {
-        "type": "subtask_start",
-        "task_index": 3,
-        "total_tasks": 14,
-        "priority": "essential",
-        "task_type": "code"
-      },
-      "model_used": "hf.co/unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF:IQ4_XS",
-      "working_directory": null,
-      "session_id": "conv_20250902_164925"
     }
   ],
   "summaries": [],
   "metadata": {},
-  "total_tokens": 1552,
-  "total_messages": 10
+  "total_tokens": 1536,
+  "total_messages": 9
 }
