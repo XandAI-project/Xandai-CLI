@@ -97,6 +97,11 @@ class ShellExecutor:
             Tuple (success, output/error)
         """
         try:
+            # *** NEW: Special handling for type command - first dir, then type files ***
+            original_command = command.strip()
+            if self._should_enhance_type_command(original_command):
+                return self._execute_enhanced_type_command(original_command)
+            
             # Converte comando para o OS apropriado
             command = self.convert_command(command)
             
@@ -417,3 +422,127 @@ class ShellExecutor:
                 return f"Linux ({platform.version()})"
         else:
             return f"{self.system} ({platform.version()})"
+    
+    def _should_enhance_type_command(self, command: str) -> bool:
+        """
+        Determines if a type command should be enhanced with dir-first approach
+        
+        Args:
+            command: Original command
+            
+        Returns:
+            True if command should be enhanced
+        """
+        cmd_lower = command.lower().strip()
+        
+        # Handle Windows "type" and Unix "cat" commands  
+        if self.is_windows:
+            # Windows: intercept "type" without specific filename or with wildcards
+            return (cmd_lower == 'type' or 
+                    cmd_lower.startswith('type *.') or
+                    cmd_lower.startswith('type >> '))
+        else:
+            # Unix: intercept "cat" without specific filename or with wildcards  
+            return (cmd_lower == 'cat' or
+                    cmd_lower.startswith('cat *.') or
+                    cmd_lower.startswith('cat >> '))
+    
+    def _execute_enhanced_type_command(self, command: str) -> Tuple[bool, str]:
+        """
+        Executes enhanced type command: first dir, then type files from dir output
+        
+        Args:
+            command: Original type/cat command
+            
+        Returns:
+            Tuple (success, combined_output)
+        """
+        try:
+            # Step 1: Execute dir/ls to see available files
+            if self.is_windows:
+                dir_cmd = 'dir /b'
+                type_cmd = 'type'
+            else:
+                dir_cmd = 'ls -1'
+                type_cmd = 'cat'
+            
+            console.print(f"[dim]🔍 First executing '{dir_cmd}' to find files...[/dim]")
+            
+            # Execute directory listing
+            dir_result = subprocess.run(
+                dir_cmd,
+                shell=True,
+                cwd=self.current_dir,
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            
+            if dir_result.returncode != 0:
+                return False, f"Directory listing failed: {dir_result.stderr}"
+            
+            # Parse files from dir output
+            files = [f.strip() for f in dir_result.stdout.strip().split('\n') if f.strip()]
+            
+            if not files:
+                return True, "No files found in current directory."
+            
+            console.print(f"[dim]📁 Found {len(files)} items, filtering for text files...[/dim]")
+            
+            # Filter for likely text/code files
+            text_extensions = {'.txt', '.py', '.js', '.html', '.css', '.json', '.md', '.yml', '.yaml', 
+                             '.xml', '.cfg', '.conf', '.ini', '.log', '.csv', '.sql', '.sh', '.bat',
+                             '.c', '.cpp', '.h', '.java', '.php', '.rb', '.go', '.rs', '.ts', '.jsx', '.tsx'}
+            
+            text_files = []
+            for file in files:
+                # Only process files (not directories) with text extensions or no extension
+                if '.' in file:
+                    ext = '.' + file.split('.')[-1].lower()
+                    if ext in text_extensions:
+                        text_files.append(file)
+                elif len(file) < 50:  # Short names without extension might be text files
+                    text_files.append(file)
+            
+            if not text_files:
+                return True, f"Directory contents:\n{dir_result.stdout}\n\nNo text files found to display."
+            
+            # Step 2: Execute type/cat on each text file  
+            combined_output = [f"Directory contents:\n{dir_result.stdout}"]
+            combined_output.append(f"\nDisplaying contents of {len(text_files)} text files:\n")
+            
+            for file in text_files[:5]:  # Limit to first 5 files to avoid overwhelming output
+                console.print(f"[dim]📖 Reading {file}...[/dim]")
+                
+                file_cmd = f"{type_cmd} \"{file}\""
+                file_result = subprocess.run(
+                    file_cmd,
+                    shell=True,
+                    cwd=self.current_dir,
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                
+                combined_output.append(f"\n{'='*50}")
+                combined_output.append(f"📄 FILE: {file}")
+                combined_output.append('='*50)
+                
+                if file_result.returncode == 0:
+                    # Limit output per file to avoid excessive content
+                    content = file_result.stdout
+                    if len(content) > 2000:  # Limit to ~2000 characters per file
+                        content = content[:2000] + f"\n... [TRUNCATED - file has {len(file_result.stdout)} total characters]"
+                    combined_output.append(content)
+                else:
+                    combined_output.append(f"Error reading file: {file_result.stderr}")
+            
+            if len(text_files) > 5:
+                combined_output.append(f"\n... and {len(text_files) - 5} more text files (use specific filenames to read them)")
+            
+            return True, '\n'.join(combined_output)
+            
+        except subprocess.TimeoutExpired:
+            return False, "Command timed out"
+        except Exception as e:
+            return False, f"Enhanced type command failed: {str(e)}"

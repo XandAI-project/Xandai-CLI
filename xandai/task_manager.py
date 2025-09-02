@@ -878,7 +878,7 @@ Generate ONLY the numbered task list. Be precise and relevant to the actual requ
             # Backend frameworks - only detect if context suggests backend development
             backend_frameworks = {
                 'django': 'Django',
-                'flask': 'Flask', 
+                'flask': 'Flask',
                 'fastapi': 'FastAPI',
                 'express': 'Express',
                 'spring': 'Spring',

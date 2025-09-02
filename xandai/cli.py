@@ -1269,14 +1269,18 @@ Enhanced Request:"""
                             console.print(output)
                     else:
                         console.print(f"[red]❌ {output}[/red]")
-                        # Send error back to LLM for automatic fix
-                        console.print("[yellow]🤖 Sending error to AI for automatic fix...[/yellow]")
-                        error_prompt = f"The shell command '{converted_cmd}' failed with error: {output}. Please provide the correct command to fix this issue."
-                        # Process error through LLM but disable auto-execution temporarily
-                        temp_auto_execute = self.auto_execute_shell
-                        self.auto_execute_shell = False
-                        self.process_prompt(error_prompt)
-                        self.auto_execute_shell = temp_auto_execute
+                        # *** NEW: Skip automatic fix if task mode is active ***
+                        if hasattr(self, 'task_manager') and hasattr(self.task_manager, 'task_mode_active') and self.task_manager.task_mode_active:
+                            console.print("[dim]⏸️  Automatic error fix disabled during /task mode[/dim]")
+                        else:
+                            # Send error back to LLM for automatic fix
+                            console.print("[yellow]🤖 Sending error to AI for automatic fix...[/yellow]")
+                            error_prompt = f"The shell command '{converted_cmd}' failed with error: {output}. Please provide the correct command to fix this issue."
+                            # Process error through LLM but disable auto-execution temporarily
+                            temp_auto_execute = self.auto_execute_shell
+                            self.auto_execute_shell = False
+                            self.process_prompt(error_prompt)
+                            self.auto_execute_shell = temp_auto_execute
         
                         # Process other code blocks
         if other_blocks:
@@ -1426,14 +1430,18 @@ Enhanced Request:"""
                             console.print(output)
                     else:
                         console.print(f"[red]❌ {output}[/red]")
-                        # Send error back to LLM for automatic fix
-                        console.print("[yellow]🤖 Sending error to AI for automatic fix...[/yellow]")
-                        error_prompt = f"The shell command '{converted_cmd}' failed with error: {output}. Please provide the correct command to fix this issue."
-                        # Process error through LLM but disable auto-execution temporarily
-                        temp_auto_execute = self.auto_execute_shell
-                        self.auto_execute_shell = False
-                        self.process_prompt(error_prompt)
-                        self.auto_execute_shell = temp_auto_execute
+                        # *** NEW: Skip automatic fix if task mode is active ***
+                        if hasattr(self, 'task_manager') and hasattr(self.task_manager, 'task_mode_active') and self.task_manager.task_mode_active:
+                            console.print("[dim]⏸️  Automatic error fix disabled during /task mode[/dim]")
+                        else:
+                            # Send error back to LLM for automatic fix
+                            console.print("[yellow]🤖 Sending error to AI for automatic fix...[/yellow]")
+                            error_prompt = f"The shell command '{converted_cmd}' failed with error: {output}. Please provide the correct command to fix this issue."
+                            # Process error through LLM but disable auto-execution temporarily
+                            temp_auto_execute = self.auto_execute_shell
+                            self.auto_execute_shell = False
+                            self.process_prompt(error_prompt)
+                            self.auto_execute_shell = temp_auto_execute
         
         # Processa tags <read> (only skip if level >= 4 to avoid infinite loops in deep analysis)
         if not should_skip_reads:
@@ -2066,6 +2074,9 @@ PROVIDE COMPLETE, WORKING CODE USING THE PROPER TAGS NOW."""
         console.print("\n[bold blue]🎯 Complex Task Mode Activated[/bold blue]")
         console.print(f"[dim]Analyzing: {args}[/dim]\n")
         
+        # *** NEW: Activate task mode to disable automatic error fixes ***
+        self.task_manager.task_mode_active = True
+        
         # *** NEW: Initialize conversation integration if available ***
         conversation_integration = None
         if hasattr(self, 'conversation_integration') and self.conversation_integration:
@@ -2370,6 +2381,9 @@ PROVIDE COMPLETE, WORKING CODE USING THE PROPER TAGS NOW."""
             # Show final summary
             console.print("\n[bold green]🎉 All tasks completed![/bold green]")
             self.task_manager.display_task_progress()
+            
+            # *** NEW: Deactivate task mode ***
+            self.task_manager.task_mode_active = False
             
             # *** NEW: Add task completion summary to conversation history ***
             if conversation_integration:
@@ -3183,13 +3197,17 @@ mkdir new_project
                 
                 # Normal AI error fix for non-directory errors
                 if self.selected_model:
-                    console.print("[yellow]🤖 Sending error to AI for automatic fix...[/yellow]")
-                    error_prompt = f"The command '{command_to_execute}' failed with error: {output}. Please provide the correct command to fix this issue."
-                    # Process the error through LLM but don't auto-execute the fix
-                    temp_auto_execute = self.auto_execute_shell
-                    self.auto_execute_shell = False
-                    self.process_prompt(error_prompt)
-                    self.auto_execute_shell = temp_auto_execute
+                    # *** NEW: Skip automatic fix if task mode is active ***
+                    if hasattr(self, 'task_manager') and hasattr(self.task_manager, 'task_mode_active') and self.task_manager.task_mode_active:
+                        console.print("[dim]⏸️  Automatic error fix disabled during /task mode[/dim]")
+                    else:
+                        console.print("[yellow]🤖 Sending error to AI for automatic fix...[/yellow]")
+                        error_prompt = f"The command '{command_to_execute}' failed with error: {output}. Please provide the correct command to fix this issue."
+                        # Process the error through LLM but don't auto-execute the fix
+                        temp_auto_execute = self.auto_execute_shell
+                        self.auto_execute_shell = False
+                        self.process_prompt(error_prompt)
+                        self.auto_execute_shell = temp_auto_execute
             return
         
         # SECOND: Check if we have a model for LLM tasks
@@ -4120,10 +4138,14 @@ IMPLEMENT NOW - NO MORE EXPLANATIONS:"""
                                 # Don't show success message if no output
                             else:
                                 console.print(f"[red]❌ {output}[/red]")
-                                # If command failed, send error back to LLM for automatic fix
-                                console.print("[yellow]🤖 Sending error to AI for automatic fix...[/yellow]")
-                                error_prompt = f"The command '{user_input}' failed with error: {output}. Please provide the correct command to fix this issue."
-                                self.process_prompt(error_prompt)
+                                # *** NEW: Skip automatic fix if task mode is active ***
+                                if hasattr(self, 'task_manager') and hasattr(self.task_manager, 'task_mode_active') and self.task_manager.task_mode_active:
+                                    console.print("[dim]⏸️  Automatic error fix disabled during /task mode[/dim]")
+                                else:
+                                    # If command failed, send error back to LLM for automatic fix
+                                    console.print("[yellow]🤖 Sending error to AI for automatic fix...[/yellow]")
+                                    error_prompt = f"The command '{user_input}' failed with error: {output}. Please provide the correct command to fix this issue."
+                                    self.process_prompt(error_prompt)
                         else:
                             # Processa prompt normal
                             self.process_prompt(user_input)
