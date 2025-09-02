@@ -314,9 +314,11 @@ If existing file has endpoints A, B, C and you need to add endpoint D:
                         full_response += chunk
                         chunk_count += 1
                         
-                        # Update status every 10 chunks to show progress
-                        if chunk_count % 10 == 0:
-                            status.update(f"[bold green]🔄 Processing with file content... ({chunk_count} chunks)", spinner="dots")
+                        # Update status every 8 chunks to show progress
+                        if chunk_count % 8 == 0:
+                            token_estimate = len(full_response.split())
+                            line_count = full_response.count('\n')
+                            status.update(f"[bold green]🔄 Processing with file content... ({chunk_count} chunks, ~{token_estimate} tokens, {line_count} lines)", spinner="dots")
             except KeyboardInterrupt:
                 console.print("\n[yellow]💡 Re-processing interrupted by user[/yellow]")
                 return full_response

@@ -1717,23 +1717,42 @@ Enhanced Request:"""
             
             file_context = '\n'.join(file_context_parts)
             
-            # Cria prompt expandido com conteúdo dos arquivos
+            # Cria prompt expandido com conteúdo dos arquivos + instruções de tags
+            tag_instructions = self._get_basic_tag_instructions()
             enhanced_prompt_with_files = f"""
 {original_prompt}
 
 {file_context}
 
 IMPORTANT: Use the file content above to provide a complete and accurate response to the original request.
-"""
+
+{tag_instructions}
+
+🚨 CRITICAL REQUIREMENTS:
+- ALWAYS use <code edit filename="..."> for modifying existing files
+- ALWAYS use <code create filename="..."> for creating new files  
+- ALWAYS use <actions> for shell commands
+- NEVER use ``` code blocks for files - use the tags above
+- Complete the implementation in this response - don't just explain what to do
+
+PROVIDE COMPLETE, WORKING CODE USING THE PROPER TAGS NOW."""
             
             console.print("[dim]Sending enhanced prompt with file content to model...[/dim]")
             
             # Re-executa o prompt com o conteúdo dos arquivos
             try:
                 full_response = ""
+                chunk_count = 0
+                token_count = 0
                 with console.status("[bold green]🔄 Processing with file content...", spinner="dots") as status:
                     for chunk in self.api.generate(self.selected_model, enhanced_prompt_with_files):
                         full_response += chunk
+                        chunk_count += 1
+                        token_count += len(chunk.split())
+                        
+                        # Update progress every 15 chunks to show activity
+                        if chunk_count % 15 == 0:
+                            status.update(f"[bold green]🔄 Processing with file content... ({chunk_count} chunks, ~{token_count} tokens)", spinner="dots")
             except KeyboardInterrupt:
                 console.print("\n[yellow]💡 Reprocessing interrupted by user[/yellow]")
                 return
@@ -2153,9 +2172,19 @@ IMPORTANT: Use the file content above to provide a complete and accurate respons
             # Generate breakdown without showing the whole process
             breakdown_response = ""
             try:
-                with console.status("[bold yellow]Analyzing and dividing into sub-tasks...", spinner="dots"):
+                chunk_count = 0
+                task_count = 0
+                with console.status("[bold yellow]Analyzing and dividing into sub-tasks...", spinner="dots") as status:
                     for chunk in self.api.generate(self.selected_model, breakdown_prompt):
                         breakdown_response += chunk
+                        chunk_count += 1
+                        # Count potential task lines to show progress
+                        if chunk.strip().startswith(('1.', '2.', '3.', '4.', '5.', '[E]', '[O]')):
+                            task_count += 1
+                        
+                        # Update progress every 10 chunks
+                        if chunk_count % 10 == 0:
+                            status.update(f"[bold yellow]Analyzing and dividing into sub-tasks... ({chunk_count} chunks, ~{task_count} tasks identified)", spinner="dots")
             except KeyboardInterrupt:
                 console.print("\n[yellow]💡 Task breakdown interrupted by user[/yellow]")
                 return
@@ -2437,9 +2466,17 @@ Task breakdown and execution completed with full conversation context integratio
             # Se é tarefa de texto, mostra em tempo real
             if task_info['type'] == 'text':
                 try:
+                    chunk_count = 0
+                    word_count = 0
                     with console.status("[bold green]Generating explanation...", spinner="dots") as status:
                         for chunk in self.api.generate(self.selected_model, enhanced_prompt):
                             full_response += chunk
+                            chunk_count += 1
+                            word_count += len(chunk.split())
+                            
+                            # Update progress every 12 chunks
+                            if chunk_count % 12 == 0:
+                                status.update(f"[bold green]Generating explanation... (~{word_count} words, {chunk_count} chunks)", spinner="dots")
                 except KeyboardInterrupt:
                     console.print("\n[yellow]💡 Task generation interrupted by user[/yellow]")
                     if full_response.strip():
@@ -2453,9 +2490,17 @@ Task breakdown and execution completed with full conversation context integratio
             else:
                 # Para código/shell, usa processamento normal
                 try:
+                    chunk_count = 0
+                    code_lines = 0
                     with console.status("[bold green]Generating solution...", spinner="dots") as status:
                         for chunk in self.api.generate(self.selected_model, enhanced_prompt):
                             full_response += chunk
+                            chunk_count += 1
+                            code_lines += chunk.count('\n')
+                            
+                            # Update progress every 15 chunks
+                            if chunk_count % 15 == 0:
+                                status.update(f"[bold green]Generating solution... ({chunk_count} chunks, ~{code_lines} lines)", spinner="dots")
                 except KeyboardInterrupt:
                     console.print("\n[yellow]💡 Task generation interrupted by user[/yellow]")
                     if full_response.strip():
@@ -3296,12 +3341,20 @@ mkdir new_project
             line_count = 0
             last_line = ""
             
-            # Gera resposta com status dinâmico mostrando sempre a última linha
+                            # Gera resposta com status dinâmico mostrando sempre a última linha
             try:
+                chunk_count = 0
+                token_count = 0
                 with console.status("[bold green]🤔 Thinking...", spinner="dots") as status:
                     for chunk in self.api.generate(self.selected_model, enhanced_prompt):
                         full_response += chunk
                         line_count += chunk.count('\n')
+                        chunk_count += 1
+                        token_count += len(chunk.split())
+                        
+                        # Update progress every 20 chunks to show activity
+                        if chunk_count % 20 == 0:
+                            status.update(f"[bold green]🤔 Thinking... ({chunk_count} chunks, ~{token_count} tokens, {line_count} lines)", spinner="dots")
                         
                         # *** FALLBACK: Check for complete <read> tags in normal flow ***
                         read_match = re.search(r'<read>(.*?)</read>', full_response, re.DOTALL | re.IGNORECASE)
