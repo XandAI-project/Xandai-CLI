@@ -232,7 +232,7 @@ class ProjectModeDetector:
             'create_keywords': detected_create_keywords
         }
 
-    def make_mode_decision(self, prompt: str, directory: str = None) -> Dict[str, Any]:
+    def detect_project_mode(self, prompt: str, directory: str = None) -> Dict[str, Any]:
         """
         Makes the final decision about mode (edit vs create) based on all factors
         
@@ -370,6 +370,10 @@ class XandAICLI:
         self.auto_execute_shell = True  # Flag for automatic command execution
         self.enhance_prompts = True     # Flag to improve prompts automatically
         self.better_prompting = True    # Flag for better prompting system
+        # Initialize conversation integration
+        self.conversation_integration = None
+        self._initialize_conversation_integration()
+        
         self.commands = {
             '/help': self.show_help,
             '/models': self.list_models,
@@ -387,7 +391,8 @@ class XandAICLI:
             '/refresh-context': self.context_commands.refresh_file_context,
             '/debug': self.toggle_debug_mode,
             '/better': self.toggle_better_prompting,
-            '/session': self.session_command
+            '/session': self.session_command,
+            '/history': self.history_command
         }
         
         # Modo debug
@@ -1864,9 +1869,168 @@ IMPORTANT: Use the file content above to provide a complete and accurate respons
             console.print(f"[red]Unknown session command: {subcommand}[/red]")
             console.print("[dim]Available commands: info, clear, backups, restore, save[/dim]")
     
+    def _initialize_conversation_integration(self):
+        """Initialize the robust conversation history system."""
+        try:
+            from xandai.conversation_integration import ConversationIntegration
+            self.conversation_integration = ConversationIntegration(api=self.api)
+            console.print("[dim]🧠 Robust conversation history system initialized[/dim]")
+        except Exception as e:
+            console.print(f"[yellow]⚠️  Could not initialize conversation history: {e}[/yellow]")
+            self.conversation_integration = None
+    
+    def history_command(self, args: str = ""):
+        """
+        Manage robust conversation history
+        
+        Args:
+            args: History subcommand and arguments
+        """
+        if not self.conversation_integration:
+            console.print("[red]Conversation history system not available[/red]")
+            return
+        
+        parts = args.strip().split() if args.strip() else []
+        if not parts:
+            # Show general history info
+            try:
+                summary = self.conversation_integration.get_conversation_summary()
+                status = self.conversation_integration.get_context_status()
+                
+                console.print("\n[bold blue]🧠 Conversation History Status[/bold blue]\n")
+                console.print(summary)
+                console.print(f"\n[bold]Context Management:[/bold]")
+                console.print(f"Utilization: {status.get('utilization', 0):.1%}")
+                console.print(f"Token Budget: {self.conversation_integration.history_manager.current_token_manager.get_context_status(self.conversation_integration.history_manager.current_conversation.messages) if self.conversation_integration.history_manager.current_token_manager else 'N/A'}")
+            except Exception as e:
+                console.print(f"[red]Error getting history status: {e}[/red]")
+            return
+        
+        subcommand = parts[0].lower()
+        
+        try:
+            if subcommand == "export":
+                # Export conversation history
+                format_type = parts[1] if len(parts) > 1 else "json"
+                if format_type not in ["json", "markdown", "txt"]:
+                    console.print("[red]Invalid format. Use: json, markdown, txt[/red]")
+                    return
+                
+                exported = self.conversation_integration.export_conversation(format_type)
+                
+                if exported:
+                    # Save to file
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    filename = f"conversation_export_{timestamp}.{format_type}"
+                    
+                    with open(filename, 'w', encoding='utf-8') as f:
+                        f.write(exported)
+                    
+                    console.print(f"[green]✓ Conversation exported to: {filename}[/green]")
+                    console.print(f"[dim]Format: {format_type.upper()}, Size: {len(exported):,} characters[/dim]")
+                else:
+                    console.print("[yellow]No conversation data to export[/yellow]")
+            
+            elif subcommand == "summarize":
+                # Force auto-summarization
+                console.print("[yellow]🔄 Forcing conversation summarization...[/yellow]")
+                
+                summary_report = self.conversation_integration.history_manager.auto_summarize(force=True)
+                
+                if summary_report:
+                    console.print(f"[green]✅ Summarization completed:[/green]")
+                    console.print(f"  Summaries created: {summary_report.get('summaries_created', 0)}")
+                    console.print(f"  Tokens saved: {summary_report.get('tokens_saved', 0):,}")
+                    console.print(f"  Messages summarized: {summary_report.get('messages_summarized', 0)}")
+                else:
+                    console.print("[dim]No summarization needed or possible at this time[/dim]")
+            
+            elif subcommand == "optimize":
+                # Force context optimization
+                console.print("[yellow]🔧 Optimizing conversation context...[/yellow]")
+                
+                optimization_report = self.conversation_integration.history_manager.force_optimization()
+                
+                if optimization_report.get("tokens_saved", 0) > 0:
+                    console.print(f"[green]✅ Context optimized:[/green]")
+                    console.print(f"  Messages: {optimization_report.get('original_messages', 0)} → {optimization_report.get('optimized_messages', 0)}")
+                    console.print(f"  Tokens saved: {optimization_report.get('tokens_saved', 0):,}")
+                    console.print(f"  Utilization: {optimization_report.get('utilization_after', 0):.1%}")
+                else:
+                    console.print("[dim]No optimization needed[/dim]")
+            
+            elif subcommand == "stats":
+                # Show detailed statistics
+                stats = self.conversation_integration.get_statistics()
+                
+                console.print("\n[bold blue]📊 Detailed Conversation Statistics[/bold blue]\n")
+                
+                if stats:
+                    console.print(f"[bold]General:[/bold]")
+                    console.print(f"  Conversation ID: {stats.get('conversation_id', 'N/A')}")
+                    console.print(f"  Duration: {stats.get('duration_hours', 0):.1f} hours")
+                    
+                    msg_counts = stats.get('message_counts', {})
+                    console.print(f"\n[bold]Messages:[/bold]")
+                    console.print(f"  Total: {msg_counts.get('total', 0)}")
+                    console.print(f"  Conversation: {msg_counts.get('conversation', 0)}")
+                    console.print(f"  System: {msg_counts.get('system', 0)}")
+                    console.print(f"  Tool: {msg_counts.get('tool', 0)}")
+                    
+                    token_counts = stats.get('token_counts', {})
+                    console.print(f"\n[bold]Tokens:[/bold]")
+                    console.print(f"  Total: {token_counts.get('total', 0):,}")
+                    console.print(f"  Conversation only: {token_counts.get('conversation_only', 0):,}")
+                    
+                    if 'model_info' in stats and stats['model_info']:
+                        model_info = stats['model_info']
+                        console.print(f"\n[bold]Model:[/bold]")
+                        console.print(f"  Name: {model_info.get('name', 'N/A')}")
+                        console.print(f"  Family: {model_info.get('family', 'N/A')}")
+                        console.print(f"  Context length: {model_info.get('context_length', 0):,}")
+                        console.print(f"  Available: {model_info.get('available_context', 0):,}")
+                    
+                    if 'summarization' in stats:
+                        summ_stats = stats['summarization']
+                        console.print(f"\n[bold]Summarization:[/bold]")
+                        console.print(f"  Total summaries: {summ_stats.get('total_summaries', 0)}")
+                        console.print(f"  Messages summarized: {summ_stats.get('total_summarized_messages', 0)}")
+                        console.print(f"  Tokens saved: {summ_stats.get('total_tokens_saved', 0):,}")
+                else:
+                    console.print("[dim]No statistics available[/dim]")
+            
+            elif subcommand == "clear":
+                # Clear conversation history
+                console.print("[yellow]⚠️  This will clear all conversation history.[/yellow]")
+                confirm = console.input("Are you sure? (y/N): ")
+                
+                if confirm.lower().startswith('y'):
+                    self.conversation_integration.clear_conversation()
+                    console.print("[green]✓ Conversation history cleared[/green]")
+                else:
+                    console.print("[dim]Operation cancelled[/dim]")
+            
+            else:
+                console.print(f"[red]Unknown history command: {subcommand}[/red]")
+                self._show_history_help()
+        
+        except Exception as e:
+            console.print(f"[red]Error executing history command: {e}[/red]")
+    
+    def _show_history_help(self):
+        """Show help for history command."""
+        console.print("\n[bold cyan]Available history commands:[/bold cyan]")
+        console.print("  [yellow]/history[/yellow] - Show conversation status and statistics")
+        console.print("  [yellow]/history export [format][/yellow] - Export conversation (json/markdown/txt)")
+        console.print("  [yellow]/history summarize[/yellow] - Force conversation summarization")
+        console.print("  [yellow]/history optimize[/yellow] - Force context optimization")
+        console.print("  [yellow]/history stats[/yellow] - Show detailed statistics")
+        console.print("  [yellow]/history clear[/yellow] - Clear conversation history (with confirmation)")
+        console.print("\n[dim]The robust history system automatically manages token budgets and summarization.[/dim]")
+    
     def task_command(self, args: str = ""):
         """
-        Processa comando de tarefa complexa
+        Processa comando de tarefa complexa com contexto e histórico inteligente
         
         Args:
             args: Descrição da tarefa complexa
@@ -1883,18 +2047,62 @@ IMPORTANT: Use the file content above to provide a complete and accurate respons
         console.print("\n[bold blue]🎯 Complex Task Mode Activated[/bold blue]")
         console.print(f"[dim]Analyzing: {args}[/dim]\n")
         
+        # *** NEW: Initialize conversation integration if available ***
+        conversation_integration = None
+        if hasattr(self, 'conversation_integration') and self.conversation_integration:
+            conversation_integration = self.conversation_integration
+        else:
+            # Fallback to create new integration for this task
+            try:
+                from xandai.conversation_integration import ConversationIntegration
+                conversation_integration = ConversationIntegration(api=self.api)
+                conversation_integration.set_model(self.selected_model)
+                console.print("[dim]🧠 Initialized conversation history for task[/dim]")
+            except Exception as e:
+                console.print(f"[yellow]⚠️  Could not initialize conversation history: {e}[/yellow]")
+        
         # *** CRITICAL: Set working directory context for task manager ***
         current_working_dir = str(Path.cwd())
         self.task_manager.set_working_directory(current_working_dir)
         console.print(f"[dim]Working directory: {current_working_dir}[/dim]")
         
-        # Step 1: Apply better prompting to enhance task description
+        # *** NEW: Get conversation context for better task understanding ***
+        conversation_context = ""
+        if conversation_integration:
+            try:
+                # Get recent conversation context
+                context_status = conversation_integration.get_context_status()
+                if context_status.get("conversation_info", {}).get("total_messages", 0) > 0:
+                    conversation_context = conversation_integration.get_context_for_prompt(max_tokens=2000)
+                    if conversation_context:
+                        console.print(f"[dim]📚 Using conversation history ({context_status.get('total_tokens', 0):,} tokens)[/dim]")
+                    
+                    # Show context utilization
+                    utilization = context_status.get("utilization", 0)
+                    if utilization > 0.7:
+                        console.print(f"[yellow]⚠️  Context utilization high ({utilization:.1%}) - may auto-summarize[/yellow]")
+            except Exception as e:
+                console.print(f"[dim]⚠️  Could not retrieve conversation context: {e}[/dim]")
+        
+        # Step 1: Apply better prompting to enhance task description  
         enhanced_args = args
         if self.better_prompting:
             enhanced_args = self.analyze_and_enhance_prompt(args)
-            # Add to context history
-            if hasattr(self.prompt_enhancer, 'add_to_context_history'):
-                self.prompt_enhancer.add_to_context_history("user", f"Task: {args}")
+        
+        # *** NEW: Add task to conversation history ***
+        if conversation_integration:
+            try:
+                conversation_integration.add_user_message(
+                    f"Complex Task: {args}",
+                    message_type="conversation",
+                    metadata={
+                        "type": "complex_task_request",
+                        "working_directory": current_working_dir,
+                        "enhanced_description": enhanced_args
+                    }
+                )
+            except Exception as e:
+                console.print(f"[dim]⚠️  Could not add task to history: {e}[/dim]")
         
         # Detect language and framework in enhanced request
         self.task_manager.detect_and_update_context(enhanced_args)
@@ -1910,21 +2118,63 @@ IMPORTANT: Use the file content above to provide a complete and accurate respons
         # Step 1: Ask model to break down into sub-tasks using improved version
         breakdown_prompt = self.task_manager.get_breakdown_prompt(enhanced_args)
         
+        # *** NEW: Enhance breakdown prompt with conversation context ***
+        if conversation_context:
+            breakdown_prompt = f"""**CONVERSATION CONTEXT:**
+{conversation_context}
+
+**CURRENT TASK REQUEST:**
+{breakdown_prompt}
+
+**CONTEXT INTEGRATION INSTRUCTIONS:**
+- Consider the conversation history when breaking down this task
+- Reference previous work, decisions, and context when relevant
+- Maintain consistency with established patterns and preferences
+- Build upon existing knowledge and avoid redundant explanations"""
+        
         # Add mode-specific instructions to breakdown prompt
         mode_instructions = self._generate_mode_instructions(mode_decision)
         if mode_instructions:
             breakdown_prompt += f"\n\n{mode_instructions}"
         
         try:
+            # *** NEW: Auto-summarize if context is getting too large ***
+            if conversation_integration:
+                try:
+                    context_status = conversation_integration.get_context_status()
+                    if context_status.get("utilization", 0) > 0.8:
+                        console.print("[yellow]📝 Context utilization high - attempting auto-summarization...[/yellow]")
+                        summary_report = conversation_integration.history_manager.auto_summarize()
+                        if summary_report:
+                            console.print(f"[green]✓ Summarized {summary_report.get('summaries_created', 0)} conversation segments[/green]")
+                except Exception as e:
+                    console.print(f"[dim]⚠️  Auto-summarization failed: {e}[/dim]")
+            
             # Generate breakdown without showing the whole process
+            breakdown_response = ""
             try:
                 with console.status("[bold yellow]Analyzing and dividing into sub-tasks...", spinner="dots"):
-                    breakdown_response = ""
                     for chunk in self.api.generate(self.selected_model, breakdown_prompt):
                         breakdown_response += chunk
             except KeyboardInterrupt:
                 console.print("\n[yellow]💡 Task breakdown interrupted by user[/yellow]")
                 return
+            
+            # *** NEW: Add breakdown response to conversation history ***
+            if conversation_integration:
+                try:
+                    conversation_integration.add_assistant_message(
+                        breakdown_response,
+                        metadata={
+                            "type": "task_breakdown", 
+                            "original_task": args,
+                            "enhanced_task": enhanced_args,
+                            "mode": mode_decision['mode'],
+                            "confidence": mode_decision['confidence']
+                        }
+                    )
+                except Exception as e:
+                    console.print(f"[dim]⚠️  Could not add breakdown to history: {e}[/dim]")
             
             # Extract tasks from response
             tasks = self.task_manager.parse_task_breakdown(breakdown_response)
@@ -1974,7 +2224,23 @@ IMPORTANT: Use the file content above to provide a complete and accurate respons
             
             console.print("\n[bold blue]🚀 Starting task execution...[/bold blue]\n")
             
-            # Step 2: Execute each task
+            # *** NEW: Add task execution plan to conversation history ***
+            if conversation_integration:
+                try:
+                    plan_summary = f"Executing {len(tasks_to_execute)} tasks:\n"
+                    for i, task in enumerate(tasks_to_execute, 1):
+                        priority = task.get('priority', 'essential').upper()
+                        plan_summary += f"{i}. [{priority}] {task['description']}\n"
+                    
+                    conversation_integration.add_system_message(
+                        plan_summary,
+                        message_type="session_marker",
+                        metadata={"type": "task_execution_plan", "task_count": len(tasks_to_execute)}
+                    )
+                except Exception as e:
+                    console.print(f"[dim]⚠️  Could not add execution plan to history: {e}[/dim]")
+            
+            # Step 2: Execute each task with enhanced context tracking
             for i, task in enumerate(tasks_to_execute):
                 priority_indicator = "[ESSENTIAL]" if task.get('priority', 'essential') == 'essential' else "[OPTIONAL]"
                 console.print(f"\n[bold yellow]━━━ Task {i+1}/{len(tasks_to_execute)} {priority_indicator} ━━━[/bold yellow]")
@@ -1985,8 +2251,50 @@ IMPORTANT: Use the file content above to provide a complete and accurate respons
                 task['status'] = 'in_progress'
                 self.task_manager.display_task_progress()
                 
+                # *** NEW: Add subtask start to conversation history ***
+                if conversation_integration:
+                    try:
+                        conversation_integration.add_user_message(
+                            f"Subtask {i+1}/{len(tasks_to_execute)}: {task['description']}",
+                            metadata={
+                                "type": "subtask_start",
+                                "task_index": i+1,
+                                "total_tasks": len(tasks_to_execute),
+                                "priority": task.get('priority', 'essential'),
+                                "task_type": task.get('type', 'unknown')
+                            }
+                        )
+                    except Exception as e:
+                        console.print(f"[dim]⚠️  Could not add subtask to history: {e}[/dim]")
+                
+                # *** NEW: Get fresh context for each subtask ***
+                current_context = ""
+                if conversation_integration:
+                    try:
+                        # Get optimized context for current subtask
+                        current_context = conversation_integration.get_context_for_prompt(max_tokens=3000)
+                        if current_context:
+                            context_status = conversation_integration.get_context_status()
+                            console.print(f"[dim]📚 Subtask context: {context_status.get('total_tokens', 0):,} tokens ({context_status.get('utilization', 0):.1%})[/dim]")
+                    except Exception as e:
+                        console.print(f"[dim]⚠️  Could not get subtask context: {e}[/dim]")
+                
                 # Create specific prompt for the task
                 task_prompt = self.task_manager.format_task_prompt(task, context=args)
+                
+                # *** NEW: Enhance task prompt with conversation context ***
+                if current_context:
+                    task_prompt = f"""**CONVERSATION & PREVIOUS TASKS CONTEXT:**
+{current_context}
+
+**CURRENT SUBTASK:**
+{task_prompt}
+
+**CONTEXT INTEGRATION INSTRUCTIONS:**
+- Build upon previous work and decisions from the conversation history
+- Maintain consistency with established patterns and coding style
+- Reference and extend existing implementations when relevant
+- Avoid duplicating work already completed in previous subtasks"""
                 
                 # Detect mode for individual task
                 task_mode_decision = self.project_mode_detector.detect_project_mode(task['description'])
@@ -1994,31 +2302,106 @@ IMPORTANT: Use the file content above to provide a complete and accurate respons
                 # Execute the task with mode information
                 console.print(f"[dim]📝 Subtask Mode: {task_mode_decision['mode'].upper()} (confidence: {task_mode_decision['confidence']}%)[/dim]")
                 console.print("\n[dim]Executing task...[/dim]")
-                self._execute_task(task_prompt, task, task_mode_decision)
+                
+                # *** ENHANCED: Execute task with conversation integration ***
+                self._execute_task(task_prompt, task, task_mode_decision, conversation_integration)
                 
                 # Mark as completed and refresh context
                 task['status'] = 'completed'
                 self.task_manager.add_task_completion_info(task)
                 
+                # *** NEW: Mark subtask completion in conversation history ***
+                if conversation_integration:
+                    try:
+                        conversation_integration.add_system_message(
+                            f"✅ Subtask {i+1} completed: {task['description'][:100]}{'...' if len(task['description']) > 100 else ''}",
+                            message_type="session_marker",
+                            metadata={
+                                "type": "subtask_completed",
+                                "task_index": i+1,
+                                "total_tasks": len(tasks_to_execute),
+                                "task_type": task.get('type', 'unknown')
+                            }
+                        )
+                        
+                        # Auto-summarize if context is getting large
+                        context_status = conversation_integration.get_context_status()
+                        if context_status.get("utilization", 0) > 0.85:
+                            console.print("[yellow]📝 High context usage - auto-summarizing...[/yellow]")
+                            summary_report = conversation_integration.history_manager.auto_summarize()
+                            if summary_report and summary_report.get('summaries_created', 0) > 0:
+                                console.print(f"[green]✓ Auto-summarized for efficiency[/green]")
+                    except Exception as e:
+                        console.print(f"[dim]⚠️  Could not update subtask completion: {e}[/dim]")
+                
                 # Small pause between tasks
-                if i < len(tasks) - 1:
+                if i < len(tasks_to_execute) - 1:
                     console.print("\n[dim]Preparing next task...[/dim]")
             
             # Show final summary
             console.print("\n[bold green]🎉 All tasks completed![/bold green]")
             self.task_manager.display_task_progress()
             
+            # *** NEW: Add task completion summary to conversation history ***
+            if conversation_integration:
+                try:
+                    # Create comprehensive task completion summary
+                    completion_summary = f"""Complex task completed successfully: "{args}"
+
+Total subtasks executed: {len(tasks_to_execute)}
+Essential tasks: {sum(1 for t in tasks_to_execute if t.get('priority', 'essential') == 'essential')}
+Optional tasks: {sum(1 for t in tasks_to_execute if t.get('priority') == 'optional')}
+
+Task breakdown and execution completed with full conversation context integration."""
+                    
+                    conversation_integration.add_system_message(
+                        completion_summary,
+                        message_type="session_marker",
+                        metadata={
+                            "type": "complex_task_completed",
+                            "original_task": args,
+                            "enhanced_task": enhanced_args,
+                            "tasks_executed": len(tasks_to_execute),
+                            "working_directory": current_working_dir,
+                            "mode": mode_decision['mode'],
+                            "confidence": mode_decision['confidence']
+                        }
+                    )
+                    
+                    # Show conversation statistics
+                    final_stats = conversation_integration.get_statistics()
+                    console.print(f"[dim]📊 Session stats: {final_stats.get('message_counts', {}).get('total', 0)} messages, {final_stats.get('token_counts', {}).get('total', 0):,} tokens[/dim]")
+                    
+                    # Offer to export conversation
+                    if final_stats.get('message_counts', {}).get('total', 0) > 10:
+                        console.print("\n[dim]💡 This was a complex task with rich conversation history.[/dim]")
+                        console.print("[dim]💡 Consider using conversation export features for future reference.[/dim]")
+                    
+                except Exception as e:
+                    console.print(f"[dim]⚠️  Could not add completion summary: {e}[/dim]")
+            
         except Exception as e:
             console.print(f"[red]Error processing tasks: {e}[/red]")
+            # *** NEW: Add error to conversation history if available ***
+            if 'conversation_integration' in locals() and conversation_integration:
+                try:
+                    conversation_integration.add_system_message(
+                        f"❌ Complex task failed: {str(e)}",
+                        message_type="session_marker",
+                        metadata={"type": "task_error", "error": str(e), "original_task": args}
+                    )
+                except:
+                    pass  # Don't fail on history logging
     
-    def _execute_task(self, task_prompt: str, task_info: Dict, mode_decision: Dict[str, Any] = None):
+    def _execute_task(self, task_prompt: str, task_info: Dict, mode_decision: Dict[str, Any] = None, conversation_integration=None):
         """
-        Executa uma tarefa individual
+        Executa uma tarefa individual com integração de contexto e histórico
         
         Args:
             task_prompt: Prompt formatado para a tarefa
             task_info: Informações da tarefa
             mode_decision: Decisão de modo (edit vs create) para a tarefa
+            conversation_integration: Integração com sistema de histórico robusto
         """
         try:
             # If enhancements are enabled, apply to task prompt too
@@ -2136,9 +2519,49 @@ IMPORTANT: Use the file content above to provide a complete and accurate respons
                 if not special_processed and full_response.strip():
                     console.print("[dim]💡 Dica: O modelo deveria usar tags <code>, <actions> ou <read> para esta tarefa[/dim]")
             
+            # *** NEW: Add task response to conversation history ***
+            if conversation_integration and full_response.strip():
+                try:
+                    # Truncate very long responses for history efficiency
+                    response_for_history = full_response
+                    if len(full_response) > 2000:
+                        response_for_history = full_response[:1500] + "\n\n[... response truncated for history efficiency ...]"
+                    
+                    conversation_integration.add_assistant_message(
+                        response_for_history,
+                        metadata={
+                            "type": "subtask_response",
+                            "task_description": task_info['description'][:200],
+                            "task_type": task_info.get('type', 'unknown'),
+                            "had_special_processing": special_processed,
+                            "has_actions": has_actions if 'has_actions' in locals() else False,
+                            "has_code": has_code if 'has_code' in locals() else False,
+                            "has_read": has_read if 'has_read' in locals() else False,
+                            "mode": mode_decision['mode'] if mode_decision else 'unknown',
+                            "confidence": mode_decision['confidence'] if mode_decision else 0
+                        }
+                    )
+                except Exception as e:
+                    console.print(f"[dim]⚠️  Could not add subtask response to history: {e}[/dim]")
+            
         except Exception as e:
             console.print(f"[red]Error executing task: {e}[/red]")
             task_info['status'] = 'failed'
+            
+            # *** NEW: Add error to conversation history ***
+            if conversation_integration:
+                try:
+                    conversation_integration.add_system_message(
+                        f"❌ Subtask failed: {task_info['description'][:100]} - Error: {str(e)}",
+                        message_type="session_marker",
+                        metadata={
+                            "type": "subtask_error",
+                            "task_description": task_info['description'],
+                            "error": str(e)
+                        }
+                    )
+                except:
+                    pass  # Don't fail on history logging
         
     def show_help(self):
         """Shows CLI help"""
@@ -2159,6 +2582,7 @@ IMPORTANT: Use the file content above to provide a complete and accurate respons
 - `/better` - Toggle better prompting system (two-stage prompt enhancement)
 - `/debug` - Toggles debug mode (shows complete model responses)
 - `/session <command>` - Session management commands
+- `/history <command>` - Robust conversation history management
 
 ## File Commands
 
@@ -2177,6 +2601,15 @@ IMPORTANT: Use the file content above to provide a complete and accurate respons
 - `/session backups` - Lists available session backups
 - `/session restore <backup_name>` - Restores a session backup
 - `/session save` - Manually saves current session
+
+## History Commands
+
+- `/history` - Shows conversation status and statistics
+- `/history export [format]` - Exports conversation (json/markdown/txt)
+- `/history summarize` - Forces conversation summarization
+- `/history optimize` - Forces context optimization
+- `/history stats` - Shows detailed conversation statistics
+- `/history clear` - Clears conversation history (with confirmation)
 
 ## Automatic Shell Command Execution
 
@@ -2727,7 +3160,7 @@ mkdir new_project
             
             # *** NEW: AUTOMATIC PROJECT MODE DETECTION ***
             console.print("[dim]🤖 Analyzing project context and user intent...[/dim]")
-            mode_decision = self.project_mode_detector.make_mode_decision(prompt_text)
+            mode_decision = self.project_mode_detector.detect_project_mode(prompt_text)
             
             # Add mode-specific instructions to the prompt
             mode_instructions = self._generate_mode_instructions(mode_decision)
@@ -3467,6 +3900,11 @@ IMPLEMENT NOW - NO MORE EXPLANATIONS:"""
             if not self.selected_model:
                 console.print("[yellow]No model selected. Exiting...[/yellow]")
                 return
+        
+        # Configure conversation integration with selected model
+        if self.conversation_integration and self.selected_model:
+            self.conversation_integration.set_model(self.selected_model)
+            console.print(f"[dim]🧠 History system configured for: {self.selected_model}[/dim]")
                 
         # Initialize TagProcessor and AutoRecovery with AI decision system after model selection
         if not self.tag_processor:
@@ -3495,6 +3933,9 @@ IMPLEMENT NOW - NO MORE EXPLANATIONS:"""
                     if not self.selected_model:
                         console.print("[yellow]No model selected. Exiting...[/yellow]")
                         return
+                    # Configure conversation integration for new model
+                    if self.conversation_integration:
+                        self.conversation_integration.set_model(self.selected_model)
                         
                 else:
                     console.print(f"[green]✓ Using model from session: {self.selected_model}[/green]")

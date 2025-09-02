@@ -35,7 +35,7 @@ class TaskManager:
         
     def parse_task_breakdown(self, response: str) -> List[Dict]:
         """
-        Extracts task list from model response
+        Extracts task list from model response with improved validation
         
         Args:
             response: Response containing task breakdown
@@ -44,6 +44,11 @@ class TaskManager:
             List of extracted tasks
         """
         tasks = []
+        
+        # *** NEW: Validate and clean response first ***
+        response = self._validate_and_clean_response(response)
+        if not response:
+            return tasks
         
         # Patterns to detect tasks with priority markers
         patterns = [
@@ -62,14 +67,16 @@ class TaskManager:
                         # Pattern with number
                         task_num, task_desc = match
                         task_desc = task_desc.strip()
-                        if task_desc:
+                        
+                        # *** NEW: Validate task content ***
+                        if self._is_valid_task(task_num, task_desc):
                             # Detecta prioridade da tarefa
                             priority = self._detect_task_priority(task_desc)
                             # Remove priority markers from description
                             clean_desc = re.sub(r'\s*\[(ESSENCIAL|OPCIONAL|ESSENTIAL|OPTIONAL)\]\s*', '', task_desc, flags=re.IGNORECASE)
                             tasks.append({
                                 'number': int(task_num),
-                                'description': clean_desc,
+                                'description': clean_desc[:200],  # Limit description length
                                 'status': 'pending',
                                 'type': self._detect_task_type(clean_desc),
                                 'priority': priority
@@ -77,14 +84,14 @@ class TaskManager:
                     else:
                         # Pattern without number (bullets)
                         task_desc = match.strip()
-                        if task_desc:
+                        if self._is_valid_task_description(task_desc):
                             # Detecta prioridade da tarefa
                             priority = self._detect_task_priority(task_desc)
                             # Remove priority markers from description
                             clean_desc = re.sub(r'\s*\[(ESSENCIAL|OPCIONAL|ESSENTIAL|OPTIONAL)\]\s*', '', task_desc, flags=re.IGNORECASE)
                             tasks.append({
                                 'number': len(tasks) + 1,
-                                'description': clean_desc,
+                                'description': clean_desc[:200],  # Limit description length
                                 'status': 'pending',
                                 'type': self._detect_task_type(clean_desc),
                                 'priority': priority
@@ -98,20 +105,236 @@ class TaskManager:
                 line = line.strip()
                 # Remove prefixos comuns
                 line = re.sub(r'^(Passo|Step|Etapa)\s*\d*:?\s*', '', line, flags=re.IGNORECASE)
-                if line and len(line) > 10:  # Linha significativa
+                
+                if self._is_valid_task_description(line):
                     # Detecta prioridade da tarefa
                     priority = self._detect_task_priority(line)
                     # Remove priority markers from description
                     clean_desc = re.sub(r'\s*\[(ESSENCIAL|OPCIONAL|ESSENTIAL|OPTIONAL)\]\s*', '', line, flags=re.IGNORECASE)
                     tasks.append({
                         'number': i + 1,
-                        'description': clean_desc,
+                        'description': clean_desc[:200],  # Limit description length
                         'status': 'pending',
                         'type': self._detect_task_type(clean_desc),
                         'priority': priority
                     })
         
-        return tasks
+        # *** NEW: Validate final task list ***
+        validated_tasks = self._validate_task_list(tasks)
+        return validated_tasks
+    
+    def _validate_and_clean_response(self, response: str) -> str:
+        """
+        Validates and cleans the LLM response to prevent malformed parsing
+        
+        Args:
+            response: Raw LLM response
+            
+        Returns:
+            Cleaned response or empty string if invalid
+        """
+        if not response or not isinstance(response, str):
+            return ""
+        
+        # Remove excessive HTML/CSS/JS content that might be mixed in
+        # This prevents fragmented code from being parsed as tasks
+        response = re.sub(r'<[^>]+>', ' ', response)  # Remove HTML tags
+        response = re.sub(r'\{[^}]*\}', ' ', response)  # Remove CSS/JS blocks
+        response = re.sub(r'http[s]?://[^\s]+', '[URL]', response)  # Replace URLs
+        response = re.sub(r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b', '[IP]', response)  # Replace IPs
+        
+        # Remove excessively long lines that are likely code
+        lines = response.split('\n')
+        clean_lines = []
+        for line in lines:
+            if len(line.strip()) < 300:  # Skip very long lines
+                clean_lines.append(line)
+        
+        response = '\n'.join(clean_lines)
+        
+        # If response is too short or too long, it's probably malformed
+        if len(response.strip()) < 50 or len(response) > 10000:
+            return ""
+        
+        return response
+    
+    def _is_valid_task(self, task_num: str, task_desc: str) -> bool:
+        """
+        Validates if a task number and description are legitimate
+        
+        Args:
+            task_num: Task number string
+            task_desc: Task description
+            
+        Returns:
+            True if valid task, False otherwise
+        """
+        try:
+            num = int(task_num)
+            # Reject unreasonable task numbers
+            if num < 1 or num > 50:
+                return False
+        except (ValueError, TypeError):
+            return False
+        
+        return self._is_valid_task_description(task_desc)
+    
+    def _is_valid_task_description(self, description: str) -> bool:
+        """
+        Validates if a task description is legitimate
+        
+        Args:
+            description: Task description to validate
+            
+        Returns:
+            True if valid description, False otherwise
+        """
+        if not description or not isinstance(description, str):
+            return False
+        
+        description = description.strip()
+        
+        # Too short or too long
+        if len(description) < 15 or len(description) > 500:
+            return False
+        
+        # *** ENHANCED: Reject obvious code patterns ***
+        
+        # Contains function/method declarations
+        if re.search(r'\b(function|def|class|var|let|const)\s*\w*\s*[\(\{]', description, re.IGNORECASE):
+            return False
+        
+        # Contains programming keywords
+        code_keywords = ['console\.log', 'return\s', 'import\s', 'export\s', 'require\(', 'alert\(']
+        if any(re.search(keyword, description, re.IGNORECASE) for keyword in code_keywords):
+            return False
+        
+        # Contains too many special characters (likely code fragments)
+        special_char_ratio = sum(1 for c in description if c in '{}[]()<>/\\|@#$%^&*=+') / len(description)
+        if special_char_ratio > 0.2:  # More restrictive
+            return False
+        
+        # Contains HTML-like content
+        if re.search(r'<[^>]+>', description):
+            return False
+        
+        # Contains CSS-like content
+        if re.search(r'[a-zA-Z-]+\s*:\s*[^;]+;', description):
+            return False
+        
+        # Contains IP addresses or URLs (likely fragmented) - including our [IP] replacement
+        if re.search(r'(\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b|\[IP\]|\[URL\])', description):
+            return False
+        
+        # Contains file extensions mixed in weird ways
+        if re.search(r'\.[a-z]{2,4}["\'>]', description):
+            return False
+        
+        # *** NEW: Reject descriptions that are mostly numbers or single values ***
+        # Check if description is mostly numbers or single short values
+        words = description.split()
+        if len(words) <= 2:
+            # If it's very short, check if it looks like a value/number
+            if re.match(r'^[a-zA-Z]*\s*\d+[\.:]\d*$', description.strip()):
+                return False
+        
+        # *** NEW: Must contain at least one action verb ***
+        action_verbs = [
+            'create', 'build', 'implement', 'develop', 'design', 'write', 'add', 'remove',
+            'update', 'modify', 'configure', 'setup', 'install', 'test', 'validate', 
+            'check', 'verify', 'ensure', 'optimize', 'improve', 'fix', 'debug',
+            'integrate', 'connect', 'deploy', 'run', 'execute', 'analyze', 'review',
+            'prepare', 'organize', 'structure', 'plan', 'define', 'specify'
+        ]
+        
+        description_lower = description.lower()
+        has_action_verb = any(verb in description_lower for verb in action_verbs)
+        
+        # *** NEW: Or must contain task-like indicators ***
+        task_indicators = [
+            'file', 'component', 'interface', 'api', 'endpoint', 'service', 'system',
+            'page', 'template', 'layout', 'style', 'script', 'function', 'method',
+            'database', 'model', 'view', 'controller', 'form', 'button', 'menu'
+        ]
+        
+        has_task_indicator = any(indicator in description_lower for indicator in task_indicators)
+        
+        # Must have either an action verb OR task indicator
+        if not (has_action_verb or has_task_indicator):
+            return False
+        
+        # *** NEW: Reject if it looks like a "Tarefa X:" pattern with just numbers/IPs ***
+        if re.match(r'^tarefa\s*\d+:\s*[\d\.\:\s]+$', description_lower):
+            return False
+        
+        return True
+    
+    def _validate_task_list(self, tasks: List[Dict]) -> List[Dict]:
+        """
+        Final validation and cleaning of the task list
+        
+        Args:
+            tasks: List of parsed tasks
+            
+        Returns:
+            Validated and cleaned task list
+        """
+        if not tasks:
+            return []
+        
+        # Remove duplicates based on description similarity
+        unique_tasks = []
+        seen_descriptions = set()
+        
+        for task in tasks:
+            # Normalize description for comparison
+            normalized = re.sub(r'\s+', ' ', task['description'].lower().strip())
+            
+            # Check if similar description already exists
+            is_duplicate = False
+            for seen in seen_descriptions:
+                if self._descriptions_similar(normalized, seen):
+                    is_duplicate = True
+                    break
+            
+            if not is_duplicate:
+                seen_descriptions.add(normalized)
+                unique_tasks.append(task)
+        
+        # Renumber tasks to ensure sequential numbering
+        for i, task in enumerate(unique_tasks):
+            task['number'] = i + 1
+        
+        # Limit to reasonable number of tasks
+        if len(unique_tasks) > 20:
+            unique_tasks = unique_tasks[:20]
+        
+        return unique_tasks
+    
+    def _descriptions_similar(self, desc1: str, desc2: str, threshold: float = 0.8) -> bool:
+        """
+        Check if two task descriptions are similar
+        
+        Args:
+            desc1: First description
+            desc2: Second description  
+            threshold: Similarity threshold (0-1)
+            
+        Returns:
+            True if descriptions are similar
+        """
+        # Simple similarity based on common words
+        words1 = set(desc1.split())
+        words2 = set(desc2.split())
+        
+        if not words1 or not words2:
+            return False
+        
+        intersection = len(words1.intersection(words2))
+        union = len(words1.union(words2))
+        
+        similarity = intersection / union if union > 0 else 0
+        return similarity >= threshold
     
     def _detect_task_type(self, description: str) -> str:
         """
