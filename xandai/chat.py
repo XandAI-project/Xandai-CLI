@@ -17,10 +17,11 @@ from prompt_toolkit.shortcuts import prompt
 from rich.console import Console
 from rich.panel import Panel
 from rich.syntax import Syntax
+import re
 
 from xandai.ollama_client import OllamaClient, OllamaResponse
 from xandai.history import HistoryManager
-from xandai.task import TaskProcessor
+from xandai.task import TaskProcessor, TaskStep
 
 
 class ChatREPL:
@@ -396,14 +397,23 @@ class ChatREPL:
                     self.console.print("\\n" + raw_response.split("Context usage:")[0].strip())
                     return
             
-            # Display task summary
+            # Display task summary and steps
             if steps:
                 summary = self.task_processor.get_task_summary(steps)
                 self.console.print(f"\\n[bold green]✅ {summary}[/bold green]")
                 
-                # Display formatted steps
-                formatted_steps = self.task_processor.format_steps_for_display(steps)
-                self._display_task_steps(formatted_steps)
+                # First, show simple step list (required format)
+                self.console.print("\\n[bold cyan]Steps:[/bold cyan]")
+                for step in steps:
+                    if step.action == 'run':
+                        self.console.print(f"{step.step_number} - run: {step.target}")
+                    else:
+                        self.console.print(f"{step.step_number} - {step.action} {step.target}")
+                
+                # Execute the steps (create files, etc.)
+                self.console.print("\\n[bold yellow]Executing steps...[/bold yellow]")
+                self._execute_task_steps(steps)
+                
             else:
                 self.console.print("\\n[yellow]⚠️  No executable steps generated.[/yellow]")
                 self.console.print("[dim]Try being more specific about what you want to build.[/dim]")
@@ -419,6 +429,61 @@ class ChatREPL:
             if self.verbose:
                 import traceback
                 self.console.print(traceback.format_exc())
+    
+    def _execute_task_steps(self, steps: List[TaskStep]):
+        """Execute task steps by creating files and running commands"""
+        import os
+        import subprocess
+        from pathlib import Path
+        
+        for step in steps:
+            try:
+                if step.action in ['create', 'edit'] and step.content:
+                    # Create/edit file
+                    file_path = Path(step.target)
+                    
+                    # Create directory if needed
+                    file_path.parent.mkdir(parents=True, exist_ok=True)
+                    
+                    # Write file content
+                    with open(file_path, 'w', encoding='utf-8') as f:
+                        f.write(step.content)
+                    
+                    # Show success
+                    action_text = "Created" if step.action == "create" else "Updated"
+                    self.console.print(f"[green]✅ {action_text} {step.target}[/green]")
+                    
+                elif step.action == 'run' and step.commands:
+                    # Execute commands
+                    for cmd in step.commands:
+                        self.console.print(f"[blue]🔧 Running: {cmd}[/blue]")
+                        try:
+                            result = subprocess.run(
+                                cmd,
+                                shell=True,
+                                capture_output=True,
+                                text=True,
+                                timeout=60
+                            )
+                            
+                            if result.returncode == 0:
+                                self.console.print(f"[green]✅ Command completed successfully[/green]")
+                                if result.stdout.strip():
+                                    self.console.print(f"[dim]{result.stdout.strip()}[/dim]")
+                            else:
+                                self.console.print(f"[yellow]⚠️  Command completed with warnings[/yellow]")
+                                if result.stderr.strip():
+                                    self.console.print(f"[dim]{result.stderr.strip()}[/dim]")
+                                    
+                        except subprocess.TimeoutExpired:
+                            self.console.print(f"[red]❌ Command timed out after 60s[/red]")
+                        except Exception as cmd_error:
+                            self.console.print(f"[red]❌ Command failed: {cmd_error}[/red]")
+                            
+            except Exception as e:
+                self.console.print(f"[red]❌ Failed to execute step {step.step_number}: {e}[/red]")
+        
+        self.console.print(f"\\n[bold green]🎉 Task execution completed![/bold green]")
     
     def _display_response(self, content: str):
         """Display LLM response with syntax highlighting"""
