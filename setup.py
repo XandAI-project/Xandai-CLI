@@ -1,3 +1,8 @@
+#!/usr/bin/env python3
+"""
+XandAI - CLI Assistant with Ollama Integration
+"""
+
 from setuptools import setup, find_packages
 
 with open("README.md", "r", encoding="utf-8") as fh:
@@ -8,29 +13,29 @@ with open("requirements.txt", "r", encoding="utf-8") as fh:
 
 setup(
     name="xandai",
-    version="0.5.3",
-    author="XandAI Team",
-    author_email="",
-    description="Uma ferramenta CLI interativa para interagir com modelos OLLAMA",
+    version="2.1.0",
+    author="XandNet",
+    description="CLI Assistant with Ollama Integration and Context-Aware Interactions",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/yourusername/xandai",
     packages=find_packages(),
     classifiers=[
-        "Development Status :: 3 - Alpha",
+        "Development Status :: 4 - Beta",
         "Intended Audience :: Developers",
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
         "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
-        "Programming Language :: Python :: 3.12",
     ],
-    python_requires=">=3.10",
+    python_requires=">=3.8",
     install_requires=requirements,
     entry_points={
         "console_scripts": [
-            "xandai=xandai.__main__:main",
+            "xandai=xandai.main:main",
         ],
     },
+    include_package_data=True,
 )

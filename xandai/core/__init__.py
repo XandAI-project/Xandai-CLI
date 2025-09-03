@@ -1,0 +1,3 @@
+"""
+XandAI Core - Funcionalidades principais
+"""

@@ -1,6 +1,10 @@
 """
-XandAI - Uma ferramenta CLI interativa para modelos OLLAMA
+XandAI - CLI Assistant with Ollama Integration
+
+Uma ferramenta CLI inteligente para assistência em desenvolvimento
+com integração nativa a modelos Ollama e suporte a múltiplos modos.
 """
 
-__version__ = "0.5.3"
-__author__ = "XandAI Team"
+__version__ = "2.1.0"
+__author__ = "XandNet"
+__description__ = "Production-grade CLI Assistant with Ollama Integration, Terminal Commands, and Context Tracking"
