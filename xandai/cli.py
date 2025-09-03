@@ -33,6 +33,7 @@ from .cli_utils.tag_processor import TagProcessor
 from .cli_utils.auto_recovery import AutoRecovery
 from .cli_utils.auto_read_structure import AutoReadStructure
 from .cli_utils.file_editor import FileEditor
+from .llm_prompts import CLIPrompts, ModeInstructions, TagInstructions, HelpText
 
 
 console = Console()
@@ -478,33 +479,8 @@ class XandAICLI:
         Returns:
             Enhanced prompt with more context and details
         """
-        analysis_prompt = f"""You are a prompt analysis expert. Your job is to analyze user requests and provide a detailed, enhanced version that will get better results from an AI assistant.
-
-ORIGINAL USER REQUEST:
-"{original_prompt}"
-
-ANALYSIS TASK:
-1. Identify what the user is trying to accomplish
-2. Determine what additional context or details would be helpful
-3. Suggest specific requirements, constraints, or preferences
-4. Consider technical details, best practices, or standards that should be included
-5. Think about potential edge cases or considerations
-
-ENHANCED REQUEST FORMAT:
-Provide an enhanced version of the request that:
-- Maintains the user's original intent
-- Adds helpful context and details
-- Specifies clear requirements when applicable  
-- Includes relevant technical considerations
-- Is more likely to produce a comprehensive, useful response
-
-IMPORTANT: 
-- Keep the enhanced request focused and practical
-- Don't over-complicate simple requests
-- Maintain the original tone and style
-- Add value without changing the core request
-
-Enhanced Request:"""
+        # Use analysis prompt from prompts library
+        analysis_prompt = CLIPrompts.get_analysis_prompt(original_prompt)
 
         try:
             console.print("[dim]🔍 Analyzing and enhancing your prompt...[/dim]")
@@ -1727,23 +1703,12 @@ Enhanced Request:"""
             
             # Cria prompt expandido com conteúdo dos arquivos + instruções de tags
             tag_instructions = self._get_basic_tag_instructions()
-            enhanced_prompt_with_files = f"""
-{original_prompt}
-
-{file_context}
-
-IMPORTANT: Use the file content above to provide a complete and accurate response to the original request.
-
-{tag_instructions}
-
-🚨 CRITICAL REQUIREMENTS:
-- ALWAYS use <code edit filename="..."> for modifying existing files
-- ALWAYS use <code create filename="..."> for creating new files  
-- ALWAYS use <actions> for shell commands
-- NEVER use ``` code blocks for files - use the tags above
-- Complete the implementation in this response - don't just explain what to do
-
-PROVIDE COMPLETE, WORKING CODE USING THE PROPER TAGS NOW."""
+            # Use file content integration prompt from prompts library
+            enhanced_prompt_with_files = CLIPrompts.get_file_content_integration(
+                original_prompt,
+                file_context,
+                tag_instructions + "\n\n🚨 ADDITIONAL REQUIREMENTS:\n- ALWAYS use <code edit filename=\"...\"> for modifying existing files\n- ALWAYS use <code create filename=\"...\"> for creating new files\n- NEVER use ``` code blocks for files - use the tags above\n- Complete the implementation in this response - don't just explain what to do\n\nPROVIDE COMPLETE, WORKING CODE USING THE PROPER TAGS NOW."
+            )
             
             console.print("[dim]Sending enhanced prompt with file content to model...[/dim]")
             
@@ -2150,17 +2115,11 @@ PROVIDE COMPLETE, WORKING CODE USING THE PROPER TAGS NOW."""
         
         # *** NEW: Enhance breakdown prompt with conversation context ***
         if conversation_context:
-            breakdown_prompt = f"""**CONVERSATION CONTEXT:**
-{conversation_context}
-
-**CURRENT TASK REQUEST:**
-{breakdown_prompt}
-
-**CONTEXT INTEGRATION INSTRUCTIONS:**
-- Consider the conversation history when breaking down this task
-- Reference previous work, decisions, and context when relevant
-- Maintain consistency with established patterns and preferences
-- Build upon existing knowledge and avoid redundant explanations"""
+            # Use conversation integration prompt from prompts library
+            breakdown_prompt = CLIPrompts.get_conversation_integration(
+                conversation_context,
+                breakdown_prompt
+            )
         
         # Add mode-specific instructions to breakdown prompt
         mode_instructions = self._generate_mode_instructions(mode_decision)
@@ -2324,17 +2283,11 @@ PROVIDE COMPLETE, WORKING CODE USING THE PROPER TAGS NOW."""
                 
                 # *** NEW: Enhance task prompt with conversation context ***
                 if current_context:
-                    task_prompt = f"""**CONVERSATION & PREVIOUS TASKS CONTEXT:**
-{current_context}
-
-**CURRENT SUBTASK:**
-{task_prompt}
-
-**CONTEXT INTEGRATION INSTRUCTIONS:**
-- Build upon previous work and decisions from the conversation history
-- Maintain consistency with established patterns and coding style
-- Reference and extend existing implementations when relevant
-- Avoid duplicating work already completed in previous subtasks"""
+                    # Use subtask integration prompt from prompts library
+                    task_prompt = CLIPrompts.get_subtask_integration(
+                        current_context,
+                        task_prompt
+                    )
                 
                 # Detect mode for individual task
                 task_mode_decision = self.project_mode_detector.detect_project_mode(task['description'])
@@ -2536,33 +2489,77 @@ Task breakdown and execution completed with full conversation context integratio
                         console.print(f"[dim]🔍 Response without code/actions detected.[/dim]")
                         console.print(Panel(full_response, title="[dim]DEBUG - Resposta Raw[/dim]", border_style="dim"))
                 
-                # Processa tags especiais PRIMEIRO
+                # Processa tags especiais PRIMEIRO usando TagProcessor robusto
                 special_processed = False
                 
-                # Processa tags especiais (com informações de modo se disponível)
-                if has_actions or has_read or has_code:
-                    read_level = self._determine_read_level(task_info['description'].lower())
-                    
-                    # If this task has read tags and it's edit mode with read-first enabled, handle it properly
-                    should_skip_reads = False
-                    if has_read and mode_decision and mode_decision['mode'] == 'edit':
-                        # Only skip reads if we're already at deep analysis level
-                        should_skip_reads = read_level >= 4
-                    
-                    tags_processed = self._process_special_tags(
-                        full_response, 
-                        task_info['description'], 
-                        skip_read_tags=should_skip_reads, 
-                        current_read_level=read_level
-                    )
-                    if tags_processed:
-                        special_processed = True
+                # *** NEW: Use TagProcessor for robust tag processing in task mode ***
+                if hasattr(self, 'tag_processor') and self.tag_processor:
+                    try:
+                        console.print("[dim]🔧 Processing tags with TagProcessor...[/dim]")
                         
-                        # Check if read tags were processed and need file content reprocessing
-                        if has_read and not should_skip_reads:
-                            # Check if _process_special_tags triggered file content reading
-                            # This would be handled automatically by the read processing in _process_special_tags
-                            console.print(f"[dim]📖 Read operations completed for task '{task_info['description'][:50]}...'[/dim]")
+                        # Use TagProcessor for comprehensive tag processing
+                        tags_processed = self.tag_processor.process_response(
+                            full_response,
+                            task_info['description']
+                        )
+                        
+                        if tags_processed:
+                            special_processed = True
+                            console.print(f"[dim]✅ Tags processed successfully for task '{task_info['description'][:50]}...'[/dim]")
+                        
+                    except Exception as e:
+                        console.print(f"[yellow]⚠️  TagProcessor error: {e}[/yellow]")
+                        console.print("[dim]Falling back to legacy tag processing...[/dim]")
+                        
+                        # Fallback to legacy processing
+                        if has_actions or has_read or has_code:
+                            read_level = self._determine_read_level(task_info['description'].lower())
+                            
+                            # If this task has read tags and it's edit mode with read-first enabled, handle it properly
+                            should_skip_reads = False
+                            if has_read and mode_decision and mode_decision['mode'] == 'edit':
+                                # Only skip reads if we're already at deep analysis level
+                                should_skip_reads = read_level >= 4
+                            
+                            tags_processed = self._process_special_tags(
+                                full_response, 
+                                task_info['description'], 
+                                skip_read_tags=should_skip_reads, 
+                                current_read_level=read_level
+                            )
+                            if tags_processed:
+                                special_processed = True
+                                
+                                # Check if read tags were processed and need file content reprocessing
+                                if has_read and not should_skip_reads:
+                                    # Check if _process_special_tags triggered file content reading
+                                    # This would be handled automatically by the read processing in _process_special_tags
+                                    console.print(f"[dim]📖 Read operations completed for task '{task_info['description'][:50]}...'[/dim]")
+                else:
+                    # Fallback to legacy processing if TagProcessor is not available
+                    if has_actions or has_read or has_code:
+                        read_level = self._determine_read_level(task_info['description'].lower())
+                        
+                        # If this task has read tags and it's edit mode with read-first enabled, handle it properly
+                        should_skip_reads = False
+                        if has_read and mode_decision and mode_decision['mode'] == 'edit':
+                            # Only skip reads if we're already at deep analysis level
+                            should_skip_reads = read_level >= 4
+                        
+                        tags_processed = self._process_special_tags(
+                            full_response, 
+                            task_info['description'], 
+                            skip_read_tags=should_skip_reads, 
+                            current_read_level=read_level
+                        )
+                        if tags_processed:
+                            special_processed = True
+                            
+                            # Check if read tags were processed and need file content reprocessing
+                            if has_read and not should_skip_reads:
+                                # Check if _process_special_tags triggered file content reading
+                                # This would be handled automatically by the read processing in _process_special_tags
+                                console.print(f"[dim]📖 Read operations completed for task '{task_info['description'][:50]}...'[/dim]")
                 
                 # Detecta e processa blocos de código tradicionais (compatibilidade)
                 if has_traditional_code:
@@ -2624,119 +2621,8 @@ Task breakdown and execution completed with full conversation context integratio
         
     def show_help(self):
         """Shows CLI help"""
-        help_text = """
-# Available Commands
-
-- `/help` - Shows this help message
-- `/models` - Lists available models
-- `/clear` - Clears the screen
-- `/exit` or `/quit` - Exits XandAI
-- `/file <command> <file> [content]` - File operations
-- `/shell` - Toggles automatic shell command execution
-- `/enhance` - Toggles automatic prompt enhancement
-- `/enhance_code <description>` - Improves existing code (adds details, fixes bugs)
-- `/task <description>` - Executes complex task divided into steps
-- `/flush` - Manually flush LLM context history to free up tokens
-- `/context` - Show current context usage status and token percentage
-- `/better` - Toggle better prompting system (two-stage prompt enhancement)
-- `/debug` - Toggles debug mode (shows complete model responses)
-- `/session <command>` - Session management commands
-- `/history <command>` - Robust conversation history management
-
-## File Commands
-
-- `/file create <path> [content]` - Creates a file
-- `/file edit <path> <content>` - Edits a file
-- `/file append <path> <content>` - Adds content to file
-- `/file read <path>` - Reads a file
-- `/file delete <path>` - Deletes a file
-- `/file list [directory] [pattern] [-r]` - Lists files (use -r for recursive search)
-- `/file search <filename>` - Searches for file in parent and subdirectories
-
-## Session Commands
-
-- `/session info` - Shows information about current/previous session
-- `/session clear` - Clears current session and archives it
-- `/session backups` - Lists available session backups
-- `/session restore <backup_name>` - Restores a session backup
-- `/session save` - Manually saves current session
-
-## History Commands
-
-- `/history` - Shows conversation status and statistics
-- `/history export [format]` - Exports conversation (json/markdown/txt)
-- `/history summarize` - Forces conversation summarization
-- `/history optimize` - Forces context optimization
-- `/history stats` - Shows detailed conversation statistics
-- `/history clear` - Clears conversation history (with confirmation)
-
-## Automatic Shell Command Execution
-
-When enabled, common shell commands are executed automatically:
-- `ls`, `dir`, `cd`, `mkdir`, `rm`, `cp`, `mv`, etc.
-- `git`, `npm`, `pip`, `python`, etc.
-- Comandos com pipes `|` e redirecionamentos `>`, `>>`
-
-## Prompt Enhancement
-
-When enabled, your prompts are enhanced with:
-- Context of mentioned files
-- `<task>` tags for clear instructions
-- Language and framework detection
-- Current directory context
-
-## Code Enhancement Mode
-
-Use `/enhance_code` to improve existing code:
-
-```
-/enhance_code add error handling and type hints
-
-# XandAI will:
-1. Analyze all existing files
-2. Identify problems and areas for improvement
-3. EDIT existing files (never create new ones)
-4. Add: error handling, documentation, type hints
-5. Fix: bugs, linting issues, vulnerabilities
-6. Improve: performance, structure, readability
-```
-
-⚠️ IMPORTANT: This command NEVER creates new files, only improves existing ones!
-
-## Complex Task Mode
-
-Use `/task` for large projects that need to be divided:
-
-```
-/task create a REST API with JWT authentication and user CRUD
-
-# XandAI will:
-1. Analyze and divide into sub-tasks
-2. Show execution plan
-3. Execute each task sequentially
-4. Code and commands are processed automatically
-5. Explanations are shown as formatted text
-```
-
-## Examples
-
-```
-# Shell commands (executed automatically)
-ls -la
-cd src
-mkdir new_project
-
-# File commands
-/file create test.py print("Hello World")
-/file read test.py
-
-# Automatically enhanced prompts
-"create a server.js file with express"
-→ [Files: server.js] [Language: javascript, Framework: Express]
-   <task>create a server.js file with express</task>
-```
-        """
-        console.print(Panel(Markdown(help_text), title="[bold blue]Ajuda do XandAI[/bold blue]"))
+        # Use help content from prompts library
+        console.print(Panel(Markdown(HelpText.HELP_CONTENT), title="[bold blue]Ajuda do XandAI[/bold blue]"))
         
     def file_command(self, args: str = ""):
         """
@@ -3603,87 +3489,7 @@ mkdir new_project
         Returns:
             String com instruções básicas sobre tags
         """
-        return """
-
-[MANDATORY TAGS FOR ACTIONS - CLEAN CODE ONLY]
-
-⚡ EFFICIENCY TIP: Process multiple files in ONE response! Don't stop after editing just one file.
-
-1. For shell/terminal commands:
-   ✅ RIGHT: <actions>mkdir my-project</actions>
-   ✅ RIGHT: <actions>pip install flask</actions>
-   ❌ WRONG: ```bash
-             mkdir my-project
-             ```
-   ❌ WRONG: Just describing: "Create a folder called my-project"
-
-2. For editing existing files:
-   ✅ RIGHT: <code edit filename="app.py">
-             from flask import Flask
-             app = Flask(__name__)
-             if __name__ == '__main__':
-                 app.run(debug=True)
-             </code>
-   ❌ WRONG: <code filename="app.py"> (missing edit/create)
-   ❌ WRONG: Adding explanations at end of file
-   
-3. For creating new files:
-   ✅ RIGHT: <code create filename="config.py">
-             DEBUG = True
-             SECRET_KEY = 'dev-key'
-             </code>
-   ❌ WRONG: <code filename="config.py"> (missing edit/create)
-
-4. For reading existing files:
-   ✅ RIGHT: <read>cat app.py</read>
-   ✅ RIGHT: <read>ls -la</read>
-   ❌ WRONG: ```bash
-             cat app.py
-             ```
-   ❌ WRONG: Just describing: "Check the contents of app.py"
-
-🚀 MULTIPLE OPERATIONS EXAMPLES:
-
-✅ EXCELLENT - Process multiple files in ONE response:
-   <read>
-   cat app.py
-   cat config.py
-   ls templates/
-   </read>
-   
-   <code edit filename="app.py">
-   # Updated app.py content here
-   </code>
-   
-   <code edit filename="config.py">
-   # Updated config.py content here
-   </code>
-   
-   <code create filename="templates/base.html">
-   # New template content here
-   </code>
-
-❌ INEFFICIENT - Don't stop after just one operation:
-   "I'll start by reading app.py and then wait for further instructions..."
-
-CRITICAL RULES:
-- ALWAYS use <actions> for commands (mkdir, pip, npm, git, etc.)
-- ALWAYS use <code edit filename="..."> for editing existing files
-- ALWAYS use <code create filename="..."> for creating new files
-- ALWAYS use <read> for examining files
-- NEVER use ``` blocks for files that should be created/edited
-- NEVER just describe actions - use the tags!
-- The old <code filename="..."> format is deprecated - always specify edit or create
-- 🚀 BATCH OPERATIONS: Do multiple file operations in ONE response for efficiency
-
-🚫 CLEAN CODE FORMATTING RULES:
-- Code blocks must contain ONLY the file content - no explanations or summaries
-- NEVER add markdown blocks (```) inside source files
-- NEVER add implementation descriptions at the end of files
-- Keep files in their proper format (HTML files = HTML, JS files = JavaScript, etc.)
-- Do NOT mix markdown with other formats (no markdown inside HTML/CSS/JS files)
-- Provide clean, executable code without embedded documentation
-"""
+        return TagInstructions.BASIC_TAG_INSTRUCTIONS
     
     def _should_add_read_first_instruction(self, prompt: str) -> bool:
         """
@@ -3826,20 +3632,16 @@ CRITICAL RULES:
         # Cria um prompt muito mais direto e específico
         file_content_text = "\n\n".join(read_content) if read_content else ""
         
-        force_prompt = f"""PREVIOUS RESPONSE REJECTED - YOU ONLY PROVIDED EXPLANATIONS
-The user requested: {original_prompt}
-
-FILES AVAILABLE:
-{file_content_text}
-
-YOUR PREVIOUS RESPONSE (REJECTED):
-{previous_response[:500]}{'...' if len(previous_response) > 500 else ''}
-
-MANDATORY INSTRUCTIONS - NO EXCEPTIONS:
-1. You MUST provide concrete implementation using the exact tags below
+        # Use force implementation prompt from prompts library
+        force_prompt = CLIPrompts.get_force_implementation(
+            original_prompt,
+            file_content_text,
+            previous_response
+        )
+        # Add additional requirements specific to this context
+        force_prompt += f"""
 2. For existing files: <code edit filename="filename.ext">COMPLETE_CODE_HERE</code>
 3. For new files: <code create filename="filename.ext">COMPLETE_CODE_HERE</code>
-4. For shell commands: <actions>command_here</actions>
 5. NO explanations without implementation
 6. NO "here's how you could do it" - ACTUALLY DO IT
 7. Provide complete, working code that implements: {original_prompt}
@@ -4293,49 +4095,21 @@ IMPLEMENT NOW - NO MORE EXPLANATIONS:"""
         confidence = mode_decision['confidence']
         project_info = mode_decision['project_info']
         
-        if mode == 'edit' and confidence > 30:
-            instructions = [
-                "\n## EDIT MODE DETECTED",
-                "🚨 CRITICAL: The user wants to UPDATE/MODIFY an existing project, NOT create a new one!",
-                "",
-                "**PRESERVATION-FIRST Edit Mode Instructions:**",
-                "- ALWAYS read existing files first using <read> tags (multiple files in ONE <read> block)",
-                "- PRESERVE ALL existing code: functions, endpoints, classes, variables, imports",
-                "- NEVER delete or remove existing functionality unless explicitly requested",
-                "- Make ONLY the specific changes requested - keep everything else identical",
-                "- When editing files, provide the COMPLETE file including all existing code",
-                "- Use <code edit filename=\"...\"> for modifying existing files (FULL file content required)",
-                "- Use <code create filename=\"...\"> ONLY for completely new files",
-                "- 🚀 EFFICIENCY: Process multiple files in ONE response - don't stop after editing just one",
-                "- Mark new additions with comments like // NEW: or // ADDED: for clarity",
-                "- Maintain consistency with existing patterns and conventions",
-                "- If you find config files (package.json, requirements.txt), UPDATE instead of creating new ones",
-                "",
-                "**CLEAN CODE FORMATTING:**",
-                "- Provide ONLY executable code in <code> blocks - NO explanations inside files",
-                "- NEVER add markdown blocks (```) inside source files",
-                "- NEVER add implementation summaries or feature descriptions at end of files",
-                "- Keep files in their proper format (HTML=HTML, JS=JS, CSS=CSS, not markdown)",
-                "- Code blocks must contain ONLY the file content, no external commentary",
-                "",
-                "**ENDPOINT/API PRESERVATION:**",
-                "- Keep ALL existing API endpoints, routes, and handlers",
-                "- When adding new endpoints, integrate them without affecting existing ones",
-                "- Preserve all existing middleware, error handlers, and utilities",
-                "- Maintain existing database schemas, models, and connections",
-                ""
+        # Use mode instructions from prompts library
+        base_instructions = ModeInstructions.get_mode_instructions(mode, confidence)
+        
+        # For edit mode, add detected project information
+        if mode == 'edit' and confidence > 30 and project_info['types']:
+            additional_info = [
+                "\n**Detected Project(s):**"
             ]
+            for proj_type in project_info['types'][:3]:  # Top 3
+                additional_info.append(f"- {proj_type['type']} (confidence: {proj_type['confidence']}%)")
+                if proj_type['indicators']:
+                    additional_info.append(f"  Indicators: {', '.join(proj_type['indicators'][:5])}")
             
-            # Add information about detected project types
-            if project_info['types']:
-                instructions.append("**Detected Project(s):**")
-                for proj_type in project_info['types'][:3]:  # Top 3
-                    instructions.append(f"- {proj_type['type']} (confidence: {proj_type['confidence']}%)")
-                    if proj_type['indicators']:
-                        instructions.append(f"  Indicators: {', '.join(proj_type['indicators'][:5])}")
-                instructions.append("")
-            
-            instructions.extend([
+            additional_info.extend([
+                "",
                 "**NEVER:**",
                 "- Delete or remove existing endpoints, functions, or features",
                 "- Create new projects or structures from scratch when editing",
@@ -4352,56 +4126,19 @@ IMPLEMENT NOW - NO MORE EXPLANATIONS:"""
                 "- Stop without providing the complete requested implementation"
             ])
             
-        elif mode == 'create' and confidence > 30:
-            instructions = [
-                "\n## CREATE MODE DETECTED", 
-                "The user wants to CREATE a new project/functionality.",
-                "",
-                "**Instructions for Create Mode:**",
-                "- Create a new and organized structure",
-                "- Use <code create filename=\"...\"> for all new files",
-                "- Use best practices for the chosen technology",
-                "- Include necessary configuration files (package.json, requirements.txt, etc.)",
-                "- Organize code in logical directory structure",
-                "- Include basic documentation (README.md)",
-                "- 🚀 EFFICIENCY: Create ALL necessary files in ONE response - don't create just one file",
-                "- ALWAYS provide complete implementation, not just explanations",
-                "- NEVER stop without creating the requested files and code",
-                "",
-                "**CLEAN CODE FORMATTING:**",
-                "- Provide ONLY executable code in <code> blocks - NO explanations inside files",
-                "- NEVER add markdown blocks (```) inside source files",
-                "- NEVER add implementation summaries or feature descriptions at end of files",
-                "- Keep files in their proper format (HTML=HTML, JS=JS, CSS=CSS, not markdown)",
-                "- Code blocks must contain ONLY the file content, no external commentary",
-                ""
-            ]
-            
-            # If there's an existing project but intention is to create
-            if project_info['has_project']:
-                instructions.extend([
-                    "**ATTENTION:** Existing project detected, but user wants to create something new.",
-                    "- Create in subdirectory or use unique names to avoid conflicts",
-                    "- Consider integration with existing project if relevant",
-                    ""
-                ])
-        else:
-            # Ambiguous mode or low confidence
-            instructions = [
-                "\n## DEFAULT MODE (low detection confidence)",
-                f"Detected mode: {mode} (confidence: {confidence:.0f}%)",
-                "",
-                "**General Instructions:**",
-                "- ALWAYS read existing files first if relevant",
-                "- If important existing files exist, use <code edit filename=\"...\"> instead of creating new ones",
-                "- If no relevant structure exists, use <code create filename=\"...\"> to create a new organized one",
-                "- Use good judgment based on the user prompt context",
-                "- ALWAYS provide real implementation with functional code",
-                "- NEVER stop without completing the requested task",
-                ""
-            ]
+            return base_instructions + '\n'.join(additional_info)
         
-        return "\n".join(instructions)
+        # For create mode, add project conflict warning if needed
+        elif mode == 'create' and confidence > 30 and project_info['has_project']:
+            additional_info = [
+                "\n**ATTENTION:** Existing project detected, but user wants to create something new.",
+                "- Create in subdirectory or use unique names to avoid conflicts",
+                "- Consider integration with existing project if relevant",
+                ""
+            ]
+            return base_instructions + '\n'.join(additional_info)
+        
+        return base_instructions
     
     def _show_mode_detection_debug(self, mode_decision: Dict[str, Any]) -> None:
         """

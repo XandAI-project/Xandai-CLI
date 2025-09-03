@@ -10,6 +10,8 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.markdown import Markdown
 
+from .llm_prompts import TaskPrompts, BreakdownPrompts, ContextPrompts, ModePrompts
+
 console = Console()
 
 
@@ -50,12 +52,11 @@ class TaskManager:
         if not response:
             return tasks
         
-        # Patterns to detect tasks with priority markers
+        # Patterns to detect tasks with priority markers - more restrictive
         patterns = [
-            r'(\d+)\.\s*(.+?)(?=\n\d+\.|$)',  # 1. Tarefa
-            r'(?:Tarefa|Task)\s*(\d+):\s*(.+?)(?=(?:Tarefa|Task)\s*\d+:|$)',  # Tarefa 1: 
-            r'[-•]\s*(.+?)(?=[-•]|$)',  # - Tarefa ou • Tarefa
-            r'\[(\d+)\]\s*(.+?)(?=\[\d+\]|$)',  # [1] Tarefa
+            r'(\d+)\.\s*\[(?:ESSENTIAL|OPTIONAL|ESSENCIAL|OPCIONAL)\]\s*(.+?)(?=\n\d+\.|$)',  # 1. [ESSENTIAL] Task
+            r'(\d+)\.\s*(.+?)(?=\n\d+\.|$)',  # 1. Task (fallback)
+            r'(?:Tarefa|Task)\s*(\d+):\s*(.+?)(?=(?:Tarefa|Task)\s*\d+:|$)',  # Tarefa 1: (legacy)
         ]
         
         # Try each pattern
@@ -143,17 +144,41 @@ class TaskManager:
         response = re.sub(r'http[s]?://[^\s]+', '[URL]', response)  # Replace URLs
         response = re.sub(r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b', '[IP]', response)  # Replace IPs
         
+        # Remove common code patterns that shouldn't be in task descriptions
+        code_patterns = [
+            r'document\..*?;',  # JavaScript document calls
+            r'console\..*?;',  # Console statements
+            r'function\s+\w+\s*\([^)]*\)\s*\{[^}]*\}',  # Function definitions
+            r'const\s+\w+\s*=.*?;',  # Const declarations
+            r'let\s+\w+\s*=.*?;',  # Let declarations  
+            r'var\s+\w+\s*=.*?;',  # Var declarations
+            r'getElementById\([^)]*\)',  # getElementById calls
+            r'addEventListener\([^)]*\)',  # Event listeners
+            r'innerHTML\s*=.*?;',  # innerHTML assignments
+            r'background-color:\s*[^;]+;',  # CSS properties
+            r'mkdir\s+\w+',  # Shell commands
+            r'cd\s+\w+',  # CD commands
+            r'echo\s+.*?>',  # Echo commands
+        ]
+        
+        for pattern in code_patterns:
+            response = re.sub(pattern, '', response, flags=re.IGNORECASE)
+        
         # Remove excessively long lines that are likely code
         lines = response.split('\n')
         clean_lines = []
         for line in lines:
-            if len(line.strip()) < 300:  # Skip very long lines
+            line_stripped = line.strip()
+            # Skip lines that are clearly code or commands
+            if (len(line_stripped) < 200 and  # Not too long
+                not line_stripped.startswith(('function ', 'const ', 'let ', 'var ', 'document.', 'console.')) and
+                not re.match(r'^(mkdir|cd|echo|pip|npm)\s', line_stripped, re.IGNORECASE)):
                 clean_lines.append(line)
         
         response = '\n'.join(clean_lines)
         
         # If response is too short or too long, it's probably malformed
-        if len(response.strip()) < 50 or len(response) > 10000:
+        if len(response.strip()) < 30 or len(response) > 8000:
             return ""
         
         return response
@@ -195,30 +220,34 @@ class TaskManager:
         description = description.strip()
         
         # Too short or too long
-        if len(description) < 15 or len(description) > 500:
+        if len(description) < 10 or len(description) > 500:
             return False
         
         # *** ENHANCED: Reject obvious code patterns ***
         
-        # Contains function/method declarations
-        if re.search(r'\b(function|def|class|var|let|const)\s*\w*\s*[\(\{]', description, re.IGNORECASE):
+        # Contains function/method declarations or code snippets
+        if re.search(r'\b(function|def|class|var|let|const|document\.|getElementById|addEventListener)\s*\w*\s*[\(\{]', description, re.IGNORECASE):
             return False
         
-        # Contains programming keywords
-        code_keywords = ['console\.log', 'return\s', 'import\s', 'export\s', 'require\(', 'alert\(']
+        # Contains programming keywords and patterns
+        code_keywords = [
+            r'console\.log', r'return\s', r'import\s', r'export\s', r'require\(',
+            r'alert\(', r'background-color:', r'=>\s*\{', r'\w+\.\w+\(',
+            r'// ', r'/\*', r'\*/', r'echo\s*\.\s*>', r'mkdir\s', r'cd\s'
+        ]
         if any(re.search(keyword, description, re.IGNORECASE) for keyword in code_keywords):
             return False
         
         # Contains too many special characters (likely code fragments)
-        special_char_ratio = sum(1 for c in description if c in '{}[]()<>/\\|@#$%^&*=+') / len(description)
-        if special_char_ratio > 0.2:  # More restrictive
+        special_char_ratio = sum(1 for c in description if c in '{}[]()<>/\\|@#$%^&*=+.:;') / len(description)
+        if special_char_ratio > 0.15:  # More restrictive
             return False
         
         # Contains HTML-like content
         if re.search(r'<[^>]+>', description):
             return False
         
-        # Contains CSS-like content
+        # Contains CSS-like content or selectors
         if re.search(r'[a-zA-Z-]+\s*:\s*[^;]+;', description):
             return False
         
@@ -228,6 +257,23 @@ class TaskManager:
         
         # Contains file extensions mixed in weird ways
         if re.search(r'\.[a-z]{2,4}["\'>]', description):
+            return False
+        
+        # Reject shell command patterns
+        if re.search(r'^(mkdir|cd|echo|pip|npm|git|ls|dir)\s', description.strip(), re.IGNORECASE):
+            return False
+        
+        # Reject JavaScript/CSS patterns
+        js_css_patterns = [
+            r'document\s*\.\s*\w+',  # document.something
+            r'\w+\s*\.\s*innerHTML',  # something.innerHTML
+            r'forEach\s*\(',  # forEach(
+            r'\w+\s*\.\s*addEventListener',  # addEventListener
+            r'#[a-fA-F0-9]{3,6}\b',  # CSS color codes
+            r'\.\w+\s*\{',  # CSS classes
+            r'@\w+',  # CSS at-rules
+        ]
+        if any(re.search(pattern, description, re.IGNORECASE) for pattern in js_css_patterns):
             return False
         
         # *** NEW: Reject descriptions that are mostly numbers or single values ***
@@ -244,7 +290,8 @@ class TaskManager:
             'update', 'modify', 'configure', 'setup', 'install', 'test', 'validate', 
             'check', 'verify', 'ensure', 'optimize', 'improve', 'fix', 'debug',
             'integrate', 'connect', 'deploy', 'run', 'execute', 'analyze', 'review',
-            'prepare', 'organize', 'structure', 'plan', 'define', 'specify'
+            'prepare', 'organize', 'structure', 'plan', 'define', 'specify',
+            'make', 'generate', 'produce', 'construct', 'handle', 'process'
         ]
         
         description_lower = description.lower()
@@ -254,7 +301,10 @@ class TaskManager:
         task_indicators = [
             'file', 'component', 'interface', 'api', 'endpoint', 'service', 'system',
             'page', 'template', 'layout', 'style', 'script', 'function', 'method',
-            'database', 'model', 'view', 'controller', 'form', 'button', 'menu'
+            'database', 'model', 'view', 'controller', 'form', 'button', 'menu',
+            'feature', 'functionality', 'module', 'structure', 'application', 'project',
+            'response', 'request', 'data', 'user', 'chat', 'message', 'selection',
+            'dropdown', 'input', 'display', 'loading', 'error', 'validation'
         ]
         
         has_task_indicator = any(indicator in description_lower for indicator in task_indicators)
@@ -263,8 +313,17 @@ class TaskManager:
         if not (has_action_verb or has_task_indicator):
             return False
         
-        # *** NEW: Reject if it looks like a "Tarefa X:" pattern with just numbers/IPs ***
-        if re.match(r'^tarefa\s*\d+:\s*[\d\.\:\s]+$', description_lower):
+        # *** NEW: Reject if it looks like a "Task X:" pattern with just numbers/IPs ***
+        if re.match(r'^(tarefa|task)\s*\d+:\s*[\d\.\:\s]+$', description_lower):
+            return False
+        
+        # *** NEW: Reject if it starts with common code prefixes ***
+        code_prefixes = [
+            'const ', 'let ', 'var ', 'function ', 'def ', 'class ', 'import ',
+            'from ', 'export ', '// ', '/* ', 'document.', 'window.', '$(',
+            'background-color', 'color:', 'padding:', 'margin:', 'width:', 'height:'
+        ]
+        if any(description.strip().startswith(prefix) for prefix in code_prefixes):
             return False
         
         return True
@@ -566,58 +625,56 @@ class TaskManager:
         if recent_files_context:
             prompt_parts.append(recent_files_context)
         
-        # If it's the first task (Documentation.md), add special context
+        # If it's the first task (Documentation.md), add special context from prompts library
         if task['number'] == 1 and 'documentation' in task['description'].lower():
-            prompt_parts.append(f"\n[Original Project Request: {self.global_context['original_request']}]")
-            prompt_parts.append("\n[IMPORTANT: Create a comprehensive Documentation.md that includes:]")
-            prompt_parts.append("- Project overview and objectives")
-            prompt_parts.append("- Complete feature list based on the original request")
-            prompt_parts.append("- Technical architecture and structure")
-            prompt_parts.append("- Technologies, languages and frameworks to be used")
-            prompt_parts.append("- Development roadmap")
-            prompt_parts.append("- Any other relevant project information")
+            prompt_parts.append(ContextPrompts.get_documentation_context(
+                self.global_context['original_request']
+            ))
         
         # Instruction based on type WITH MANDATORY TAGS
         if task['type'] == 'code':
             prompt_parts.append("[Expected: Working code implementation]")
-            prompt_parts.append("""
-[MANDATORY: Use <code filename="appropriate_name.ext"> tags for file creation]
-[Example: <code filename="app.py">your code here</code>]
-[DO NOT use ``` for files that should be created - use <code> tags]""")
         elif task['type'] == 'shell':
             prompt_parts.append("[Expected: Shell commands to execute]")
-            prompt_parts.append("""
-[MANDATORY: Use <actions> tags for shell commands]
-[Example: <actions>pip install flask</actions>]
-[DO NOT show commands without tags - wrap in <actions>]""")
         elif task['type'] == 'text':
             prompt_parts.append("[Expected: Clear explanation or documentation]")
         else:
             prompt_parts.append("[Expected: Complete solution with code, commands, or explanation as needed]")
-            prompt_parts.append("""
-[MANDATORY TAGS:]
-- Use <code filename="name.ext"> for creating files
-- Use <actions> for shell commands
-- Use <read> for reading files
-[DO NOT use ``` for file creation]""")
+        
+        # Add tag usage instructions from prompts library
+        prompt_parts.append(TaskPrompts.get_task_instructions(task['type']))
         
         # Add the task itself
         prompt_parts.append(f"\n<task>\n{task['description']}\n</task>")
         
         # Additional instructions based on keywords
         task_desc_lower = task['description'].lower()
-        if any(word in task_desc_lower for word in ['import', 'import', 'add', 'add', 'edit', 'modify']):
-            if 'file' in task_desc_lower or 'file' in task_desc_lower:
-                prompt_parts.append("""
-[IMPORTANT: This task requires editing/modifying an existing file]
-[Use <code filename="existing_file.ext"> with the COMPLETE updated content]
-[Do NOT show just the lines to add - show the ENTIRE file content]""")
+        
+        # Enhanced context-specific instructions from prompts library
+        if any(word in task_desc_lower for word in ['edit', 'modify', 'update', 'change', 'fix']):
+            prompt_parts.append(TaskPrompts.EDIT_FILES_CONTEXT)
+        
+        # File creation instructions
+        elif any(word in task_desc_lower for word in ['create', 'make', 'build', 'generate', 'add']):
+            if any(word in task_desc_lower for word in ['file', 'component', 'module', 'class', 'function']):
+                prompt_parts.append(TaskPrompts.CREATE_FILES_CONTEXT)
+        
+        # Installation/setup instructions
+        if any(word in task_desc_lower for word in ['install', 'setup', 'configure', 'initialize']):
+            prompt_parts.append(TaskPrompts.INSTALL_SETUP_CONTEXT)
+        
+        # Testing/running instructions
+        if any(word in task_desc_lower for word in ['test', 'run', 'execute', 'start']):
+            prompt_parts.append(TaskPrompts.TEST_RUN_CONTEXT)
         
         # Add previous completed tasks as context
         if self.completed_tasks:
             prompt_parts.append("\n[Previous completed tasks:]")
             for completed in self.completed_tasks[-3:]:  # Last 3 tasks
                 prompt_parts.append(f"- Task {completed['number']}: {completed['description']} ✓")
+        
+        # Final reminder about tag usage from prompts library
+        prompt_parts.append(TaskPrompts.FINAL_TAG_REMINDER)
         
         return '\n'.join(prompt_parts)
     
@@ -650,7 +707,7 @@ class TaskManager:
             priority_tag = "[E]" if task.get('priority', 'essential') == 'essential' else "[O]"
             
             progress_lines.append(
-                f"[{color}]{status_icon} {priority_tag} Tarefa {task['number']}: {task['description'][:45]}{'...' if len(task['description']) > 45 else ''}[/{color}]"
+                f"[{color}]{status_icon} {priority_tag} Task {task['number']}: {task['description'][:45]}{'...' if len(task['description']) > 45 else ''}[/{color}]"
             )
         
         # Display progress panel
@@ -673,71 +730,11 @@ class TaskManager:
         # *** NEW: Analyze project type from request ***
         project_type = self._detect_project_type(original_request)
         
-        base_prompt = f"""[INTELLIGENT TASK BREAKDOWN REQUEST]
-
-Please carefully analyze the following request and break it down into smaller, specific tasks:
-
-<request>
-{original_request}
-</request>
-
-🎯 **CRITICAL ANALYSIS REQUIREMENTS:**
-
-1. **PROJECT TYPE DETECTION**: First determine what type of project this is:
-   - Frontend/Client-side (HTML/CSS/JS, React, Vue, static sites)
-   - Backend/Server-side (APIs, databases, server applications)
-   - Fullstack (both frontend and backend components)
-   - Desktop/Mobile application
-   - Data/Script/Tool (utility scripts, data processing)
-
-2. **INTELLIGENT TASK PRIORITIZATION**:
-   - [ESSENTIAL]: Core tasks needed for basic functionality
-   - [OPTIONAL]: Enhancements, optimizations, extra features
-
-🚨 **AVOID COMMON MISTAKES:**
-
-- Do NOT assume backend frameworks (Flask/Django) unless explicitly mentioned
-- Do NOT force documentation files unless specifically requested
-- Do NOT suggest irrelevant dependencies or setup steps
-- Do NOT create generic backend tasks for frontend-only projects
-- CAREFULLY read what the user actually wants
-
-📋 **TASK BREAKDOWN EXAMPLES BY PROJECT TYPE:**
-
-**For Frontend/Client-side projects:**
-1. [ESSENTIAL] Create main HTML structure
-2. [ESSENTIAL] Implement CSS styling with [specified framework]
-3. [ESSENTIAL] Add JavaScript functionality for [specific features]
-4. [ESSENTIAL] Test basic functionality
-5. [OPTIONAL] Add responsive design improvements
-
-**For Backend/API projects:**
-1. [ESSENTIAL] Setup project structure and dependencies
-2. [ESSENTIAL] Create main application file
-3. [ESSENTIAL] Implement core API endpoints
-4. [ESSENTIAL] Add basic error handling
-5. [OPTIONAL] Add comprehensive testing
-
-**For Fullstack projects:**
-1. [ESSENTIAL] Create frontend interface
-2. [ESSENTIAL] Setup backend API
-3. [ESSENTIAL] Implement data flow between frontend/backend
-4. [ESSENTIAL] Test integration
-5. [OPTIONAL] Add advanced features
-
-🎯 **CURRENT REQUEST CONTEXT:**
-- Detected Language: {self.global_context.get('language', 'Not detected')}
-- Detected Framework: {self.global_context.get('framework', 'Not detected')}
-- Working Directory: {self.global_context.get('working_directory', 'Current folder')}
-
-📝 **OUTPUT FORMAT:**
-- Number each task clearly (1, 2, 3...)
-- Mark priority level [ESSENTIAL] or [OPTIONAL] 
-- Be specific and actionable
-- Focus on what user actually requested
-- Avoid assumptions about technologies not mentioned
-
-Generate ONLY the numbered task list. Be precise and relevant to the actual request."""
+        # Use breakdown prompt from prompts library
+        base_prompt = BreakdownPrompts.get_breakdown_prompt(
+            original_request,
+            self.global_context
+        )
         
         return base_prompt
     
