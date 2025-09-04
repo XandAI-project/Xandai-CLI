@@ -52,3 +52,7 @@ sessions/
 *.log
 .xandai/
 temp/
+
+node_modules/
+
+.xandai_history/

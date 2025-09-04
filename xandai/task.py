@@ -194,6 +194,13 @@ class TaskProcessor:
         """Parse LLM response into TaskStep objects with multiple fallback strategies"""
         steps = []
         
+        # Extract and display folder structure if present
+        folder_structure_match = re.search(r'FOLDER_STRUCTURE:\s*\n((?:.+\n)*?)(?=\n[A-Z]+:|\nSTEPS:|$)', response, re.MULTILINE)
+        if folder_structure_match:
+            folder_structure = folder_structure_match.group(1).strip()
+            if folder_structure:
+                print(f"\\n[dim]Detected project structure:\\n{folder_structure}[/dim]")
+        
         # Strategy 1: Look for formal STEPS: section
         steps_match = re.search(r'STEPS:\s*\n((?:\d+\s*-\s*.+\n?)*)', response, re.MULTILINE)
         if steps_match:
@@ -313,64 +320,107 @@ class TaskProcessor:
     
     def _build_system_prompt(self) -> str:
         """Build system prompt for task mode"""
-        return """You are XandAI Task Mode - an expert at breaking down complex development requests into structured, executable steps.
+        return """You are XandAI Task Mode - an expert at breaking down complex development requests into COMPLETE, structured project plans.
 
-CRITICAL RULES:
-1. ALWAYS generate at least one step - NEVER return empty responses
-2. If request is unclear, ask clarifying questions instead of failing silently
-3. Follow the EXACT format below or use numbered lists (1., 2., 3.)
-4. Always provide COMPLETE file contents - never use placeholders
+CRITICAL PLANNING RULES:
+1. Analyze the FULL project scope - don't miss any files
+2. Plan the COMPLETE folder structure with ALL necessary files
+3. Ensure imports only reference files that will be created
+4. Include ALL configuration files, dependencies, and assets
+5. Plan for proper separation of concerns (models, views, controllers, etc.)
+
+PROJECT STRUCTURE REQUIREMENTS:
+- List EVERY file needed for a complete, working project
+- Include proper folder structure (src/, public/, templates/, static/, etc.)
+- Add configuration files (package.json, requirements.txt, .env examples, etc.)
+- Include database/model files if needed
+- Add static assets (CSS, JS, images) if it's a web project
+- Include test files if appropriate
+- Add documentation files (README.md) when needed
+
+IMPORT CONSISTENCY RULES:
+- NEVER import from files that won't be created
+- If you reference a module/file in imports, it MUST be in your step list
+- Use relative imports correctly based on folder structure
+- Verify all dependencies are installable
 
 CRITICAL OUTPUT FORMAT:
-Your response must follow this structure:
-
 ```
 PROJECT: [Brief project description]
 LANGUAGE: [Primary language: python/javascript/etc]
 FRAMEWORK: [If applicable: flask/react/express/etc]
 ESTIMATED_TIME: [e.g., "2-3 hours"]
 
+FOLDER_STRUCTURE:
+project_name/
+├── folder1/
+│   ├── file1.ext
+│   └── file2.ext
+├── folder2/
+│   └── file3.ext
+└── file4.ext
+
 STEPS:
-1 - create filename.ext
-2 - edit another_file.py
-3 - run: pip install package
-
-STEP DETAILS:
-
-=== STEP 1: create filename.ext ===
-<code edit filename="filename.ext">
-Full file content here - never truncate or use placeholders
-All necessary imports, functions, classes
-Complete, runnable code
-</code>
-
-=== STEP 2: edit another_file.py ===
-<code edit filename="another_file.py">
-Complete updated file content
-Full file, not just changes
-</code>
-
-=== STEP 3: run commands ===
-<commands>
-pip install flask
-python app.py
-</commands>
+1 - create folder1/file1.ext
+2 - create folder1/file2.ext
+3 - create folder2/file3.ext
+4 - create file4.ext
+5 - run: command here
 ```
 
-ALTERNATIVE FORMAT (if above fails):
-Just use numbered lists:
-1. Create app.py - Main application file
-2. Create requirements.txt - Dependencies 
-3. Run: pip install -r requirements.txt
+EXAMPLES OF COMPLETE PROJECTS:
 
-RESPONSE QUALITY:
-- Write clean, well-documented code
-- Follow best practices (PEP8 for Python, ESLint for JS)  
-- Include proper error handling
-- Use meaningful names
-- Add helpful comments
+Flask API:
+```
+api_project/
+├── app.py (main Flask app)
+├── models.py (database models)
+├── routes.py (API routes)
+├── config.py (configuration)
+├── requirements.txt (dependencies)
+├── .env.example (environment variables)
+└── README.md (documentation)
+```
 
-Remember: ALWAYS generate executable steps - the user is counting on you!"""
+Express API:
+```
+api_project/
+├── server.js (main server)
+├── package.json (dependencies)
+├── routes/
+│   └── api.js (API routes)
+├── models/
+│   └── model.js (data models)
+├── middleware/
+│   └── auth.js (authentication)
+├── config/
+│   └── database.js (DB config)
+└── .env.example (environment)
+```
+
+React App:
+```
+react_app/
+├── package.json (dependencies)
+├── public/
+│   └── index.html (HTML template)
+├── src/
+│   ├── App.js (main component)
+│   ├── App.css (main styles)
+│   ├── index.js (entry point)
+│   └── components/
+│       └── Component.js (reusable components)
+```
+
+QUALITY STANDARDS:
+- Production-ready, complete projects
+- No missing dependencies or broken imports
+- Proper error handling and logging
+- Security best practices
+- Clean, well-documented code
+- Immediate runnable state after completion
+
+Remember: Plan the ENTIRE project structure - missing files break everything!"""
     
     def _build_task_prompt(self, user_request: str) -> str:
         """Build enhanced prompt with project context"""
@@ -401,7 +451,50 @@ Remember: ALWAYS generate executable steps - the user is counting on you!"""
         
         prompt_parts.append("\\n🚀 Generate a complete, executable plan with working code!")
         
+        # Add mode-specific instruction
+        project_mode = self._detect_project_mode()
+        if project_mode == 'edit':
+            prompt_parts.append("\\n⚠️  EDIT MODE DETECTED:")
+            prompt_parts.append("- You're modifying an existing project")
+            prompt_parts.append("- Preserve existing functionality unless explicitly changing")
+            prompt_parts.append("- Use 'edit' for existing files, 'create' for new files")
+            prompt_parts.append("- Maintain consistency with existing code style and patterns")
+        else:
+            prompt_parts.append("\\n🆕 CREATE MODE:")
+            prompt_parts.append("- You're creating a new project from scratch")
+            prompt_parts.append("- Design a clean, well-structured project")
+        
         return "\\n".join(prompt_parts)
+    
+    def _detect_project_mode(self) -> str:
+        """Detect if we're in create or edit mode"""
+        import os
+        from pathlib import Path
+        
+        # Check for common project indicators
+        project_indicators = [
+            'package.json', 'requirements.txt', 'pyproject.toml', 'Cargo.toml',
+            'pom.xml', 'build.gradle', 'composer.json', 'go.mod', 'Gemfile'
+        ]
+        
+        cwd = Path.cwd()
+        
+        # Check for project files in current directory
+        for indicator in project_indicators:
+            if (cwd / indicator).exists():
+                return 'edit'
+        
+        # Check for multiple code files
+        code_extensions = ['.py', '.js', '.ts', '.java', '.cpp', '.c', '.go', '.rs']
+        code_files = []
+        for ext in code_extensions:
+            code_files.extend(list(cwd.glob(f'*{ext}')))
+            code_files.extend(list(cwd.glob(f'**/*{ext}')))
+        
+        if len(code_files) >= 3:
+            return 'edit'
+        
+        return 'create'
     
     def _parse_step_line(self, line: str) -> Optional[TaskStep]:
         """Parse a single step line"""

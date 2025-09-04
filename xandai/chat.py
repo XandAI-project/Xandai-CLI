@@ -12,7 +12,7 @@ from pathlib import Path
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import InMemoryHistory
-from prompt_toolkit.completion import WordCompleter
+from prompt_toolkit.completion import WordCompleter, Completer, Completion
 from prompt_toolkit.shortcuts import prompt
 from rich.console import Console
 from rich.panel import Panel
@@ -22,6 +22,198 @@ import re
 from xandai.ollama_client import OllamaClient, OllamaResponse
 from xandai.history import HistoryManager
 from xandai.task import TaskProcessor, TaskStep
+
+
+class IntelligentCompleter(Completer):
+    """Smart completer that provides context-aware suggestions"""
+    
+    def __init__(self):
+        self.slash_commands = [
+            '/task', '/help', '/h', '/clear', '/cls', '/history', '/hist',
+            '/context', '/ctx', '/status', '/stat', '/scan', '/structure', 
+            '/exit', '/quit', '/bye'
+        ]
+        
+        # Commands that need directory suggestions
+        self.dir_commands = ['cd', 'mkdir', 'rmdir', 'pushd', 'popd']
+        
+        # Commands that need file suggestions  
+        self.file_commands = ['cat', 'type', 'nano', 'vim', 'edit', 'open', 'head', 'tail', 'less', 'more']
+        
+        # Commands that need both files and directories
+        self.path_commands = ['ls', 'dir', 'cp', 'copy', 'mv', 'move', 'rm', 'del', 'find', 'grep', 'findstr', 'tree', 'du', 'chmod', 'chown', 'stat']
+        
+        # All terminal commands
+        self.terminal_commands = [
+            'ls', 'dir', 'cd', 'pwd', 'cat', 'type', 'mkdir', 'rmdir',
+            'rm', 'del', 'cp', 'copy', 'mv', 'move', 'ren', 'rename',
+            'find', 'findstr', 'grep', 'ps', 'tasklist', 'kill', 'taskkill',
+            'ping', 'tracert', 'netstat', 'ipconfig', 'ifconfig',
+            'echo', 'tree', 'which', 'where', 'date', 'time',
+            'cls', 'clear', 'help', 'man'
+        ]
+    
+    def get_completions(self, document, complete_event):
+        """Provide intelligent completions based on context"""
+        try:
+            text = document.text
+            cursor_position = document.cursor_position
+            
+            # Get current line up to cursor
+            current_line = document.current_line_before_cursor
+            words = current_line.split()
+            
+            # If nothing typed yet, suggest slash commands and basic commands
+            if not words:
+                yield from self._get_basic_completions("")
+                return
+            
+            # If typing a slash command
+            if current_line.startswith('/'):
+                yield from self._get_slash_completions(current_line)
+                return
+            
+            # If typing a terminal command with arguments
+            if len(words) >= 1:
+                command = words[0].lower()
+                
+                # Get the current word being typed
+                current_word = ""
+                if current_line.endswith(' '):
+                    # Starting a new word
+                    current_word = ""
+                else:
+                    # Completing current word
+                    current_word = words[-1] if words else ""
+                
+                # Provide path suggestions for commands that need them
+                if len(words) > 1 and command in self.dir_commands:
+                    yield from self._get_directory_completions(current_word)
+                elif len(words) > 1 and command in self.file_commands:
+                    yield from self._get_file_completions(current_word)
+                elif len(words) > 1 and command in self.path_commands:
+                    yield from self._get_path_completions(current_word)
+                elif len(words) == 1 and not current_line.endswith(' '):
+                    # Still typing the command itself
+                    yield from self._get_command_completions(current_word)
+                elif len(words) == 1 and current_line.endswith(' '):
+                    # Command typed, ready for arguments
+                    if command in self.dir_commands:
+                        yield from self._get_directory_completions("")
+                    elif command in self.file_commands:
+                        yield from self._get_file_completions("")
+                    elif command in self.path_commands:
+                        yield from self._get_path_completions("")
+            else:
+                # Single word, suggest commands
+                yield from self._get_command_completions(current_line)
+                
+        except Exception:
+            # Fallback to basic completions if anything fails
+            yield from self._get_basic_completions("")
+    
+    def _get_basic_completions(self, prefix: str):
+        """Basic completions for slash commands and common words"""
+        suggestions = self.slash_commands + ['help', 'clear', 'exit', 'quit']
+        for suggestion in suggestions:
+            if suggestion.lower().startswith(prefix.lower()):
+                yield Completion(suggestion, start_position=-len(prefix))
+    
+    def _get_slash_completions(self, text: str):
+        """Get completions for slash commands"""
+        for cmd in self.slash_commands:
+            if cmd.lower().startswith(text.lower()):
+                yield Completion(cmd, start_position=-len(text))
+    
+    def _get_command_completions(self, prefix: str):
+        """Get completions for terminal commands"""
+        all_commands = self.terminal_commands + self.slash_commands + ['help', 'clear', 'exit']
+        for cmd in all_commands:
+            if cmd.lower().startswith(prefix.lower()):
+                yield Completion(cmd, start_position=-len(prefix))
+    
+    def _get_directory_completions(self, prefix: str):
+        """Get directory completions"""
+        try:
+            current_dir = Path.cwd()
+            
+            # Handle relative paths
+            if '/' in prefix or '\\' in prefix:
+                # Extract directory part
+                path_parts = prefix.replace('\\', '/').split('/')
+                dir_part = '/'.join(path_parts[:-1])
+                file_prefix = path_parts[-1]
+                
+                if dir_part:
+                    try:
+                        search_dir = current_dir / dir_part
+                        if not search_dir.exists():
+                            return
+                    except:
+                        return
+                else:
+                    search_dir = current_dir
+                    file_prefix = prefix
+            else:
+                search_dir = current_dir
+                file_prefix = prefix
+            
+            # Get directories
+            try:
+                for item in search_dir.iterdir():
+                    if item.is_dir() and not item.name.startswith('.'):
+                        item_name = item.name
+                        if item_name.lower().startswith(file_prefix.lower()):
+                            # Add trailing slash for directories
+                            suggestion = item_name + "/"
+                            yield Completion(suggestion, start_position=-len(file_prefix))
+            except (PermissionError, OSError):
+                pass
+        except Exception:
+            pass
+    
+    def _get_file_completions(self, prefix: str):
+        """Get file completions"""
+        try:
+            current_dir = Path.cwd()
+            
+            # Handle relative paths
+            if '/' in prefix or '\\' in prefix:
+                path_parts = prefix.replace('\\', '/').split('/')
+                dir_part = '/'.join(path_parts[:-1])
+                file_prefix = path_parts[-1]
+                
+                if dir_part:
+                    try:
+                        search_dir = current_dir / dir_part
+                        if not search_dir.exists():
+                            return
+                    except:
+                        return
+                else:
+                    search_dir = current_dir
+                    file_prefix = prefix
+            else:
+                search_dir = current_dir
+                file_prefix = prefix
+            
+            # Get files
+            try:
+                for item in search_dir.iterdir():
+                    if item.is_file() and not item.name.startswith('.'):
+                        item_name = item.name
+                        if item_name.lower().startswith(file_prefix.lower()):
+                            yield Completion(item_name, start_position=-len(file_prefix))
+            except (PermissionError, OSError):
+                pass
+        except Exception:
+            pass
+    
+    def _get_path_completions(self, prefix: str):
+        """Get both file and directory completions"""
+        # Combine both file and directory completions
+        yield from self._get_directory_completions(prefix)
+        yield from self._get_file_completions(prefix)
 
 
 class ChatREPL:
@@ -51,7 +243,7 @@ class ChatREPL:
         # Prompt session with history and completion
         self.session = PromptSession(
             history=InMemoryHistory(),
-            completer=self._create_completer(),
+            completer=IntelligentCompleter(),
             complete_while_typing=False
         )
         
@@ -86,6 +278,10 @@ class ChatREPL:
         
         # System prompt for chat mode
         self.system_prompt = self._build_system_prompt()
+        
+        # Track current task session files
+        self.current_task_files = []
+        self.current_project_structure = None
     
     def run(self):
         """Run the interactive REPL loop"""
@@ -193,6 +389,11 @@ class ChatREPL:
         # Status command
         if command in ['/status', '/stat']:
             self._show_status()
+            return True
+        
+        # Scan current directory structure
+        if command in ['/scan', '/structure']:
+            self._show_project_structure()
             return True
         
         # Unknown slash command
@@ -357,12 +558,8 @@ class ChatREPL:
             # Add current user input
             context_messages.append({"role": "user", "content": user_input})
             
-            # Show thinking indicator
-            with self.console.status("[bold green]Thinking..."):
-                response = self.ollama_client.chat(
-                    messages=context_messages,
-                    system_prompt=self.system_prompt
-                )
+            # Show thinking indicator with streaming
+            response = self._chat_with_streaming_progress(context_messages)
             
             # Display response with syntax highlighting for code
             self._display_response(response.content)
@@ -387,6 +584,33 @@ class ChatREPL:
     def _handle_task_mode(self, task_request: str):
         """Handle task mode request with enhanced progress display"""
         try:
+            # Detect project mode and read existing structure if needed
+            project_mode = self._detect_project_mode()
+            
+            if project_mode == 'edit':
+                self.console.print("[dim]📁 Detected existing project - reading current structure...[/dim]")
+                self.current_project_structure = self._read_current_directory_structure()
+                
+                # Display current project structure
+                if self.current_project_structure:
+                    structure_display = self._format_directory_structure(self.current_project_structure)
+                    if structure_display.strip():
+                        self.console.print(f"\\n[dim]Current project structure:\\n{structure_display}[/dim]")
+                
+                # Add existing files to history for context
+                existing_files = self._flatten_file_list(self.current_project_structure)
+                for file_info in existing_files:
+                    self.history_manager.track_file_edit(
+                        file_info['full_path'], 
+                        "", 
+                        "existing"
+                    )
+                
+                self.console.print(f"[dim]🔍 Found {len(existing_files)} existing files[/dim]")
+            else:
+                self.console.print("[dim]🆕 Creating new project...[/dim]")
+                self.current_project_structure = None
+            
             # Process task with progress indicators
             raw_response, steps = self.task_processor.process_task(task_request, console=self.console)
             
@@ -399,8 +623,12 @@ class ChatREPL:
             
             # Display task summary and steps
             if steps:
+                # Store planned files for this session
+                self.current_task_files = [step.target for step in steps if step.action in ['create', 'edit']]
+                
                 summary = self.task_processor.get_task_summary(steps)
-                self.console.print(f"\\n[bold green]✅ {summary}[/bold green]")
+                mode_indicator = "🔧 Editing" if project_mode == 'edit' else "🆕 Creating"
+                self.console.print(f"\\n[bold green]✅ {mode_indicator} - {summary}[/bold green]")
                 
                 # First, show simple step list (required format)
                 self.console.print("\\n[bold cyan]Steps:[/bold cyan]")
@@ -431,31 +659,56 @@ class ChatREPL:
                 self.console.print(traceback.format_exc())
     
     def _execute_task_steps(self, steps: List[TaskStep]):
-        """Execute task steps by creating files and running commands"""
+        """Execute task steps one by one, calling LLM for each file generation"""
         import os
         import subprocess
         from pathlib import Path
         
         for step in steps:
             try:
-                if step.action in ['create', 'edit'] and step.content:
-                    # Create/edit file
-                    file_path = Path(step.target)
+                if step.action in ['create', 'edit']:
+                    # Generate file content with individual LLM call
+                    self.console.print(f"[blue]🧠 Generating {step.target}...[/blue]")
                     
-                    # Create directory if needed
-                    file_path.parent.mkdir(parents=True, exist_ok=True)
+                    file_content = self._generate_file_content(step)
                     
-                    # Write file content
-                    with open(file_path, 'w', encoding='utf-8') as f:
-                        f.write(step.content)
+                    if file_content:
+                        # Create/edit file
+                        file_path = Path(step.target)
+                        
+                        # Create directory if needed
+                        file_path.parent.mkdir(parents=True, exist_ok=True)
+                        
+                        # Write file content
+                        with open(file_path, 'w', encoding='utf-8') as f:
+                            f.write(file_content)
+                        
+                        # Show success with preview
+                        action_text = "Created" if step.action == "create" else "Updated"
+                        self.console.print(f"[green]✅ {action_text} {step.target}[/green]")
+                        
+                        # Show file preview (first few lines)
+                        lines = file_content.split('\\n')[:3]
+                        preview = '\\n'.join(lines)
+                        if len(lines) >= 3:
+                            preview += '\\n...'
+                        self.console.print(f"[dim]{preview}[/dim]")
+                        
+                        # Track in history
+                        self.history_manager.track_file_edit(step.target, file_content, step.action)
+                        
+                    else:
+                        self.console.print(f"[red]❌ Failed to generate content for {step.target}[/red]")
                     
-                    # Show success
-                    action_text = "Created" if step.action == "create" else "Updated"
-                    self.console.print(f"[green]✅ {action_text} {step.target}[/green]")
+                elif step.action == 'run':
+                    # Execute commands directly (no LLM needed)
+                    if hasattr(step, 'commands') and step.commands:
+                        commands = step.commands
+                    else:
+                        # Extract command from target if commands not set
+                        commands = [step.target] if step.target else []
                     
-                elif step.action == 'run' and step.commands:
-                    # Execute commands
-                    for cmd in step.commands:
+                    for cmd in commands:
                         self.console.print(f"[blue]🔧 Running: {cmd}[/blue]")
                         try:
                             result = subprocess.run(
@@ -484,6 +737,453 @@ class ChatREPL:
                 self.console.print(f"[red]❌ Failed to execute step {step.step_number}: {e}[/red]")
         
         self.console.print(f"\\n[bold green]🎉 Task execution completed![/bold green]")
+    
+    def _generate_file_content(self, step: TaskStep) -> str:
+        """Generate file content for a specific step using LLM"""
+        try:
+            # Get project context
+            context = self.history_manager.get_project_context()
+            existing_files = self.history_manager.get_project_files()
+            
+            # Build specific prompt for this file
+            file_prompt = self._build_file_generation_prompt(step, context, existing_files)
+            
+            # Call LLM for this specific file
+            with self.console.status(f"[bold blue]Generating {step.target}..."):
+                response = self.ollama_client.generate(
+                    prompt=file_prompt,
+                    system_prompt=self._get_file_generation_system_prompt(),
+                    temperature=0.3
+                )
+            
+            # Extract file content from response
+            content = self._extract_file_content_from_response(response.content)
+            return content
+            
+        except Exception as e:
+            self.console.print(f"[red]Error generating {step.target}: {e}[/red]")
+            return ""
+    
+    def _build_file_generation_prompt(self, step: TaskStep, context: dict, existing_files: list) -> str:
+        """Build specific prompt for generating a single file"""
+        prompt_parts = [
+            f"GENERATE FILE: {step.target}",
+            f"PURPOSE: {step.description}",
+            f"ACTION: {step.action.upper()}"
+        ]
+        
+        # Add project context
+        if context.get("framework"):
+            prompt_parts.append(f"FRAMEWORK: {context['framework']}")
+        if context.get("language"):
+            prompt_parts.append(f"LANGUAGE: {context['language']}")
+        if context.get("project_type"):
+            prompt_parts.append(f"PROJECT_TYPE: {context['project_type']}")
+        
+        # Add existing project structure if in edit mode
+        if self.current_project_structure:
+            prompt_parts.append(f"\\nCURRENT PROJECT STRUCTURE (edit mode):")
+            structure_display = self._format_directory_structure(self.current_project_structure)
+            prompt_parts.append(structure_display)
+            
+            # List existing files for import context
+            existing_project_files = self._flatten_file_list(self.current_project_structure)
+            if existing_project_files:
+                prompt_parts.append(f"\\nEXISTING FILES (available for import):")
+                for file_info in existing_project_files[:20]:  # Limit to first 20
+                    prompt_parts.append(f"- {file_info['full_path']}")
+                if len(existing_project_files) > 20:
+                    prompt_parts.append(f"- ... and {len(existing_project_files) - 20} more files")
+        
+        # Add existing tracked files
+        if existing_files:
+            prompt_parts.append(f"\\nTRACKED FILES:")
+            for file in existing_files:
+                prompt_parts.append(f"- {file}")
+        
+        # Get all planned files from current task session
+        planned_files = self._get_planned_files_from_session()
+        if planned_files:
+            prompt_parts.append(f"\\nPLANNED PROJECT FILES (use these for imports):")
+            for file in planned_files:
+                prompt_parts.append(f"- {file}")
+        
+        # Add folder structure context for new files
+        if not self.current_project_structure:
+            folder_structure = self._infer_folder_structure(step.target, planned_files)
+            if folder_structure:
+                prompt_parts.append(f"\\nPLANNED PROJECT STRUCTURE:")
+                prompt_parts.append(folder_structure)
+        
+        # Add file-specific instructions based on extension
+        file_ext = step.target.split('.')[-1].lower() if '.' in step.target else ''
+        
+        if file_ext in ['py']:
+            prompt_parts.append("\\nPYTHON REQUIREMENTS:")
+            prompt_parts.append("- Follow PEP8 style")
+            prompt_parts.append("- ONLY import from files listed in EXISTING or PLANNED files above")
+            prompt_parts.append("- Use relative imports correctly based on folder structure")
+            prompt_parts.append("- Add docstrings and comments")
+            prompt_parts.append("- Handle errors gracefully")
+        elif file_ext in ['js']:
+            prompt_parts.append("\\nJAVASCRIPT REQUIREMENTS:")
+            prompt_parts.append("- Use modern ES6+ syntax")
+            prompt_parts.append("- ONLY require/import files that exist in the project structure")
+            prompt_parts.append("- Use proper module syntax (CommonJS or ES6)")
+            prompt_parts.append("- Add proper error handling")
+            prompt_parts.append("- Include JSDoc comments")
+        elif file_ext in ['html']:
+            prompt_parts.append("\\nHTML REQUIREMENTS:")
+            prompt_parts.append("- Use semantic HTML5")
+            prompt_parts.append("- Link only to CSS/JS files that will exist")
+            prompt_parts.append("- Include meta tags")
+            prompt_parts.append("- Make it responsive")
+        elif file_ext in ['css']:
+            prompt_parts.append("\\nCSS REQUIREMENTS:")
+            prompt_parts.append("- Use modern CSS3")
+            prompt_parts.append("- Make it responsive")
+            prompt_parts.append("- Include comments")
+        elif file_ext in ['json']:
+            prompt_parts.append("\\nJSON REQUIREMENTS:")
+            prompt_parts.append("- Valid JSON format")
+            prompt_parts.append("- Include all necessary fields")
+        elif file_ext in ['md']:
+            prompt_parts.append("\\nMARKDOWN REQUIREMENTS:")
+            prompt_parts.append("- Clear structure with headers")
+            prompt_parts.append("- Include examples where relevant")
+        
+        prompt_parts.append(f"\\nIMPORT CONSISTENCY RULE:")
+        prompt_parts.append(f"- Do NOT import/require any files not listed above")
+        prompt_parts.append(f"- Use only standard library imports or dependencies from requirements/package.json")
+        prompt_parts.append(f"\\nGenerate complete, production-ready content for {step.target}")
+        
+        return "\\n".join(prompt_parts)
+    
+    def _get_file_generation_system_prompt(self) -> str:
+        """Get system prompt for individual file generation"""
+        return """You are an expert software developer generating individual project files with STRICT import consistency.
+
+CRITICAL RULES:
+1. Generate ONLY the file content - no explanations or markdown
+2. Write complete, production-ready code
+3. Follow best practices for the language/framework
+4. ONLY import/require files that are explicitly listed in the context
+5. Make the code immediately runnable/usable
+6. Do NOT include any wrapper text or explanations
+
+IMPORT/DEPENDENCY RULES (CRITICAL):
+- NEVER import from files that don't exist in the project structure
+- ONLY use imports that are:
+  * Standard library modules (os, sys, json, etc.)
+  * Dependencies listed in requirements.txt or package.json
+  * Files explicitly mentioned in EXISTING or PLANNED files
+- Use correct relative imports based on folder structure
+- For missing functionality, implement it within the file or use standard libraries
+
+OUTPUT FORMAT:
+- Return ONLY the raw file content
+- No code blocks, no markdown, no explanations
+- The response should be exactly what goes in the file
+- Start immediately with file content (no introductory text)
+
+QUALITY STANDARDS:
+- Clean, readable code with proper indentation
+- Meaningful variable and function names
+- Appropriate comments and documentation
+- Error handling where necessary
+- Security best practices
+- Self-contained functionality when external files don't exist
+
+EXAMPLE VIOLATIONS TO AVOID:
+- DON'T: from utils import helper (unless utils.py is in project files)
+- DON'T: require('./config/database') (unless config/database.js exists)
+- DON'T: import custom_module (unless it's explicitly listed)
+
+DO INSTEAD:
+- Use standard library: import os, import json, import sqlite3
+- Inline simple functions instead of importing non-existent modules
+- Use only the files you can see in the project structure
+
+Remember: Your response will be written directly to the file! NO explanatory text!"""
+    
+    def _extract_file_content_from_response(self, response: str) -> str:
+        """Extract clean file content from LLM response"""
+        import re
+        
+        # Remove any markdown code blocks if present
+        code_block_pattern = r'```(?:\w+)?\n(.*?)\n```'
+        code_match = re.search(code_block_pattern, response, re.DOTALL)
+        if code_match:
+            return code_match.group(1).strip()
+        
+        # Remove any explanatory text before/after code
+        lines = response.strip().split('\\n')
+        
+        # Find the start of actual content (skip explanatory lines)
+        start_idx = 0
+        for i, line in enumerate(lines):
+            # Skip lines that look like explanations
+            if (line.startswith(('Here', 'This', 'The file', 'Below', 'I will', 'Let me')) or
+                'generate' in line.lower() or 'create' in line.lower()):
+                continue
+            # Start from first line that looks like code/content
+            if line.strip() and not line.startswith('#'):
+                start_idx = i
+                break
+        
+        # Find the end of actual content (skip explanatory lines at end)
+        end_idx = len(lines)
+        for i in range(len(lines) - 1, -1, -1):
+            line = lines[i]
+            if (line.startswith(('That', 'This', 'The above', 'Hope this')) or
+                'complete' in line.lower() or 'should work' in line.lower()):
+                end_idx = i
+            elif line.strip():
+                break
+        
+        # Return the cleaned content
+        content_lines = lines[start_idx:end_idx]
+        return '\\n'.join(content_lines).strip()
+    
+    def _get_planned_files_from_session(self) -> list:
+        """Get all files planned in the current task session"""
+        return self.current_task_files
+    
+    def _chat_with_streaming_progress(self, messages: list):
+        """Handle normal chat with streaming progress"""
+        try:
+            # Create progress callback for streaming
+            with self.console.status("[bold green]Thinking...") as status:
+                current_chunks = 0
+                
+                def progress_callback(message: str):
+                    nonlocal current_chunks
+                    if "chunks received" in message:
+                        try:
+                            current_chunks = int(message.split()[1])
+                            status.update(f"[bold green]Thinking... ({current_chunks} chunks)[/bold green]")
+                        except:
+                            status.update(f"[bold green]Thinking... ({message})[/bold green]")
+                    else:
+                        status.update(f"[bold green]{message}[/bold green]")
+                
+                # Try streaming first
+                try:
+                    return self.ollama_client.chat(
+                        messages=messages,
+                        system_prompt=self.system_prompt,
+                        stream=True,
+                        progress_callback=progress_callback
+                    )
+                except Exception:
+                    # Fallback to non-streaming
+                    status.update("[bold green]Thinking... (standard mode)[/bold green]")
+                    return self.ollama_client.chat(
+                        messages=messages,
+                        system_prompt=self.system_prompt
+                    )
+                    
+        except Exception as e:
+            self.console.print(f"[red]Error in chat: {e}[/red]")
+            # Final fallback
+            return self.ollama_client.chat(
+                messages=messages,
+                system_prompt=self.system_prompt
+            )
+    
+    def _infer_folder_structure(self, current_file: str, all_files: list) -> str:
+        """Infer and display project folder structure"""
+        if not all_files:
+            return ""
+        
+        # Build folder tree
+        folders = {}
+        for file_path in all_files:
+            parts = file_path.split('/')
+            current_level = folders
+            
+            # Navigate/create folder structure
+            for part in parts[:-1]:  # All except filename
+                if part not in current_level:
+                    current_level[part] = {}
+                current_level = current_level[part]
+            
+            # Add file to final folder
+            filename = parts[-1]
+            if '___files___' not in current_level:
+                current_level['___files___'] = []
+            current_level['___files___'].append(filename)
+        
+        # Add root level files
+        root_files = [f for f in all_files if '/' not in f]
+        if root_files:
+            folders['___files___'] = root_files
+        
+        # Generate tree representation
+        return self._format_folder_tree(folders, "", True)
+    
+    def _format_folder_tree(self, folder_dict: dict, prefix: str = "", is_root: bool = False) -> str:
+        """Format folder dictionary into tree structure"""
+        lines = []
+        
+        # Get folders and files separately
+        subfolders = {k: v for k, v in folder_dict.items() if k != '___files___' and isinstance(v, dict)}
+        files = folder_dict.get('___files___', [])
+        
+        # Add folders first
+        folder_items = list(subfolders.items())
+        for i, (folder_name, folder_contents) in enumerate(folder_items):
+            is_last_folder = (i == len(folder_items) - 1) and not files
+            
+            # Folder line
+            connector = "└── " if is_last_folder else "├── "
+            lines.append(f"{prefix}{connector}{folder_name}/")
+            
+            # Recurse into folder
+            extension = "    " if is_last_folder else "│   "
+            subfolder_lines = self._format_folder_tree(folder_contents, prefix + extension, False)
+            if subfolder_lines:
+                lines.append(subfolder_lines)
+        
+        # Add files
+        for i, filename in enumerate(files):
+            is_last_file = (i == len(files) - 1)
+            connector = "└── " if is_last_file else "├── "
+            lines.append(f"{prefix}{connector}{filename}")
+        
+        return "\\n".join(lines)
+    
+    def _read_current_directory_structure(self, max_depth: int = 3) -> dict:
+        """Read current directory structure including files and folders"""
+        import os
+        from pathlib import Path
+        
+        def should_ignore(path: str) -> bool:
+            """Check if path should be ignored"""
+            ignore_patterns = [
+                '.git', '.gitignore', '__pycache__', '.pytest_cache', 'node_modules',
+                '.vscode', '.idea', '*.pyc', '*.pyo', '*.pyd', '.DS_Store',
+                'Thumbs.db', '*.log', '.env', 'venv', 'env', '.venv',
+                'dist', 'build', '*.egg-info', '.coverage', 'coverage.xml'
+            ]
+            
+            path_lower = path.lower()
+            for pattern in ignore_patterns:
+                if pattern in path_lower or path_lower.endswith(pattern.replace('*', '')):
+                    return True
+            return False
+        
+        def read_directory(dir_path: Path, current_depth: int = 0) -> dict:
+            """Recursively read directory structure"""
+            if current_depth >= max_depth:
+                return {}
+            
+            structure = {'files': [], 'folders': {}}
+            
+            try:
+                for item in sorted(dir_path.iterdir()):
+                    if should_ignore(item.name):
+                        continue
+                    
+                    if item.is_file():
+                        # Get file info
+                        try:
+                            size = item.stat().st_size
+                            if size < 1024 * 1024:  # Only include files < 1MB
+                                structure['files'].append({
+                                    'name': item.name,
+                                    'path': str(item.relative_to(Path.cwd())),
+                                    'size': size
+                                })
+                        except (OSError, ValueError):
+                            continue
+                            
+                    elif item.is_dir():
+                        # Recursively read subdirectory
+                        subdir_structure = read_directory(item, current_depth + 1)
+                        if subdir_structure.get('files') or subdir_structure.get('folders'):
+                            structure['folders'][item.name] = subdir_structure
+            
+            except (PermissionError, OSError):
+                pass
+            
+            return structure
+        
+        return read_directory(Path.cwd())
+    
+    def _format_directory_structure(self, structure: dict, prefix: str = "", is_root: bool = True) -> str:
+        """Format directory structure into readable tree format"""
+        lines = []
+        
+        # Get folders and files
+        folders = structure.get('folders', {})
+        files = structure.get('files', [])
+        
+        # Add folders first
+        folder_items = list(folders.items())
+        for i, (folder_name, folder_contents) in enumerate(folder_items):
+            is_last_folder = (i == len(folder_items) - 1) and not files
+            
+            # Folder line
+            connector = "└── " if is_last_folder else "├── "
+            lines.append(f"{prefix}{connector}{folder_name}/")
+            
+            # Recurse into folder
+            extension = "    " if is_last_folder else "│   "
+            subfolder_lines = self._format_directory_structure(folder_contents, prefix + extension, False)
+            if subfolder_lines:
+                lines.append(subfolder_lines)
+        
+        # Add files
+        for i, file_info in enumerate(files):
+            is_last_file = (i == len(files) - 1)
+            connector = "└── " if is_last_file else "├── "
+            filename = file_info['name']
+            lines.append(f"{prefix}{connector}{filename}")
+        
+        return "\\n".join(lines)
+    
+    def _detect_project_mode(self) -> str:
+        """Detect if we're in create or edit mode based on current directory"""
+        structure = self._read_current_directory_structure(max_depth=2)
+        
+        # Check for common project indicators
+        project_indicators = [
+            'package.json', 'requirements.txt', 'pyproject.toml', 'Cargo.toml',
+            'pom.xml', 'build.gradle', 'composer.json', 'go.mod', 'Gemfile'
+        ]
+        
+        all_files = self._flatten_file_list(structure)
+        
+        # If we find project files, we're likely in edit mode
+        for indicator in project_indicators:
+            if any(f['name'] == indicator for f in all_files):
+                return 'edit'
+        
+        # If there are multiple code files, probably edit mode
+        code_files = [f for f in all_files if f['name'].endswith(('.py', '.js', '.ts', '.java', '.cpp', '.c', '.go', '.rs'))]
+        if len(code_files) >= 3:
+            return 'edit'
+        
+        # Otherwise, assume create mode
+        return 'create'
+    
+    def _flatten_file_list(self, structure: dict, current_path: str = "") -> list:
+        """Flatten directory structure into a list of all files with paths"""
+        files = []
+        
+        # Add files in current directory
+        for file_info in structure.get('files', []):
+            file_copy = file_info.copy()
+            file_copy['full_path'] = os.path.join(current_path, file_info['name']) if current_path else file_info['name']
+            files.append(file_copy)
+        
+        # Recursively add files from subdirectories
+        for folder_name, folder_contents in structure.get('folders', {}).items():
+            subpath = os.path.join(current_path, folder_name) if current_path else folder_name
+            files.extend(self._flatten_file_list(folder_contents, subpath))
+        
+        return files
     
     def _display_response(self, content: str):
         """Display LLM response with syntax highlighting"""
@@ -576,6 +1276,7 @@ class ChatREPL:
   • /history, /hist - Show conversation history  
   • /context, /ctx  - Show project context
   • /status, /stat  - Show system status
+  • /scan, /structure - Show current directory structure
   • /exit, /quit, /bye - Exit XandAI
 
 [yellow]Alternative Commands (no prefix):[/yellow]
@@ -665,6 +1366,37 @@ Tracked Files: {len(self.history_manager.get_project_files())}
         
         self.console.print(Panel(status_text.strip(), title="System Status", border_style="green"))
     
+    def _show_project_structure(self):
+        """Show current project directory structure"""
+        try:
+            structure = self._read_current_directory_structure()
+            project_mode = self._detect_project_mode()
+            
+            if structure:
+                structure_display = self._format_directory_structure(structure)
+                all_files = self._flatten_file_list(structure)
+                
+                mode_text = "🔧 Edit Mode" if project_mode == 'edit' else "🆕 Create Mode"
+                
+                info_text = f"""
+{mode_text} - Current Directory Structure
+
+{structure_display}
+
+📊 Summary:
+• Total files: {len(all_files)}
+• Code files: {len([f for f in all_files if f['name'].endswith(('.py', '.js', '.ts', '.java', '.cpp', '.c', '.go', '.rs'))])}
+• Config files: {len([f for f in all_files if f['name'] in ['package.json', 'requirements.txt', 'pyproject.toml', 'Cargo.toml']])}
+• Mode detected: {project_mode}
+                """
+                
+                self.console.print(Panel(info_text.strip(), title="Project Structure", border_style="cyan"))
+            else:
+                self.console.print("[yellow]No files found in current directory or unable to read structure.[/yellow]")
+                
+        except Exception as e:
+            self.console.print(f"[red]Error reading project structure: {e}[/red]")
+    
     def _build_system_prompt(self) -> str:
         """Build system prompt for chat mode"""
         return """You are XandAI, an intelligent CLI assistant focused on software development and system administration.
@@ -696,24 +1428,4 @@ CAPABILITIES:
 
 Remember: Users can run terminal commands directly, and you'll see the results. Use this to provide contextual, actionable advice."""
     
-    def _create_completer(self) -> WordCompleter:
-        """Create command completer for prompt"""
-        words = [
-            # Slash commands
-            '/task', '/help', '/h', '/clear', '/cls', '/history', '/hist',
-            '/context', '/ctx', '/status', '/stat', '/exit', '/quit', '/bye',
-            # Cross-platform terminal commands
-            'ls', 'dir', 'cd', 'pwd', 'cat', 'type', 'mkdir', 'rmdir',
-            'rm', 'del', 'cp', 'copy', 'mv', 'move', 'ren', 'rename',
-            'find', 'findstr', 'grep', 'ps', 'tasklist', 'kill', 'taskkill',
-            'ping', 'tracert', 'netstat', 'ipconfig', 'ifconfig',
-            'echo', 'tree', 'which', 'where', 'date', 'time',
-            'cls', 'clear', 'help', 'man',
-            # Special commands (no slash)
-            'help', 'clear', 'cls', 'history', 'context', 'status', 'exit', 'quit', 'bye',
-            # Programming keywords
-            'python', 'javascript', 'react', 'flask', 'django', 'nodejs',
-            'git', 'docker', 'kubernetes', 'api', 'database', 'sql'
-        ]
-        
-        return WordCompleter(words, ignore_case=True)
+

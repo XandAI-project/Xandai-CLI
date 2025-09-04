@@ -4,7 +4,7 @@ A sophisticated CLI assistant that integrates with Ollama models, featuring term
 
 ## 🚀 Key Features
 
-- **Interactive REPL**: Rich terminal interface with command completion and history
+- **Interactive REPL**: Rich terminal interface with intelligent autocomplete and history
 - **Terminal Command Integration**: Execute system commands (ls, cd, cat, etc.) with wrapped output
 - **Context Usage Tracking**: Real-time monitoring of token usage and context limits
 - **Chat Mode**: Natural language conversations with persistent context
@@ -112,9 +112,35 @@ Context usage: 45.2% (1847/4096)
 
 ### Rich Terminal Experience
 - Syntax-highlighted code blocks
+- **Intelligent Autocomplete**: Context-aware suggestions for commands and file paths
 - Command completion and history
 - Colored output with Rich library
 - Status indicators and progress bars
+
+### Intelligent Autocomplete System
+XandAI features a smart autocomplete that provides context-aware suggestions:
+
+**Command-Specific Completions:**
+```bash
+# Directory commands (cd, mkdir) - shows only directories
+xandai> cd [TAB] → src/, docs/, tests/
+
+# File commands (cat, edit) - shows only files  
+xandai> cat [TAB] → README.md, app.py, config.json
+
+# Mixed commands (ls, cp) - shows files and directories
+xandai> ls [TAB] → src/, README.md, package.json
+
+# Slash commands
+xandai> /[TAB] → /task, /help, /status, /clear
+```
+
+**Supported Commands:**
+- **Directory only**: `cd`, `mkdir`, `rmdir`, `pushd`, `popd`
+- **File only**: `cat`, `type`, `edit`, `nano`, `vim`, `head`, `tail`
+- **Both**: `ls`, `dir`, `cp`, `mv`, `rm`, `del`, `find`, `grep`
+
+Use **Tab** to show suggestions, **↑/↓** arrows to navigate, **Enter** to select.
 
 ## 🤝 Contributing
 

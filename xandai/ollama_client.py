@@ -157,7 +157,7 @@ class OllamaClient:
                 response = self.session.post(
                     f"{self.base_url}/api/chat",
                     json=payload,
-                    timeout=120
+                    timeout=600  # 10 minutes
                 )
                 response.raise_for_status()
                 
@@ -200,7 +200,7 @@ class OllamaClient:
             f"{self.base_url}/api/chat",
             json=payload,
             stream=True,
-            timeout=120
+            timeout=600  # 10 minutes
         )
         response.raise_for_status()
         
@@ -258,7 +258,7 @@ class OllamaClient:
             response = self.session.post(
                 f"{self.base_url}/api/chat",
                 json=payload,
-                timeout=120
+                timeout=600  # 10 minutes
             )
             response.raise_for_status()
             data = response.json()
