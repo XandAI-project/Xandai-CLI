@@ -22,9 +22,46 @@ class HistoryManager:
     """
     
     def __init__(self, history_dir: str = ".xandai_history"):
-        """Initialize history manager"""
+        """Initialize history manager with robust Windows error handling"""
         self.history_dir = Path(history_dir)
-        self.history_dir.mkdir(exist_ok=True)
+        self.history_enabled = True
+        
+        # Robust directory creation with Windows-specific error handling
+        try:
+            # First, check if directory already exists
+            if not self.history_dir.exists():
+                self.history_dir.mkdir(parents=True, exist_ok=True)
+            elif not self.history_dir.is_dir():
+                # If it exists but is not a directory, try alternative location
+                raise OSError("History path exists but is not a directory")
+                
+        except (OSError, FileExistsError, PermissionError) as e:
+            # Windows-specific handling for WinError 183 and similar issues
+            print(f"⚠️  Warning: Could not create history directory '{history_dir}': {e}")
+            
+            # Try alternative locations in order of preference
+            alternative_paths = [
+                Path.home() / ".xandai_history",  # User home directory
+                Path.cwd() / "xandai_history",    # Current working directory  
+                Path(os.environ.get('TEMP', '/tmp')) / "xandai_history"  # Temp directory
+            ]
+            
+            success = False
+            for alt_path in alternative_paths:
+                try:
+                    alt_path.mkdir(parents=True, exist_ok=True)
+                    self.history_dir = alt_path
+                    print(f"✅ Using alternative history directory: {alt_path}")
+                    success = True
+                    break
+                except (OSError, PermissionError):
+                    continue
+            
+            if not success:
+                # Last resort: disable history persistence
+                print("⚠️  Warning: Could not create any history directory. History will not be persisted.")
+                self.history_enabled = False
+                self.history_dir = None
         
         # In-memory storage
         self.conversation_history: List[Dict[str, Any]] = []
@@ -236,7 +273,10 @@ class HistoryManager:
             self.project_context["structure"][dir_name].append(filename)
     
     def _save_history(self):
-        """Save history to disk"""
+        """Save history to disk (with error protection)"""
+        if not self.history_enabled or not self.history_dir:
+            return
+            
         try:
             history_file = self.history_dir / "conversation.json"
             export_data = {
@@ -252,7 +292,10 @@ class HistoryManager:
             pass
     
     def _load_history(self):
-        """Load history from disk"""
+        """Load history from disk (with error protection)"""
+        if not self.history_enabled or not self.history_dir:
+            return
+            
         try:
             history_file = self.history_dir / "conversation.json"
             if history_file.exists():
