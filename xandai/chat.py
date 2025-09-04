@@ -47,12 +47,113 @@ class IntelligentCompleter(Completer):
         
         # All terminal commands
         self.terminal_commands = [
+            # Sistema operacional básico
             'ls', 'dir', 'cd', 'pwd', 'cat', 'type', 'mkdir', 'rmdir',
             'rm', 'del', 'cp', 'copy', 'mv', 'move', 'ren', 'rename',
             'find', 'findstr', 'grep', 'ps', 'tasklist', 'kill', 'taskkill',
             'ping', 'tracert', 'netstat', 'ipconfig', 'ifconfig',
             'echo', 'tree', 'which', 'where', 'date', 'time',
-            'cls', 'clear', 'help', 'man'
+            'cls', 'clear', 'help', 'man', 'history', 'alias',
+            
+            # Python
+            'python', 'python3', 'py', 'pip', 'pip3', 'pipenv', 'poetry', 'conda', 'mamba',
+            'pyenv', 'virtualenv', 'venv', 'activate', 'deactivate',
+            
+            # JavaScript/Node.js
+            'node', 'npm', 'yarn', 'pnpm', 'bun', 'deno', 'npx', 'nvm', 'fnm',
+            
+            # Java
+            'java', 'javac', 'jar', 'maven', 'mvn', 'gradle', 'gradlew', 'ant',
+            
+            # C/C++
+            'gcc', 'g++', 'clang', 'clang++', 'make', 'cmake', 'ninja',
+            
+            # C#/.NET
+            'dotnet', 'csc', 'msbuild', 'nuget',
+            
+            # Go
+            'go', 'gofmt', 'goimports', 'mod',
+            
+            # Rust
+            'rustc', 'cargo', 'rustup', 'rustfmt',
+            
+            # Ruby
+            'ruby', 'gem', 'bundle', 'rails', 'rake', 'rbenv', 'rvm',
+            
+            # PHP
+            'php', 'composer', 'artisan', 'phpunit',
+            
+            # Swift
+            'swift', 'swiftc', 'xcodebuild',
+            
+            # Kotlin
+            'kotlin', 'kotlinc',
+            
+            # Scala
+            'scala', 'scalac', 'sbt',
+            
+            # Lua
+            'lua', 'luac',
+            
+            # Perl
+            'perl', 'cpan', 'cpanm',
+            
+            # R
+            'r', 'rscript',
+            
+            # Julia
+            'julia',
+            
+            # Haskell
+            'ghc', 'ghci', 'cabal', 'stack',
+            
+            # Databases
+            'mysql', 'psql', 'sqlite3', 'mongo', 'redis-cli', 'sqlcmd',
+            
+            # DevOps e Cloud
+            'docker', 'kubectl', 'helm', 'terraform', 'ansible',
+            'aws', 'az', 'gcloud', 'heroku', 'vercel', 'netlify',
+            
+            # Version Control
+            'git', 'svn', 'hg', 'bzr',
+            
+            # Build Tools
+            'webpack', 'vite', 'rollup', 'parcel', 'esbuild', 'tsc', 'babel',
+            'grunt', 'gulp', 'bower',
+            
+            # Linting e Testing
+            'eslint', 'prettier', 'jest', 'mocha', 'karma', 'cypress',
+            'pytest', 'unittest', 'nose', 'tox',
+            
+            # Editores de terminal
+            'vim', 'vi', 'nvim', 'nano', 'emacs', 'micro', 'joe',
+            
+            # Monitoramento e Performance
+            'top', 'htop', 'iotop', 'vmstat', 'iostat', 'free', 'df', 'du',
+            'nproc', 'lscpu', 'lsblk', 'lsusb', 'lspci',
+            
+            # Rede
+            'curl', 'wget', 'ssh', 'scp', 'rsync', 'ftp', 'sftp',
+            'nslookup', 'dig', 'host', 'whois',
+            
+            # Compressão
+            'tar', 'zip', 'unzip', 'gzip', 'gunzip', '7z', 'rar', 'unrar',
+            
+            # Text processing
+            'sed', 'awk', 'sort', 'uniq', 'wc', 'head', 'tail', 'cut', 'tr',
+            
+            # Process management
+            'nohup', 'screen', 'tmux', 'systemctl', 'service', 'crontab',
+            
+            # Environment
+            'env', 'export', 'set', 'unset', 'printenv', 'source',
+            
+            # Permissions
+            'chmod', 'chown', 'chgrp', 'su', 'sudo', 'whoami', 'id',
+            
+            # Archives and packages
+            'apt', 'apt-get', 'yum', 'dnf', 'zypper', 'pacman', 'brew', 'choco',
+            'snap', 'flatpak', 'rpm', 'dpkg',
         ]
     
     def get_completions(self, document, complete_event):
@@ -623,8 +724,8 @@ class ChatREPL:
             if self.verbose:
                 OSUtils.debug_print(f"Received response: {len(response.content)} characters", True)
             
-            # Display response with syntax highlighting for code
-            self._display_response(response.content)
+            # Display response with syntax highlighting for code and execution confirmation
+            self._display_response(response.content, allow_execution=True)
             
             # Display context usage
             self.console.print(f"\\n[dim]{response.context_usage}[/dim]")
@@ -1691,35 +1792,594 @@ Remember: Your response will be written directly to the file! NO explanatory tex
         
         return files
     
-    def _display_response(self, content: str):
-        """Display LLM response with syntax highlighting"""
-        # Check if response contains code blocks
+    def _display_response(self, content: str, allow_execution: bool = False):
+        """Display LLM response with syntax highlighting and optional execution confirmation"""
         import re
-        code_blocks = re.findall(r'```(\\w+)?\\n(.*?)\\n```', content, re.DOTALL)
         
-        if code_blocks:
-            # Split content by code blocks and display with syntax highlighting
-            parts = re.split(r'```\\w*\\n.*?\\n```', content, flags=re.DOTALL)
-            block_index = 0
+        # Define executable languages/types
+        executable_types = {'bash', 'shell', 'sh', 'cmd', 'powershell', 'python', 'py', 'node', 'js', 'npm', 'batch'}
+        
+        # Process content to find and extract all code blocks
+        processed_content = content
+        all_code_blocks = []
+        
+        # Find markdown code blocks: ```lang\ncode\n```
+        markdown_pattern = r'```(\w+)?\n(.*?)\n```'
+        for match in re.finditer(markdown_pattern, content, re.DOTALL):
+            lang = match.group(1) or "text"
+            code = match.group(2).strip()
+            all_code_blocks.append({
+                'lang': lang,
+                'code': code,
+                'type': 'markdown',
+                'full_match': match.group(0),
+                'start': match.start(),
+                'end': match.end()
+            })
+        
+        # Find <code> tags: <code type="lang">code</code> or <code>code</code>
+        code_tag_pattern = r'<code(?:\s+type=["\']?(\w+)["\']?)?>(.*?)</code>'
+        for match in re.finditer(code_tag_pattern, content, re.DOTALL):
+            lang = match.group(1) or "bash"  # Default to bash if no type specified
+            code = match.group(2).strip()
+            all_code_blocks.append({
+                'lang': lang,
+                'code': code,
+                'type': 'code_tag',
+                'full_match': match.group(0),
+                'start': match.start(),
+                'end': match.end()
+            })
+        
+        # Find <commands> tags: <commands>command1\ncommand2</commands>
+        commands_tag_pattern = r'<commands>(.*?)</commands>'
+        for match in re.finditer(commands_tag_pattern, content, re.DOTALL):
+            commands_content = match.group(1).strip()
+            all_code_blocks.append({
+                'lang': 'bash',  # Commands are typically shell commands
+                'code': commands_content,
+                'type': 'commands_tag',
+                'full_match': match.group(0),
+                'start': match.start(),
+                'end': match.end()
+            })
+        
+        # Find <code edit filename="..."> and <code create filename="..."> tags
+        file_operation_pattern = r'<code\s+(edit|create)\s+filename=["\']([^"\']+)["\']>(.*?)</code>'
+        for match in re.finditer(file_operation_pattern, content, re.DOTALL):
+            operation = match.group(1)  # 'edit' or 'create'
+            filename = match.group(2)   # filename
+            code_content = match.group(3).strip()
+            all_code_blocks.append({
+                'lang': 'file_operation',  # Special type for file operations
+                'code': code_content,
+                'type': f'code_{operation}_file',
+                'filename': filename,
+                'operation': operation,
+                'full_match': match.group(0),
+                'start': match.start(),
+                'end': match.end()
+            })
+        
+        if all_code_blocks:
+            # Sort blocks by position in content
+            all_code_blocks.sort(key=lambda x: x['start'])
             
-            for i, part in enumerate(parts):
-                if part.strip():
-                    self.console.print(part.strip())
+            # Display content with code blocks
+            last_pos = 0
+            
+            for block in all_code_blocks:
+                # Display text before this code block
+                text_before = content[last_pos:block['start']].strip()
+                if text_before:
+                    self.console.print(text_before)
                 
                 # Display code block with syntax highlighting
-                if block_index < len(code_blocks):
-                    lang, code = code_blocks[block_index]
-                    if code.strip():
+                if block['code']:
+                    # Handle file operations differently
+                    if block['lang'] == 'file_operation':
+                        # Display file operation with special formatting
+                        filename = block.get('filename', 'unknown')
+                        operation = block.get('operation', 'unknown')
+                        
                         try:
-                            syntax = Syntax(code.strip(), lang or "text", theme="monokai", line_numbers=True)
-                            self.console.print(Panel(syntax, title=f"Code ({lang or 'text'})", border_style="blue"))
+                            # Detect language from filename for syntax highlighting
+                            file_ext = filename.split('.')[-1].lower() if '.' in filename else 'text'
+                            lang_map = {
+                                'py': 'python', 'js': 'javascript', 'ts': 'typescript',
+                                'html': 'html', 'css': 'css', 'json': 'json',
+                                'md': 'markdown', 'yml': 'yaml', 'yaml': 'yaml',
+                                'xml': 'xml', 'sql': 'sql', 'sh': 'bash',
+                                'java': 'java', 'cpp': 'cpp', 'c': 'c',
+                                'php': 'php', 'rb': 'ruby', 'go': 'go'
+                            }
+                            syntax_lang = lang_map.get(file_ext, 'text')
+                            
+                            syntax = Syntax(block['code'], syntax_lang, theme="monokai", line_numbers=True)
+                            block_title = f"{operation.title()} File: {filename}"
+                            if self.verbose:
+                                block_title += f" - {block['type']}"
+                            self.console.print(Panel(syntax, title=block_title, border_style="green"))
                         except:
                             # Fallback to plain text
-                            self.console.print(Panel(code.strip(), title="Code", border_style="blue"))
-                    block_index += 1
+                            self.console.print(Panel(block['code'], title=f"{operation.title()} File: {filename}", border_style="green"))
+                        
+                        # Always prompt for file operations
+                        if allow_execution:
+                            self._prompt_file_operation(block['code'], filename, operation)
+                    else:
+                        # Regular code block display
+                        try:
+                            syntax = Syntax(block['code'], block['lang'], theme="monokai", line_numbers=True)
+                            block_title = f"Code ({block['lang']})"
+                            if self.verbose:
+                                block_title += f" - {block['type']}"
+                            self.console.print(Panel(syntax, title=block_title, border_style="blue"))
+                        except:
+                            # Fallback to plain text
+                            self.console.print(Panel(block['code'], title="Code", border_style="blue"))
+                        
+                        # Check if this is an executable block and we're in chat mode
+                        if allow_execution and block['lang'] and block['lang'].lower() in executable_types:
+                            self._prompt_code_execution(block['code'], block['lang'], block['type'])
+                        
+                        # NEW: Check if this looks like a complete file and offer to save it
+                        if allow_execution and self._is_complete_file(block['code'], block['lang']):
+                            self._prompt_file_save(block['code'], block['lang'])
+                
+                last_pos = block['end']
+            
+            # Display any remaining text after the last code block
+            remaining_text = content[last_pos:].strip()
+            if remaining_text:
+                self.console.print(remaining_text)
         else:
             # No code blocks, display as is
             self.console.print(content)
+    
+    def _prompt_code_execution(self, code: str, lang: str, block_type: str = "markdown"):
+        """Prompt user to execute detected code/command"""
+        try:
+            # Customize prompt based on block type
+            if block_type == "commands_tag":
+                prompt_msg = f"\\n[yellow]⚡ Detected <commands> block. Execute these commands? (y/N):[/yellow]"
+                exec_msg = "[green]🚀 Executing commands...[/green]"
+            elif block_type == "code_tag":
+                prompt_msg = f"\\n[yellow]⚡ Detected <code> tag ({lang}). Execute it? (y/N):[/yellow]"
+                exec_msg = f"[green]🚀 Executing {lang} code...[/green]"
+            else:
+                prompt_msg = f"\\n[yellow]⚡ Detected executable {lang} code. Execute it? (y/N):[/yellow]"
+                exec_msg = f"[green]🚀 Executing {lang} code...[/green]"
+            
+            # Show execution prompt
+            self.console.print(prompt_msg, end=" ")
+            
+            # Get user response
+            import sys
+            sys.stdout.flush()
+            response = input().strip().lower()
+            
+            if response in ['y', 'yes', 'sim', 's']:
+                self.console.print(exec_msg)
+                
+                # Execute based on language type
+                if lang.lower() in ['bash', 'shell', 'sh', 'cmd', 'powershell']:
+                    # Direct shell command execution
+                    self._execute_shell_code(code)
+                elif lang.lower() in ['python', 'py']:
+                    # Python code execution
+                    self._execute_python_code(code)
+                elif lang.lower() in ['node', 'js']:
+                    # Node.js code execution
+                    self._execute_node_code(code)
+                elif lang.lower() == 'npm':
+                    # NPM command execution
+                    self._execute_npm_code(code)
+                else:
+                    # Fallback to shell execution
+                    self._execute_shell_code(code)
+            else:
+                self.console.print("[dim]Code execution skipped.[/dim]")
+                
+        except KeyboardInterrupt:
+            self.console.print("\\n[dim]Code execution cancelled.[/dim]")
+        except Exception as e:
+            self.console.print(f"[red]Error prompting for execution: {e}[/red]")
+    
+    def _is_complete_file(self, code: str, lang: str) -> bool:
+        """Analyze code to determine if it looks like a complete file"""
+        if not code or not lang or len(code.strip()) < 20:  # Too small to be a file
+            return False
+        
+        # Language-specific file indicators
+        file_indicators = {
+            'python': [
+                'import ', 'from ', 'def ', 'class ', 'if __name__',
+                '#!/usr/bin/env python', '# -*- coding'
+            ],
+            'javascript': [
+                'const ', 'let ', 'var ', 'function ', 'class ', 'import ', 'export',
+                'require(', 'module.exports', '#!/usr/bin/env node'
+            ],
+            'typescript': [
+                'interface ', 'type ', 'import ', 'export ', 'class ', 'function ',
+                'const ', 'let ', 'var '
+            ],
+            'java': [
+                'public class ', 'private ', 'public static void main', 'import ',
+                'package ', '@Override'
+            ],
+            'go': [
+                'package ', 'func ', 'import ', 'var ', 'const ', 'type ',
+                'func main()'
+            ],
+            'rust': [
+                'fn ', 'use ', 'mod ', 'struct ', 'impl ', 'fn main()',
+                '#[derive', 'pub '
+            ],
+            'php': [
+                '<?php', 'class ', 'function ', 'namespace ', 'use ',
+                'require ', 'include '
+            ],
+            'c': [
+                '#include', 'int main(', 'void ', 'struct ', 'typedef',
+                '#define'
+            ],
+            'cpp': [
+                '#include', 'using namespace', 'class ', 'int main(',
+                'template<', 'std::'
+            ],
+            'css': [
+                'body', 'html', '.', '#', '@media', '@import',
+                'margin:', 'padding:'
+            ],
+            'html': [
+                '<!DOCTYPE', '<html', '<head>', '<body>', '<div',
+                '<script', '<style'
+            ],
+            'json': [
+                '{', '}', '[', ']', '"'  # Basic JSON structure
+            ],
+            'yaml': [
+                'name:', 'version:', 'dependencies:', 'scripts:',
+                '---', 'apiVersion:'
+            ],
+            'sql': [
+                'SELECT', 'CREATE', 'INSERT', 'UPDATE', 'DELETE',
+                'FROM', 'WHERE', 'TABLE'
+            ]
+        }
+        
+        # Normalize language name
+        lang_lower = lang.lower()
+        if lang_lower in ['js', 'node']:
+            lang_lower = 'javascript'
+        elif lang_lower in ['ts']:
+            lang_lower = 'typescript'
+        elif lang_lower in ['py']:
+            lang_lower = 'python'
+        elif lang_lower in ['cpp', 'cxx', 'cc']:
+            lang_lower = 'cpp'
+        elif lang_lower in ['yml']:
+            lang_lower = 'yaml'
+        
+        # Check for language-specific indicators
+        if lang_lower in file_indicators:
+            indicators = file_indicators[lang_lower]
+            code_lower = code.lower()
+            
+            # Count matches (case-insensitive for keywords, case-sensitive for syntax)
+            matches = 0
+            for indicator in indicators:
+                if indicator.lower() in code_lower:
+                    matches += 1
+            
+            # Need at least 2 indicators for small files, 1 for large files
+            min_matches = 1 if len(code) > 200 else 2
+            return matches >= min_matches
+        
+        # For unknown languages, use heuristics
+        lines = code.strip().split('\\n')
+        if len(lines) < 3:  # Too few lines
+            return False
+        
+        # Heuristics for any language:
+        # - Has multiple lines
+        # - Has some structure (functions, classes, imports)
+        # - Not just a snippet
+        structure_keywords = [
+            'function', 'class', 'def', 'import', 'include',
+            'module', 'namespace', 'package', 'struct', 'interface'
+        ]
+        
+        has_structure = any(keyword in code.lower() for keyword in structure_keywords)
+        has_multiple_statements = len([line for line in lines if line.strip() and not line.strip().startswith('//')]) >= 5
+        
+        return has_structure and has_multiple_statements
+    
+    def _infer_filename(self, code: str, lang: str) -> str:
+        """Infer an appropriate filename based on code content and language"""
+        # Language to extension mapping
+        ext_map = {
+            'python': '.py', 'javascript': '.js', 'typescript': '.ts',
+            'java': '.java', 'go': '.go', 'rust': '.rs', 'php': '.php',
+            'c': '.c', 'cpp': '.cpp', 'css': '.css', 'html': '.html',
+            'json': '.json', 'yaml': '.yml', 'sql': '.sql', 'bash': '.sh',
+            'shell': '.sh', 'powershell': '.ps1', 'batch': '.bat'
+        }
+        
+        # Normalize language
+        lang_lower = lang.lower()
+        if lang_lower in ['js', 'node']:
+            lang_lower = 'javascript'
+        elif lang_lower in ['ts']:
+            lang_lower = 'typescript'
+        elif lang_lower in ['py']:
+            lang_lower = 'python'
+        elif lang_lower in ['sh']:
+            lang_lower = 'bash'
+        
+        extension = ext_map.get(lang_lower, '.txt')
+        
+        # Try to extract filename from comments
+        lines = code.strip().split('\\n')
+        for line in lines[:5]:  # Check first 5 lines
+            line = line.strip()
+            # Look for filename in comments
+            if '//' in line or '#' in line or '/*' in line:
+                # Common patterns: // filename.js, # filename.py, etc.
+                import re
+                filename_pattern = r'[/#*\\s]*([a-zA-Z0-9_-]+\\.[a-zA-Z0-9]+)'
+                match = re.search(filename_pattern, line)
+                if match:
+                    potential_filename = match.group(1)
+                    if potential_filename.endswith(extension) or '.' in potential_filename:
+                        return potential_filename
+        
+        # Try to extract class name or main function name
+        class_patterns = {
+            'python': r'class\\s+([A-Za-z][A-Za-z0-9_]*)',
+            'javascript': r'class\\s+([A-Za-z][A-Za-z0-9_]*)',
+            'typescript': r'class\\s+([A-Za-z][A-Za-z0-9_]*)',
+            'java': r'public\\s+class\\s+([A-Za-z][A-Za-z0-9_]*)',
+            'go': r'func\\s+([A-Za-z][A-Za-z0-9_]*)\\(',
+            'rust': r'fn\\s+([A-Za-z][A-Za-z0-9_]*)\\(',
+        }
+        
+        if lang_lower in class_patterns:
+            import re
+            match = re.search(class_patterns[lang_lower], code)
+            if match:
+                name = match.group(1).lower()
+                return f"{name}{extension}"
+        
+        # Look for specific patterns
+        if 'package.json' in code or '"name"' in code and lang_lower == 'json':
+            return 'package.json'
+        elif 'docker' in code.lower() and ('from ' in code.lower() or 'run ' in code.lower()):
+            return 'Dockerfile'
+        elif 'requirements' in code.lower() and lang_lower == 'txt':
+            return 'requirements.txt'
+        elif 'main(' in code and lang_lower in ['c', 'cpp']:
+            return f'main{extension}'
+        elif 'if __name__' in code and lang_lower == 'python':
+            return f'main{extension}'
+        
+        # Default naming
+        default_names = {
+            'javascript': 'script.js',
+            'typescript': 'script.ts', 
+            'python': 'script.py',
+            'java': 'Main.java',
+            'go': 'main.go',
+            'rust': 'main.rs',
+            'php': 'index.php',
+            'html': 'index.html',
+            'css': 'styles.css',
+            'json': 'data.json',
+            'yaml': 'config.yml',
+            'sql': 'queries.sql'
+        }
+        
+        return default_names.get(lang_lower, f'file{extension}')
+    
+    def _prompt_file_save(self, code: str, lang: str):
+        """Prompt user to save a detected code file"""
+        try:
+            # Infer filename
+            suggested_filename = self._infer_filename(code, lang)
+            
+            # Show save prompt
+            self.console.print(f"\\n[cyan]💾 This looks like a complete {lang} file. Save it? (y/N):[/cyan]", end=" ")
+            
+            # Get user response
+            import sys
+            sys.stdout.flush()
+            response = input().strip().lower()
+            
+            if response in ['y', 'yes', 'sim', 's']:
+                # Ask for filename
+                self.console.print(f"[cyan]📝 Filename [default: {suggested_filename}]:[/cyan]", end=" ")
+                sys.stdout.flush()
+                filename_input = input().strip()
+                
+                # Use suggested filename if none provided
+                final_filename = filename_input if filename_input else suggested_filename
+                
+                # Save the file
+                self._execute_file_create(code, final_filename)
+            else:
+                self.console.print("[dim]File save cancelled.[/dim]")
+                
+        except KeyboardInterrupt:
+            self.console.print("\\n[dim]File save cancelled.[/dim]")
+        except Exception as e:
+            self.console.print(f"[red]Error prompting for file save: {e}[/red]")
+    
+    def _prompt_file_operation(self, content: str, filename: str, operation: str):
+        """Prompt user to execute file create/edit operations"""
+        try:
+            # Customize prompt based on operation type
+            if operation == "create":
+                prompt_msg = f"\\n[yellow]📄 Create file '{filename}'? (y/N):[/yellow]"
+                exec_msg = f"[green]🚀 Creating file '{filename}'...[/green]"
+            elif operation == "edit":
+                prompt_msg = f"\\n[yellow]✏️  Edit file '{filename}'? (y/N):[/yellow]"
+                exec_msg = f"[green]🚀 Editing file '{filename}'...[/green]"
+            else:
+                prompt_msg = f"\\n[yellow]📝 Apply file operation to '{filename}'? (y/N):[/yellow]"
+                exec_msg = f"[green]🚀 Applying operation to '{filename}'...[/green]"
+            
+            # Show file operation prompt
+            self.console.print(prompt_msg, end=" ")
+            
+            # Get user response
+            import sys
+            sys.stdout.flush()
+            response = input().strip().lower()
+            
+            if response in ['y', 'yes', 'sim', 's']:
+                self.console.print(exec_msg)
+                
+                # Execute file operation
+                if operation == "create":
+                    self._execute_file_create(content, filename)
+                elif operation == "edit":
+                    self._execute_file_edit(content, filename)
+                else:
+                    self.console.print(f"[red]Unknown file operation: {operation}[/red]")
+            else:
+                self.console.print(f"[dim]File operation cancelled.[/dim]")
+                
+        except KeyboardInterrupt:
+            self.console.print("\\n[dim]File operation cancelled.[/dim]")
+        except Exception as e:
+            self.console.print(f"[red]Error prompting for file operation: {e}[/red]")
+    
+    def _execute_file_create(self, content: str, filename: str):
+        """Create a new file with the given content"""
+        try:
+            import os
+            from pathlib import Path
+            
+            # Create directory if it doesn't exist
+            file_path = Path(filename)
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Check if file already exists
+            if file_path.exists():
+                self.console.print(f"[yellow]⚠️  File '{filename}' already exists. Overwrite? (y/N):[/yellow]", end=" ")
+                response = input().strip().lower()
+                if response not in ['y', 'yes', 'sim', 's']:
+                    self.console.print("[dim]File creation cancelled.[/dim]")
+                    return
+            
+            # Write file content
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+            
+            # Track file in history
+            self.history_manager.track_file_edit(filename, content, "create")
+            
+            self.console.print(f"[green]✅ File '{filename}' created successfully![/green]")
+            
+        except Exception as e:
+            self.console.print(f"[red]Error creating file '{filename}': {e}[/red]")
+    
+    def _execute_file_edit(self, content: str, filename: str):
+        """Edit an existing file with the given content"""
+        try:
+            import os
+            from pathlib import Path
+            
+            file_path = Path(filename)
+            
+            # Check if file exists for editing
+            if not file_path.exists():
+                self.console.print(f"[yellow]⚠️  File '{filename}' doesn't exist. Create it? (y/N):[/yellow]", end=" ")
+                response = input().strip().lower()
+                if response in ['y', 'yes', 'sim', 's']:
+                    self._execute_file_create(content, filename)
+                    return
+                else:
+                    self.console.print("[dim]File edit cancelled.[/dim]")
+                    return
+            
+            # Create backup of existing file
+            backup_path = f"{filename}.backup"
+            if file_path.exists():
+                import shutil
+                shutil.copy2(file_path, backup_path)
+                self.console.print(f"[dim]Backup created: {backup_path}[/dim]")
+            
+            # Write new content
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+            
+            # Track file in history
+            self.history_manager.track_file_edit(filename, content, "edit")
+            
+            self.console.print(f"[green]✅ File '{filename}' edited successfully![/green]")
+            
+        except Exception as e:
+            self.console.print(f"[red]Error editing file '{filename}': {e}[/red]")
+    
+    def _execute_shell_code(self, code: str):
+        """Execute shell/bash commands (handles multiple separators)"""
+        try:
+            # Split multiple commands by various separators
+            commands = []
+            
+            # First try && (logical AND - only run next if previous succeeds)
+            if '&&' in code:
+                commands = [cmd.strip() for cmd in code.split('&&') if cmd.strip()]
+            # Then try ; (command separator - run all regardless)
+            elif ';' in code:
+                commands = [cmd.strip() for cmd in code.split(';') if cmd.strip()]
+            # Finally try newlines (most common in <commands> tags)
+            else:
+                commands = [cmd.strip() for cmd in code.split('\\n') if cmd.strip()]
+            
+            # Execute each command
+            for command in commands:
+                if command and not command.startswith('#'):  # Skip comments
+                    self.console.print(f"[blue]$ {command}[/blue]")
+                    self._handle_terminal_command(command)
+                    
+        except Exception as e:
+            self.console.print(f"[red]Error executing shell command: {e}[/red]")
+    
+    def _execute_python_code(self, code: str):
+        """Execute Python code"""
+        try:
+            self.console.print(f"[blue]$ python -c \"{code.replace(chr(34), chr(92)+chr(34))}\"[/blue]")
+            command = f"python -c \"{code.replace(chr(34), chr(92)+chr(34))}\""
+            self._handle_terminal_command(command)
+        except Exception as e:
+            self.console.print(f"[red]Error executing Python code: {e}[/red]")
+    
+    def _execute_node_code(self, code: str):
+        """Execute Node.js code"""
+        try:
+            self.console.print(f"[blue]$ node -e \"{code.replace(chr(34), chr(92)+chr(34))}\"[/blue]")
+            command = f"node -e \"{code.replace(chr(34), chr(92)+chr(34))}\""
+            self._handle_terminal_command(command)
+        except Exception as e:
+            self.console.print(f"[red]Error executing Node.js code: {e}[/red]")
+    
+    def _execute_npm_code(self, code: str):
+        """Execute NPM commands"""
+        try:
+            # Split multiple npm commands if on separate lines
+            commands = [cmd.strip() for cmd in code.split('\\n') if cmd.strip()]
+            
+            for command in commands:
+                if command:
+                    self.console.print(f"[blue]$ {command}[/blue]")
+                    self._handle_terminal_command(command)
+                    
+        except Exception as e:
+            self.console.print(f"[red]Error executing NPM command: {e}[/red]")
     
     def _display_task_steps(self, formatted_steps: str):
         """Display task steps with proper formatting"""

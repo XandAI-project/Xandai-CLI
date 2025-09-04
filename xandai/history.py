@@ -141,16 +141,8 @@ class HistoryManager:
         return self.project_context.copy()
     
     def get_context_summary(self) -> str:
-        """Get formatted project context summary"""
-        ctx = self.project_context
+        """Get formatted project context summary (simplified for terminal prompt)"""
         summary_parts = []
-        
-        if ctx["framework"]:
-            summary_parts.append(f"Framework: {ctx['framework']}")
-        if ctx["language"]:
-            summary_parts.append(f"Language: {ctx['language']}")
-        if ctx["project_type"]:
-            summary_parts.append(f"Type: {ctx['project_type']}")
         
         file_count = len(self.file_contents)
         if file_count > 0:
