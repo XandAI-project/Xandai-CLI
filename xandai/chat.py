@@ -376,7 +376,51 @@ class ChatREPL:
             # Clear screen
             'clear', 'cls',
             # Help
-            'help', 'man'
+            'help', 'man',
+            
+            # ===== COMANDOS DE DESENVOLVIMENTO ADICIONADOS =====
+            # Python
+            'python', 'python3', 'py', 'pip', 'pip3', 'pipenv', 'poetry', 'conda', 'mamba',
+            'pyenv', 'virtualenv', 'venv', 'activate', 'deactivate',
+            
+            # JavaScript/Node.js
+            'node', 'npm', 'yarn', 'pnpm', 'bun', 'deno', 'npx', 'nvm', 'fnm',
+            
+            # Java
+            'java', 'javac', 'jar', 'maven', 'mvn', 'gradle', 'gradlew', 'ant',
+            
+            # C/C++
+            'gcc', 'g++', 'clang', 'clang++', 'make', 'cmake', 'ninja',
+            
+            # C#/.NET
+            'dotnet', 'csc', 'msbuild', 'nuget',
+            
+            # Go
+            'go', 'gofmt', 'goimports', 'mod',
+            
+            # Rust
+            'rustc', 'cargo', 'rustup', 'rustfmt',
+            
+            # Ruby
+            'ruby', 'gem', 'bundle', 'rails', 'rake', 'rbenv', 'rvm',
+            
+            # PHP
+            'php', 'composer', 'artisan', 'phpunit',
+            
+            # Git and version control
+            'git', 'hg', 'svn', 'bzr',
+            
+            # Text editors
+            'nano', 'vim', 'emacs', 'vi', 'code', 'notepad',
+            
+            # Container and deployment
+            'docker', 'podman', 'kubectl', 'helm', 'terraform', 'vagrant',
+            
+            # Network tools
+            'curl', 'wget', 'ssh', 'scp', 'rsync', 'nc', 'telnet', 'nmap',
+            
+            # Archive tools
+            'tar', 'gzip', 'gunzip', 'zip', 'unzip', 'rar', 'unrar', '7z'
         }
         
         # System prompt for chat mode
