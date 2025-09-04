@@ -390,9 +390,8 @@ class ChatREPL:
         """Run the interactive REPL loop"""
         try:
             while True:
-                # Show context info in prompt
-                context_info = self.history_manager.get_context_summary()
-                prompt_text = f"xandai ({context_info})> " if context_info != "No project context" else "xandai> "
+                # Simple prompt without highlighting
+                prompt_text = "xandai> "
                 
                 # Get user input
                 try:
@@ -2340,30 +2339,113 @@ Remember: Your response will be written directly to the file! NO explanatory tex
             else:
                 commands = [cmd.strip() for cmd in code.split('\\n') if cmd.strip()]
             
-            # Execute each command
+            # Execute each command and ensure output is shown
             for command in commands:
                 if command and not command.startswith('#'):  # Skip comments
                     self.console.print(f"[blue]$ {command}[/blue]")
-                    self._handle_terminal_command(command)
+                    # Force immediate execution and output display
+                    self._execute_command_with_output(command)
                     
         except Exception as e:
             self.console.print(f"[red]Error executing shell command: {e}[/red]")
     
+    def _execute_command_with_output(self, command: str):
+        """Execute command and immediately display output - optimized for chat mode execution"""
+        try:
+            import subprocess
+            import sys
+            
+            # Handle special commands first
+            try:
+                command_parts = shlex.split(command)
+                command_name = command_parts[0].lower()
+            except ValueError as e:
+                # Handle shlex parsing errors
+                if self.verbose:
+                    OSUtils.debug_print(f"Shlex parsing error: {e}", True)
+                command_parts = command.split()
+                command_name = command_parts[0].lower() if command_parts else ""
+            
+            # Handle cd command specially
+            if command_name == 'cd':
+                self._handle_cd_command(command_parts)
+                return
+            elif command_name in ['cls', 'clear']:
+                self._handle_clear_command(command)
+                return
+            
+            # Execute command with immediate output
+            process = subprocess.Popen(
+                command,
+                shell=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                bufsize=1,  # Line buffered
+                universal_newlines=True
+            )
+            
+            try:
+                # Wait for completion with timeout
+                stdout, stderr = process.communicate(timeout=60)  # Increased timeout for long operations
+                
+                # Show output immediately
+                if stdout and stdout.strip():
+                    self.console.print(Panel(
+                        stdout.strip(),
+                        title=f"✅ Output: {command}",
+                        border_style="green"
+                    ))
+                    # Also add to history
+                    self.history_manager.add_conversation(
+                        role="system",
+                        content=f"<command_output>\\n{stdout.strip()}\\n</command_output>",
+                        metadata={"type": "command_output", "command": command}
+                    )
+                elif process.returncode == 0:
+                    self.console.print(f"[green]✅ Command completed successfully: {command}[/green]")
+                
+                # Show errors if any
+                if stderr and stderr.strip():
+                    self.console.print(Panel(
+                        f"[red]{stderr.strip()}[/red]",
+                        title=f"⚠️  Error: {command}",
+                        border_style="red"
+                    ))
+                    # Add error to history too
+                    self.history_manager.add_conversation(
+                        role="system",
+                        content=f"<command_error>\\n{stderr.strip()}\\n</command_error>",
+                        metadata={"type": "command_error", "command": command}
+                    )
+                elif process.returncode != 0:
+                    self.console.print(f"[red]❌ Command failed with code {process.returncode}: {command}[/red]")
+                    
+            except subprocess.TimeoutExpired:
+                process.kill()
+                self.console.print(f"[red]⏰ Command timed out (60s): {command}[/red]")
+                
+        except Exception as e:
+            self.console.print(f"[red]❌ Error executing command '{command}': {e}[/red]")
+            if self.verbose:
+                import traceback
+                self.console.print(f"[dim]Traceback: {traceback.format_exc()}[/dim]")
+    
     def _execute_python_code(self, code: str):
         """Execute Python code"""
         try:
-            self.console.print(f"[blue]$ python -c \"{code.replace(chr(34), chr(92)+chr(34))}\"[/blue]")
             command = f"python -c \"{code.replace(chr(34), chr(92)+chr(34))}\""
-            self._handle_terminal_command(command)
+            self.console.print(f"[blue]$ {command}[/blue]")
+            self._execute_command_with_output(command)
         except Exception as e:
             self.console.print(f"[red]Error executing Python code: {e}[/red]")
     
     def _execute_node_code(self, code: str):
         """Execute Node.js code"""
         try:
-            self.console.print(f"[blue]$ node -e \"{code.replace(chr(34), chr(92)+chr(34))}\"[/blue]")
             command = f"node -e \"{code.replace(chr(34), chr(92)+chr(34))}\""
-            self._handle_terminal_command(command)
+            self.console.print(f"[blue]$ {command}[/blue]")
+            self._execute_command_with_output(command)
         except Exception as e:
             self.console.print(f"[red]Error executing Node.js code: {e}[/red]")
     
@@ -2376,7 +2458,7 @@ Remember: Your response will be written directly to the file! NO explanatory tex
             for command in commands:
                 if command:
                     self.console.print(f"[blue]$ {command}[/blue]")
-                    self._handle_terminal_command(command)
+                    self._execute_command_with_output(command)
                     
         except Exception as e:
             self.console.print(f"[red]Error executing NPM command: {e}[/red]")

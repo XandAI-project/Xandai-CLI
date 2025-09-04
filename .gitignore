@@ -56,3 +56,5 @@ temp/
 node_modules/
 
 .xandai_history/
+
+sessions/
