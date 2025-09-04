@@ -354,11 +354,19 @@ ESTIMATED_TIME: [e.g., "2-3 hours"]
 FOLDER_STRUCTURE:
 project_name/
 ├── folder1/
-│   ├── file1.ext
-│   └── file2.ext
+│   ├── file1.ext          # Brief description of what this file does
+│   │                      # Functions: main_function(), helper_function()
+│   │                      # Exports: MainClass, utility_functions
+│   └── file2.ext          # Brief description of what this file does  
+│                          # Functions: process_data(), validate_input()
+│                          # Exports: DataProcessor, validators
 ├── folder2/
-│   └── file3.ext
-└── file4.ext
+│   └── file3.ext          # Brief description of what this file does
+│                          # Functions: api_handler(), error_handler()
+│                          # Exports: router, middleware
+└── file4.ext              # Main application entry point
+                           # Functions: main(), initialize_app()
+                           # Exports: app instance
 
 STEPS:
 1 - create folder1/file1.ext
@@ -373,43 +381,80 @@ EXAMPLES OF COMPLETE PROJECTS:
 Flask API:
 ```
 api_project/
-├── app.py (main Flask app)
-├── models.py (database models)
-├── routes.py (API routes)
-├── config.py (configuration)
-├── requirements.txt (dependencies)
-├── .env.example (environment variables)
-└── README.md (documentation)
+├── app.py              # Main Flask application entry point
+│                       # Functions: create_app(), register_blueprints(), init_extensions()
+│                       # Exports: app (Flask instance)
+├── models.py           # Database models using SQLAlchemy
+│                       # Classes: User, Product, Order (all inherit db.Model)
+│                       # Functions: init_db(), create_tables()
+│                       # Exports: db, User, Product, Order
+├── routes.py           # API route definitions
+│                       # Functions: register_routes(), get_all_users(), create_user()
+│                       # Exports: api_bp (Blueprint)
+├── config.py           # Application configuration settings
+│                       # Classes: Config, DevelopmentConfig, ProductionConfig
+│                       # Exports: config dictionary, get_config()
+├── requirements.txt    # Python dependencies list
+│                       # Content: flask, sqlalchemy, bcrypt, python-dotenv, pytest
+├── .env.example        # Environment variables template
+│                       # Variables: DATABASE_URL, SECRET_KEY, DEBUG
+└── README.md           # Project documentation and setup instructions
+                        # Sections: Installation, Usage, API Endpoints, Testing
 ```
 
 Express API:
 ```
 api_project/
-├── server.js (main server)
-├── package.json (dependencies)
+├── server.js           # Main Express server entry point
+│                       # Functions: startServer(), setupMiddleware(), setupRoutes()
+│                       # Exports: app (Express instance)
+├── package.json        # NPM configuration and dependencies
+│                       # Scripts: start, dev, test, build
+│                       # Dependencies: express, mongoose, bcryptjs, jsonwebtoken, cors
 ├── routes/
-│   └── api.js (API routes)
+│   └── api.js          # API route definitions (/api/users, /api/auth)
+│                       # Functions: getUsers(), createUser(), updateUser(), deleteUser()
+│                       # Exports: router (Express Router instance)
 ├── models/
-│   └── model.js (data models)
+│   └── model.js        # Data models using Mongoose
+│                       # Classes: User, Product (Mongoose schemas)
+│                       # Functions: hashPassword(), comparePassword(), toJSON()
+│                       # Exports: User, Product models
 ├── middleware/
-│   └── auth.js (authentication)
+│   └── auth.js         # Authentication middleware functions
+│                       # Functions: verifyToken(), requireAuth(), checkPermissions()
+│                       # Exports: auth middleware functions
 ├── config/
-│   └── database.js (DB config)
-└── .env.example (environment)
+│   └── database.js     # Database connection configuration
+│                       # Functions: connectDB(), closeDB(), getConnection()
+│                       # Exports: connection instance
+└── .env.example        # Environment variables template  
+                        # Variables: PORT, DB_URI, JWT_SECRET, NODE_ENV
 ```
 
 React App:
 ```
 react_app/
-├── package.json (dependencies)
+├── package.json        # NPM configuration and dependencies
+│                       # Scripts: start, build, test, eject
+│                       # Dependencies: react, react-dom, react-router-dom, axios
 ├── public/
-│   └── index.html (HTML template)
+│   └── index.html      # HTML template with React root element
+│                       # Contains: <div id="root"></div>, meta tags
 ├── src/
-│   ├── App.js (main component)
-│   ├── App.css (main styles)
-│   ├── index.js (entry point)
+│   ├── App.js          # Main React application component
+│   │                   # Component: App (default export)
+│   │                   # Functions: handleRouting(), initializeApp()
+│   ├── App.css         # Main application styles
+│   │                   # Styles: global styles, component classes
+│   ├── index.js        # React DOM render entry point
+│   │                   # Functions: render()
+│   │                   # Exports: none (entry point)
 │   └── components/
-│       └── Component.js (reusable components)
+│       └── Component.js # Reusable UI components
+│                        # Components: Header, Footer, Button (named exports)
+│                        # Props: onClick, children, className, variant
+│                        # Functions: handleClick(), validateProps()
 ```
 
 QUALITY STANDARDS:

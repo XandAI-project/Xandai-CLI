@@ -772,12 +772,12 @@ class ChatREPL:
             f"ACTION: {step.action.upper()}"
         ]
         
-        # Add project context
-        if context.get("framework"):
+        # Add project context (safely handle None context)
+        if context and context.get("framework"):
             prompt_parts.append(f"FRAMEWORK: {context['framework']}")
-        if context.get("language"):
+        if context and context.get("language"):
             prompt_parts.append(f"LANGUAGE: {context['language']}")
-        if context.get("project_type"):
+        if context and context.get("project_type"):
             prompt_parts.append(f"PROJECT_TYPE: {context['project_type']}")
         
         # Add existing project structure if in edit mode
@@ -808,6 +808,12 @@ class ChatREPL:
             for file in planned_files:
                 prompt_parts.append(f"- {file}")
         
+        # Add expected functions and exports for this file
+        expected_info = self._get_expected_file_info(step.target, context, step.description)
+        if expected_info:
+            prompt_parts.append(f"\\nEXPECTED FILE DETAILS:")
+            prompt_parts.append(expected_info)
+
         # Add folder structure context for new files
         if not self.current_project_structure:
             folder_structure = self._infer_folder_structure(step.target, planned_files)
@@ -816,7 +822,7 @@ class ChatREPL:
                 prompt_parts.append(folder_structure)
         
         # Add file-specific instructions based on extension
-        file_ext = step.target.split('.')[-1].lower() if '.' in step.target else ''
+        file_ext = step.target.split('.')[-1].lower() if step.target and '.' in step.target else ''
         
         if file_ext in ['py']:
             prompt_parts.append("\\nPYTHON REQUIREMENTS:")
@@ -868,8 +874,9 @@ CRITICAL RULES:
 2. Write complete, production-ready code
 3. Follow best practices for the language/framework
 4. ONLY import/require files that are explicitly listed in the context
-5. Make the code immediately runnable/usable
-6. Do NOT include any wrapper text or explanations
+5. IMPLEMENT ALL functions and exports specified in "EXPECTED FILE DETAILS"
+6. Make the code immediately runnable/usable
+7. Do NOT include any wrapper text or explanations
 
 IMPORT/DEPENDENCY RULES (CRITICAL):
 - NEVER import from files that don't exist in the project structure
@@ -879,6 +886,14 @@ IMPORT/DEPENDENCY RULES (CRITICAL):
   * Files explicitly mentioned in EXISTING or PLANNED files
 - Use correct relative imports based on folder structure
 - For missing functionality, implement it within the file or use standard libraries
+
+EXPECTED FILE DETAILS COMPLIANCE:
+- If "EXPECTED FILE DETAILS" section is provided, follow it exactly
+- Implement ALL functions listed in "Functions:" with proper signatures
+- Create ALL exports listed in "Exports:" with correct naming
+- Include ALL imports listed in "Imports:" (only if they exist in project)
+- Follow the architectural pattern and purpose described
+- Maintain consistency with expected API and interface
 
 OUTPUT FORMAT:
 - Return ONLY the raw file content
@@ -910,6 +925,10 @@ Remember: Your response will be written directly to the file! NO explanatory tex
         """Extract clean file content from LLM response"""
         import re
         
+        # Handle None or empty response
+        if not response:
+            return ""
+        
         # Remove any markdown code blocks if present
         code_block_pattern = r'```(?:\w+)?\n(.*?)\n```'
         code_match = re.search(code_block_pattern, response, re.DOTALL)
@@ -923,8 +942,8 @@ Remember: Your response will be written directly to the file! NO explanatory tex
         start_idx = 0
         for i, line in enumerate(lines):
             # Skip lines that look like explanations
-            if (line.startswith(('Here', 'This', 'The file', 'Below', 'I will', 'Let me')) or
-                'generate' in line.lower() or 'create' in line.lower()):
+            if (line and (line.startswith(('Here', 'This', 'The file', 'Below', 'I will', 'Let me')) or
+                'generate' in line.lower() or 'create' in line.lower())):
                 continue
             # Start from first line that looks like code/content
             if line.strip() and not line.startswith('#'):
@@ -935,8 +954,8 @@ Remember: Your response will be written directly to the file! NO explanatory tex
         end_idx = len(lines)
         for i in range(len(lines) - 1, -1, -1):
             line = lines[i]
-            if (line.startswith(('That', 'This', 'The above', 'Hope this')) or
-                'complete' in line.lower() or 'should work' in line.lower()):
+            if (line and (line.startswith(('That', 'This', 'The above', 'Hope this')) or
+                'complete' in line.lower() or 'should work' in line.lower())):
                 end_idx = i
             elif line.strip():
                 break
@@ -948,6 +967,152 @@ Remember: Your response will be written directly to the file! NO explanatory tex
     def _get_planned_files_from_session(self) -> list:
         """Get all files planned in the current task session"""
         return self.current_task_files
+    
+    def _get_expected_file_info(self, filename: str, context: dict, description: str) -> str:
+        """Generate expected functions and exports for a specific file"""
+        info_parts = []
+        
+        # Validate inputs to prevent None errors
+        if not filename:
+            return None
+        if not isinstance(context, dict):
+            context = {}
+        if not description:
+            description = ""
+        
+        # Extract file extension and basename safely
+        try:
+            file_ext = filename.split('.')[-1].lower() if '.' in filename else ''
+            basename = filename.split('/')[-1].split('.')[0].lower()
+        except (AttributeError, IndexError):
+            return None
+        
+        # Determine framework and language safely
+        framework = (context.get("framework") or "").lower()
+        language = (context.get("language") or "").lower()
+        
+        # Generate expectations based on file type and context
+        if framework == "flask" and file_ext == "py":
+            if "app.py" in filename or "main.py" in filename:
+                info_parts.append("# Main Flask application file")
+                info_parts.append("Functions: create_app(), register_blueprints(), init_extensions()")
+                info_parts.append("Exports: app (Flask instance)")
+                info_parts.append("Imports: Flask, blueprints, database, config")
+            elif "models" in filename or "model" in filename:
+                info_parts.append("# Database model definitions")
+                info_parts.append("Classes: User, Product, Order (inherit from db.Model)")
+                info_parts.append("Functions: __init__(), __repr__(), serialize(), validate()")
+                info_parts.append("Exports: model classes, db instance")
+                info_parts.append("Imports: SQLAlchemy, datetime, bcrypt")
+            elif "routes" in filename or "views" in filename:
+                info_parts.append("# API route definitions")
+                info_parts.append("Functions: route handlers (GET, POST, PUT, DELETE)")
+                info_parts.append("Exports: blueprint instance")
+                info_parts.append("Imports: Flask Blueprint, models, request, jsonify")
+            elif "config" in filename:
+                info_parts.append("# Application configuration")
+                info_parts.append("Classes: Config, DevelopmentConfig, ProductionConfig")
+                info_parts.append("Functions: get_config()")
+                info_parts.append("Exports: config classes and variables")
+        
+        elif framework == "express" and file_ext == "js":
+            if "server.js" in filename or "app.js" in filename:
+                info_parts.append("# Main Express server file")
+                info_parts.append("Functions: startServer(), setupMiddleware(), setupRoutes()")
+                info_parts.append("Exports: app (Express instance)")
+                info_parts.append("Imports: express, routes, middleware, database config")
+            elif "routes" in filename:
+                info_parts.append("# Express route definitions")
+                info_parts.append("Functions: route handlers (router.get, router.post, etc.)")
+                info_parts.append("Exports: router (Express Router)")
+                info_parts.append("Imports: express.Router, models, middleware")
+            elif "models" in filename or "model" in filename:
+                info_parts.append("# Data model definitions")
+                info_parts.append("Classes: Mongoose schemas")
+                info_parts.append("Functions: schema methods, static methods, instance methods")
+                info_parts.append("Exports: model instances")
+                info_parts.append("Imports: mongoose")
+            elif "middleware" in filename:
+                info_parts.append("# Middleware functions")
+                info_parts.append("Functions: authentication, validation, error handling")
+                info_parts.append("Exports: middleware functions")
+                info_parts.append("Imports: jsonwebtoken, bcrypt")
+            elif "config" in filename:
+                info_parts.append("# Configuration and environment settings")
+                info_parts.append("Functions: connection functions, config getters")
+                info_parts.append("Exports: configuration objects")
+                info_parts.append("Imports: mongoose, dotenv")
+        
+        elif framework == "react" and file_ext in ["js", "jsx"]:
+            if "App.js" in filename:
+                info_parts.append("# Main React application component")
+                info_parts.append("Component: App (functional component)")
+                info_parts.append("Functions: handleNavigation(), useEffect hooks")
+                info_parts.append("Exports: App (default export)")
+                info_parts.append("Imports: React, components, react-router-dom")
+            elif "index.js" in filename and "src" in filename:
+                info_parts.append("# React DOM entry point")
+                info_parts.append("Functions: render()")
+                info_parts.append("Exports: none (entry point)")
+                info_parts.append("Imports: React, ReactDOM, App component")
+            elif "components" in filename:
+                info_parts.append("# Reusable React component")
+                info_parts.append(f"Component: {basename.title()} (functional component)")
+                info_parts.append("Functions: event handlers, useEffect, useState")
+                info_parts.append(f"Exports: {basename.title()} (default export)")
+                info_parts.append("Imports: React, hooks, prop-types")
+            elif "hooks" in filename:
+                info_parts.append("# Custom React hook")
+                info_parts.append(f"Hook: use{basename.title()}")
+                info_parts.append("Functions: custom hook logic, state management")
+                info_parts.append(f"Exports: use{basename.title()} (default export)")
+                info_parts.append("Imports: React hooks (useState, useEffect)")
+            elif "services" in filename or "api" in filename:
+                info_parts.append("# API service functions")
+                info_parts.append("Functions: HTTP methods (get, post, put, delete)")
+                info_parts.append("Exports: API client object or functions")
+                info_parts.append("Imports: axios or fetch")
+        
+        elif file_ext == "json":
+            if "package.json" in filename:
+                info_parts.append("# NPM package configuration")
+                info_parts.append("Scripts: start, build, test, dev")
+                info_parts.append("Dependencies: framework and utility packages")
+            elif "config" in filename or "settings" in filename:
+                info_parts.append("# JSON configuration file")
+                info_parts.append("Structure: nested configuration objects")
+        
+        elif file_ext in ["html", "htm"]:
+            info_parts.append("# HTML template file")
+            info_parts.append("Structure: semantic HTML5 elements")
+            info_parts.append("Contains: meta tags, scripts, styles")
+        
+        elif file_ext == "css":
+            info_parts.append("# CSS stylesheet")
+            info_parts.append("Contains: component styles, responsive design")
+            info_parts.append("Structure: organized by components or pages")
+        
+        elif file_ext == "md":
+            info_parts.append("# Markdown documentation")
+            info_parts.append("Sections: Installation, Usage, API, Examples")
+        
+        elif file_ext == "txt" and "requirements" in filename:
+            info_parts.append("# Python dependencies list")
+            info_parts.append("Format: package==version")
+            info_parts.append("Categories: web framework, database, utilities, testing")
+        
+        # Add generic expectations based on description
+        description_lower = description.lower() if description else ""
+        if "auth" in description_lower:
+            info_parts.append("Authentication focus: login, register, token management")
+        if "database" in description_lower or "db" in description_lower:
+            info_parts.append("Database focus: connections, models, migrations")
+        if "api" in description_lower:
+            info_parts.append("API focus: endpoints, validation, responses")
+        if "test" in description_lower:
+            info_parts.append("Testing focus: unit tests, integration tests, mocks")
+        
+        return "\\n".join(info_parts) if info_parts else None
     
     def _chat_with_streaming_progress(self, messages: list):
         """Handle normal chat with streaming progress"""

@@ -104,11 +104,15 @@ Every LLM response shows token usage:
 Context usage: 45.2% (1847/4096)
 ```
 
-### Project Consistency
+### Project Consistency & File Specifications
 - Tracks all file edits to prevent duplicates
 - Maintains framework consistency (Flask, React, etc.)
 - Suggests edits vs. creates for existing files
 - Preserves project structure and patterns
+- **Detailed File Specifications**: Each file includes purpose, functions, and exports
+- **Framework-Specific Patterns**: Tailored expectations for Flask, Express, React
+- **Import Consistency**: Validates all imports reference existing/planned files
+- **Complete Implementations**: Ensures all specified functions are implemented
 
 ### Rich Terminal Experience
 - Syntax-highlighted code blocks
@@ -141,6 +145,37 @@ xandai> /[TAB] → /task, /help, /status, /clear
 - **Both**: `ls`, `dir`, `cp`, `mv`, `rm`, `del`, `find`, `grep`
 
 Use **Tab** to show suggestions, **↑/↓** arrows to navigate, **Enter** to select.
+
+### File Consistency & Detailed Specifications
+XandAI now generates comprehensive file specifications to ensure code consistency:
+
+**Enhanced Structure Planning:**
+```bash
+xandai> /task create a Flask API with authentication
+
+Flask Project:
+├── app.py              # Main Flask application entry point
+│                       # Functions: create_app(), register_blueprints()
+│                       # Exports: app (Flask instance)
+├── models/
+│   └── user.py         # User model and authentication
+│                       # Classes: User(db.Model)  
+│                       # Functions: hash_password(), check_password()
+│                       # Exports: User class
+├── routes/
+│   └── auth.py         # Authentication routes (/login, /register)
+│                       # Functions: login(), register(), logout()
+│                       # Exports: auth_bp (Blueprint)
+└── config.py           # Application configuration
+                        # Classes: Config, DevelopmentConfig
+                        # Exports: config classes
+```
+
+**Benefits:**
+- **Complete Implementations**: Every function and export is specified and implemented
+- **Import Consistency**: All imports reference only existing or planned files
+- **Framework Patterns**: Follows Flask, Express, React best practices automatically
+- **Production Ready**: Generated code includes error handling and documentation
 
 ## 🤝 Contributing
 

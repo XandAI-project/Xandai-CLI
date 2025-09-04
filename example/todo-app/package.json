@@ -1,26 +1,28 @@
 {
-  "name": "todo-api",
+  "name": "todo-app",
   "version": "1.0.0",
-  "description": "A simple todo API with Node.js and Express",
-  "main": "src/app.js",
+  "description": "A simple todo application with Node.js and Express",
+  "main": "server.js",
   "scripts": {
-    "start": "node src/app.js",
-    "dev": "nodemon src/app.js"
+    "start": "node server.js",
+    "build": "echo 'Build script not implemented'",
+    "test": "echo 'Test script not implemented'",
+    "dev": "nodemon server.js"
   },
-  "keywords": [
-    "todo",
-    "api",
-    "express",
-    "nodejs"
-  ],
-  "author": "Your Name",
-  "license": "MIT",
   "dependencies": {
     "express": "^4.18.2",
     "sqlite3": "^5.1.6",
-    "dotenv": "^16.3.1"
+    "cors": "^2.8.5",
+    "helmet": "^7.0.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
-  }
+  },
+  "keywords": [
+    "todo",
+    "express",
+    "sqlite"
+  ],
+  "author": "Your Name",
+  "license": "MIT"
 }
