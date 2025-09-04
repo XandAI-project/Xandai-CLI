@@ -34,10 +34,11 @@ class TaskProcessor:
     - Prevents duplicate file creation
     """
     
-    def __init__(self, ollama_client: OllamaClient, history_manager: HistoryManager):
+    def __init__(self, ollama_client: OllamaClient, history_manager: HistoryManager, verbose: bool = False):
         """Initialize task processor"""
         self.ollama_client = ollama_client
         self.history_manager = history_manager
+        self.verbose = verbose
         
         self.system_prompt = self._build_system_prompt()
         
@@ -145,11 +146,31 @@ class TaskProcessor:
     
     def _get_llm_response_with_progress(self, prompt: str, console=None) -> OllamaResponse:
         """Get LLM response with streaming progress indicators"""
-        # Prepare messages for streaming
+        # Get conversation context to maintain continuity between chat and task modes
+        context_messages = self.history_manager.get_conversation_context(limit=15)
+        
+        # Debug output for context sharing
+        if self.verbose:
+            from xandai.utils.os_utils import OSUtils
+            OSUtils.debug_print(f"Task mode using {len(context_messages)} context messages from chat history", True)
+            OSUtils.debug_print("🧠 Context-aware task processing: analyzing conversation for specific requirements", True)
+        
+        # Prepare messages with context for unified experience
         messages = [
-            {"role": "system", "content": self.system_prompt},
-            {"role": "user", "content": prompt}
+            {"role": "system", "content": self.system_prompt}
         ]
+        
+        # Add conversation context (excluding system messages to avoid conflicts)
+        context_without_system = [msg for msg in context_messages if msg.get("role") != "system"]
+        messages.extend(context_without_system)
+        
+        # Debug output for final message count
+        if self.verbose:
+            from xandai.utils.os_utils import OSUtils
+            OSUtils.debug_print(f"Task mode sending {len(messages)} total messages (including context)", True)
+        
+        # Add current task request
+        messages.append({"role": "user", "content": prompt})
         
         # Use streaming with in-place progress if console is available
         if console:
@@ -173,21 +194,22 @@ class TaskProcessor:
                     return self.ollama_client.chat(
                         messages=messages,
                         temperature=0.3,
-                        stream=True,
-                        progress_callback=progress_callback
+                        stream=False  # Tasks use non-streaming mode as requested
                     )
             except Exception:
                 # Fallback to non-streaming
                 console.print("[dim]⚠️ Streaming not available, using standard mode...[/dim]")
                 return self.ollama_client.chat(
                     messages=messages,
-                    temperature=0.3
+                    temperature=0.3,
+                    stream=False  # Tasks use non-streaming mode
                 )
         else:
-            # Regular non-streaming mode
+            # Regular non-streaming mode for tasks
             return self.ollama_client.chat(
                 messages=messages,
-                temperature=0.3
+                temperature=0.3,
+                stream=False  # Tasks use non-streaming mode
             )
     
     def _parse_response_steps_robust(self, response: str) -> List[TaskStep]:
@@ -322,12 +344,19 @@ class TaskProcessor:
         """Build system prompt for task mode"""
         return """You are XandAI Task Mode - an expert at breaking down complex development requests into COMPLETE, structured project plans.
 
+🧠 CONTEXT-AWARE PLANNING - CRITICAL:
+1. ALWAYS analyze the PREVIOUS CONVERSATION CONTEXT first
+2. If code was analyzed or discussed, use THAT SPECIFIC functionality  
+3. When user says "create a version of that API" or "write that in Python", they mean the SPECIFIC API/code discussed previously
+4. DO NOT create generic examples - replicate the EXACT functionality, endpoints, features discussed
+5. Use conversation context to understand specific requirements, endpoints, data models, business logic
+
 CRITICAL PLANNING RULES:
-1. Analyze the FULL project scope - don't miss any files
-2. Plan the COMPLETE folder structure with ALL necessary files
-3. Ensure imports only reference files that will be created
-4. Include ALL configuration files, dependencies, and assets
-5. Plan for proper separation of concerns (models, views, controllers, etc.)
+6. Analyze the FULL project scope - don't miss any files
+7. Plan the COMPLETE folder structure with ALL necessary files
+8. Ensure imports only reference files that will be created
+9. Include ALL configuration files, dependencies, and assets
+10. Plan for proper separation of concerns (models, views, controllers, etc.)
 
 PROJECT STRUCTURE REQUIREMENTS:
 - List EVERY file needed for a complete, working project
@@ -376,7 +405,18 @@ STEPS:
 5 - run: command here
 ```
 
-EXAMPLES OF COMPLETE PROJECTS:
+🔍 CONTEXT ANALYSIS PRIORITY:
+Before using generic examples, FIRST analyze the conversation context for:
+- Specific API endpoints mentioned (GET /videos, POST /users, etc.)
+- Data models discussed (Video, User, Product with specific fields)  
+- Business logic requirements (validation rules, authentication, etc.)
+- Technology stack preferences mentioned in conversation
+- Specific features or functionality that was analyzed or requested
+
+If previous conversation contains code analysis or specific requirements, 
+REPLICATE THAT EXACT FUNCTIONALITY rather than creating generic examples.
+
+EXAMPLES OF COMPLETE PROJECTS (use ONLY if no specific context exists):
 
 Flask API:
 ```
@@ -465,14 +505,31 @@ QUALITY STANDARDS:
 - Clean, well-documented code
 - Immediate runnable state after completion
 
-Remember: Plan the ENTIRE project structure - missing files break everything!"""
+🎯 FINAL REMINDER: 
+1. Use CONVERSATION CONTEXT FIRST - if specific API/code was discussed, replicate it exactly
+2. Plan the ENTIRE project structure - missing files break everything!
+3. When in doubt, ask "What specific functionality was mentioned in the conversation?"
+
+ALWAYS RESPOND IN ENGLISH."""
     
     def _build_task_prompt(self, user_request: str) -> str:
-        """Build enhanced prompt with project context"""
+        """Build enhanced prompt with project context and conversation awareness"""
         context = self.history_manager.get_project_context()
         existing_files = self.history_manager.get_project_files()
+        conversation_context = self.history_manager.get_conversation_context(limit=10)
         
         prompt_parts = [f"TASK REQUEST: {user_request}"]
+        
+        # Emphasize conversation context analysis
+        if conversation_context:
+            prompt_parts.append("\\n🧠 CRITICAL: Analyze the PREVIOUS CONVERSATION above for:")
+            prompt_parts.append("- Specific code that was read/analyzed")
+            prompt_parts.append("- Exact API endpoints mentioned (GET /videos, POST /users, etc.)")
+            prompt_parts.append("- Data models with specific fields")
+            prompt_parts.append("- Business logic and validation rules")
+            prompt_parts.append("- Any specific functionality discussed")
+            prompt_parts.append("\\n❗ If the conversation contains specific code analysis, REPLICATE THAT EXACT functionality!")
+            prompt_parts.append("❗ Do NOT create generic examples when specific requirements exist in conversation!")
         
         # Add project context if available
         if context["framework"] or context["language"] or context["project_type"]:
@@ -495,6 +552,7 @@ Remember: Plan the ENTIRE project structure - missing files break everything!"""
             prompt_parts.append("\\n⚠️  IMPORTANT: Use 'edit' for existing files, not 'create'!")
         
         prompt_parts.append("\\n🚀 Generate a complete, executable plan with working code!")
+        prompt_parts.append("🎯 REMEMBER: Use conversation context FIRST, generic examples LAST!")
         
         # Add mode-specific instruction
         project_mode = self._detect_project_mode()

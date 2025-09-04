@@ -212,26 +212,68 @@ class OllamaClient:
             for line in response.iter_lines():
                 if line:
                     try:
-                        chunk_data = json.loads(line.decode('utf-8'))
-                        chunk_count += 1
+                        # Decode and clean the line
+                        line_text = line.decode('utf-8').strip()
                         
-                        # Progress callback every 10 chunks
-                        if chunk_count % 10 == 0 and progress_callback:
-                            progress_callback(f"📦 {chunk_count} chunks received...")
+                        # Skip empty lines
+                        if not line_text:
+                            continue
                         
-                        # Extract content from chunk
-                        if "message" in chunk_data:
-                            chunk_content = chunk_data["message"].get("content", "")
-                            if chunk_content:
-                                content_chunks.append(chunk_content)
+                        # Handle multiple JSON objects in one line (split by newlines)
+                        json_parts = line_text.split('\n')
                         
-                        # Check if done
-                        if chunk_data.get("done", False):
-                            final_data = chunk_data
+                        for json_part in json_parts:
+                            json_part = json_part.strip()
+                            if not json_part:
+                                continue
+                                
+                            try:
+                                # Try to parse this JSON part
+                                chunk_data = json.loads(json_part)
+                                chunk_count += 1
+                                
+                                # Progress callback every 10 chunks
+                                if chunk_count % 10 == 0 and progress_callback:
+                                    progress_callback(f"📦 {chunk_count} chunks received...")
+                                
+                                # Extract content from chunk
+                                if "message" in chunk_data:
+                                    chunk_content = chunk_data["message"].get("content", "")
+                                    if chunk_content:
+                                        content_chunks.append(chunk_content)
+                                
+                                # Check if done
+                                if chunk_data.get("done", False):
+                                    final_data = chunk_data
+                                    break
+                                    
+                            except json.JSONDecodeError as json_err:
+                                # Try to extract JSON from partial data by finding valid JSON boundaries
+                                try:
+                                    # Look for complete JSON objects using bracket/brace counting
+                                    valid_json = self._extract_valid_json(json_part)
+                                    if valid_json:
+                                        chunk_data = json.loads(valid_json)
+                                        chunk_count += 1
+                                        
+                                        if "message" in chunk_data:
+                                            chunk_content = chunk_data["message"].get("content", "")
+                                            if chunk_content:
+                                                content_chunks.append(chunk_content)
+                                        
+                                        if chunk_data.get("done", False):
+                                            final_data = chunk_data
+                                            break
+                                except:
+                                    # Skip this malformed chunk completely
+                                    continue
+                            
+                        # If we found the final chunk, break out of main loop too  
+                        if final_data.get("done", False):
                             break
                             
-                    except (json.JSONDecodeError, KeyError):
-                        continue  # Skip malformed chunks
+                    except (UnicodeDecodeError, AttributeError):
+                        continue  # Skip malformed lines
             
             # Combine all content
             full_content = "".join(content_chunks)
@@ -263,6 +305,36 @@ class OllamaClient:
             response.raise_for_status()
             data = response.json()
             return self._parse_response(data, payload)
+    
+    def _extract_valid_json(self, text: str) -> Optional[str]:
+        """Extract the first valid JSON object from text with potential extra data"""
+        try:
+            # Look for JSON object boundaries
+            brace_count = 0
+            start_found = False
+            json_end = -1
+            
+            for i, char in enumerate(text):
+                if char == '{':
+                    if not start_found:
+                        start_found = True
+                    brace_count += 1
+                elif char == '}':
+                    brace_count -= 1
+                    if start_found and brace_count == 0:
+                        json_end = i + 1
+                        break
+            
+            if json_end > 0:
+                potential_json = text[:json_end]
+                # Validate that this is actually valid JSON
+                json.loads(potential_json)
+                return potential_json
+                
+        except (json.JSONDecodeError, IndexError):
+            pass
+        
+        return None
     
     def _parse_response(self, data: Dict, payload: Dict) -> OllamaResponse:
         """Parse Ollama API response into OllamaResponse object"""

@@ -22,6 +22,8 @@ import re
 from xandai.ollama_client import OllamaClient, OllamaResponse
 from xandai.history import HistoryManager
 from xandai.task import TaskProcessor, TaskStep
+from xandai.utils.os_utils import OSUtils
+from xandai.utils.prompt_manager import PromptManager
 
 
 class IntelligentCompleter(Completer):
@@ -237,8 +239,8 @@ class ChatREPL:
         # Rich console for pretty output
         self.console = Console()
         
-        # Task processor
-        self.task_processor = TaskProcessor(ollama_client, history_manager)
+        # Task processor (with shared verbose mode)
+        self.task_processor = TaskProcessor(ollama_client, history_manager, verbose)
         
         # Prompt session with history and completion
         self.session = PromptSession(
@@ -330,18 +332,35 @@ class ChatREPL:
     def _process_input(self, user_input: str):
         """Process user input - special commands, terminal commands, task mode, or LLM chat"""
         
+        if self.verbose:
+            OSUtils.debug_print(f"Processing input: '{user_input[:50]}{'...' if len(user_input) > 50 else ''}'", True)
+        
         # Check for special slash commands first
         if user_input.startswith('/'):
+            if self.verbose:
+                OSUtils.debug_print("Detected slash command", True)
             if self._handle_slash_command(user_input):
                 return  # Command handled, don't process further
         
         # Check for terminal command
-        command_parts = shlex.split(user_input) if user_input else []
+        try:
+            command_parts = shlex.split(user_input) if user_input else []
+        except ValueError as e:
+            # Handle shlex parsing errors (e.g., unmatched quotes/apostrophes)
+            if self.verbose:
+                OSUtils.debug_print(f"Shlex parsing error (treating as regular chat): {e}", True)
+            command_parts = []
+        
         if command_parts and command_parts[0].lower() in self.terminal_commands:
+            if self.verbose:
+                OSUtils.debug_print(f"Executing terminal command: {command_parts[0]}", True)
             self._handle_terminal_command(user_input)
             return
         
         # Handle as LLM chat
+        if self.verbose:
+            context_count = len(self.history_manager.get_conversation_context(limit=20))
+            OSUtils.debug_print(f"Sending to LLM for chat processing with {context_count} context messages (includes any recent task history)", True)
         self._handle_chat(user_input)
     
     def _handle_slash_command(self, user_input: str) -> bool:
@@ -391,6 +410,11 @@ class ChatREPL:
             self._show_status()
             return True
         
+        # Debug command - show OS and platform debug information or toggle debug mode
+        if command.startswith('/debug') or command.startswith('/dbg'):
+            self._handle_debug_command(user_input)
+            return True
+        
         # Scan current directory structure
         if command in ['/scan', '/structure']:
             self._show_project_structure()
@@ -415,8 +439,16 @@ class ChatREPL:
             self.console.print(f"[dim]$ {command}[/dim]")
             
             # Handle special commands
-            command_parts = shlex.split(command)
-            command_name = command_parts[0].lower()
+            try:
+                command_parts = shlex.split(command)
+                command_name = command_parts[0].lower()
+            except ValueError as e:
+                # Handle shlex parsing errors (e.g., unmatched quotes/apostrophes)
+                if self.verbose:
+                    OSUtils.debug_print(f"Shlex parsing error in terminal command: {e}", True)
+                # Fallback: split by spaces for basic parsing
+                command_parts = command.split()
+                command_name = command_parts[0].lower() if command_parts else ""
             
             if command_name == 'cd':
                 self._handle_cd_command(command_parts)
@@ -543,8 +575,11 @@ class ChatREPL:
             )
     
     def _handle_chat(self, user_input: str):
-        """Handle LLM chat conversation"""
+        """Handle LLM chat conversation with intelligent command generation"""
         try:
+            if self.verbose:
+                OSUtils.debug_print(f"Starting chat processing for {len(user_input)} character input", True)
+            
             # Add user message to history
             self.history_manager.add_conversation(
                 role="user",
@@ -552,14 +587,41 @@ class ChatREPL:
                 metadata={"type": "chat"}
             )
             
+            # Check if we need to generate commands first (two-stage processing)
+            command_output = ""
+            if self._should_generate_commands(user_input):
+                if self.verbose:
+                    OSUtils.debug_print("Detected need for command generation - using two-stage LLM processing", True)
+                
+                command_output = self._generate_and_execute_commands(user_input)
+            
             # Get conversation context
             context_messages = self.history_manager.get_conversation_context(limit=20)
+            
+            if self.verbose:
+                OSUtils.debug_print(f"Retrieved {len(context_messages)} context messages from history", True)
             
             # Add current user input
             context_messages.append({"role": "user", "content": user_input})
             
+            # If we have command output, add it as additional context
+            if command_output:
+                if self.verbose:
+                    OSUtils.debug_print(f"Adding command output as context: {len(command_output)} characters", True)
+                
+                context_messages.append({
+                    "role": "system", 
+                    "content": f"Command execution results for context:\n\n{command_output}"
+                })
+            
+            if self.verbose:
+                OSUtils.debug_print(f"Sending {len(context_messages)} total messages to LLM", True)
+            
             # Show thinking indicator with streaming
             response = self._chat_with_streaming_progress(context_messages)
+            
+            if self.verbose:
+                OSUtils.debug_print(f"Received response: {len(response.content)} characters", True)
             
             # Display response with syntax highlighting for code
             self._display_response(response.content)
@@ -581,9 +643,249 @@ class ChatREPL:
                 import traceback
                 self.console.print(traceback.format_exc())
     
-    def _handle_task_mode(self, task_request: str):
-        """Handle task mode request with enhanced progress display"""
+    def _should_generate_commands(self, user_input: str) -> bool:
+        """
+        Determine if we should use two-stage LLM processing (command generation + chat)
+        Returns True if the user input suggests they want to read/examine files
+        """
+        # Keywords that suggest file reading/examination
+        read_keywords = [
+            'read', 'show', 'display', 'examine', 'analyze', 'describe',
+            'look at', 'check', 'view', 'see', 'tell me about', 'explain',
+            'what is in', 'contents of', 'open', 'cat', 'type'
+        ]
+        
+        # File-related keywords
+        file_keywords = [
+            '.py', '.js', '.ts', '.java', '.cpp', '.c', '.h', '.php',
+            '.rb', '.go', '.rs', '.kt', '.swift', '.css', '.html',
+            '.json', '.xml', '.yaml', '.yml', '.md', '.txt', '.log',
+            'file', 'script', 'code', 'source', 'app.py', 'main.py',
+            'index.js', 'package.json', 'requirements.txt', 'config'
+        ]
+        
+        user_lower = user_input.lower()
+        
+        # Check if we have both read intent and file references
+        has_read_intent = any(keyword in user_lower for keyword in read_keywords)
+        has_file_reference = any(keyword in user_lower for keyword in file_keywords)
+        
+        if self.verbose and (has_read_intent or has_file_reference):
+            OSUtils.debug_print(f"Command generation analysis: read_intent={has_read_intent}, file_ref={has_file_reference}", True)
+        
+        return has_read_intent and has_file_reference
+    
+    def _generate_and_execute_commands(self, user_input: str) -> str:
+        """
+        Use LLM to generate OS commands, execute them, and return the output
+        """
         try:
+            if self.verbose:
+                OSUtils.debug_print("Step 1: Generating commands using Command LLM", True)
+            
+            # Get command generation prompt
+            command_prompt = PromptManager.get_file_read_command_for_prompt(user_input)
+            
+            if self.verbose:
+                OSUtils.debug_print(f"Command prompt length: {len(command_prompt)} chars", True)
+            
+            # Use LLM to generate commands - use the same pattern as chat with system prompt
+            command_messages = [{"role": "user", "content": command_prompt}]
+            
+            if self.verbose:
+                OSUtils.debug_print(f"Sending command generation request to LLM", True)
+            
+            # Get command response from LLM - use non-streaming for command generation to avoid JSON parsing issues
+            try:
+                if self.verbose:
+                    OSUtils.debug_print("Using non-streaming for command generation to ensure reliability", True)
+                
+                command_response = self.ollama_client.chat(
+                    messages=command_messages, 
+                    stream=False  # Use non-streaming for command generation to avoid "Extra data" JSON issues
+                )
+                
+                if self.verbose:
+                    OSUtils.debug_print(f"Command LLM response: {len(command_response.content)} chars", True)
+                
+            except Exception as e:
+                if self.verbose:
+                    OSUtils.debug_print(f"Command generation LLM error: {e}", True)
+                    OSUtils.debug_print("Trying with minimal system prompt as final fallback", True)
+                
+                # Try with simpler system prompt as final fallback
+                try:
+                    simple_command_messages = [{
+                        "role": "user", 
+                        "content": f"Generate a Windows command to read the file mentioned in: {user_input}"
+                    }]
+                    
+                    command_response = self.ollama_client.chat(
+                        messages=simple_command_messages, 
+                        stream=False
+                    )
+                    if self.verbose:
+                        OSUtils.debug_print("Command generation succeeded with simple fallback", True)
+                except Exception as fallback_error:
+                    if self.verbose:
+                        OSUtils.debug_print(f"All command generation methods failed: {fallback_error}", True)
+                    return ""
+            
+            # Extract commands from response
+            commands = self._extract_commands_from_response(command_response.content)
+            
+            if not commands:
+                if self.verbose:
+                    OSUtils.debug_print("No commands extracted from LLM response", True)
+                    OSUtils.debug_print("Trying direct command generation fallback", True)
+                
+                # Fallback: Generate simple command directly based on user input
+                fallback_command = self._generate_fallback_command(user_input)
+                if fallback_command:
+                    commands = [fallback_command]
+                    if self.verbose:
+                        OSUtils.debug_print(f"Using fallback command: {fallback_command}", True)
+                else:
+                    return ""
+            
+            if self.verbose:
+                OSUtils.debug_print(f"Step 2: Executing {len(commands)} generated commands", True)
+            
+            # Execute commands and collect output
+            all_output = []
+            for i, command in enumerate(commands, 1):
+                if self.verbose:
+                    OSUtils.debug_print(f"Executing command {i}/{len(commands)}: {command[:50]}...", True)
+                
+                try:
+                    result = subprocess.run(
+                        command, 
+                        shell=True, 
+                        capture_output=True, 
+                        text=True, 
+                        cwd=os.getcwd(),
+                        timeout=30
+                    )
+                    
+                    if result.stdout:
+                        all_output.append(f"Command: {command}\n{result.stdout}\n")
+                    
+                    if result.stderr and self.verbose:
+                        OSUtils.debug_print(f"Command stderr: {result.stderr[:100]}...", True)
+                        
+                except subprocess.TimeoutExpired:
+                    if self.verbose:
+                        OSUtils.debug_print(f"Command timed out: {command}", True)
+                except Exception as e:
+                    if self.verbose:
+                        OSUtils.debug_print(f"Command execution error: {e}", True)
+            
+            output = "\n".join(all_output)
+            
+            if self.verbose:
+                OSUtils.debug_print(f"Step 3: Collected {len(output)} characters of command output", True)
+            
+            return output
+            
+        except Exception as e:
+            if self.verbose:
+                OSUtils.debug_print(f"Error in command generation/execution: {e}", True)
+            return ""
+    
+    def _extract_commands_from_response(self, response_content: str) -> list:
+        """Extract commands from LLM response that are in <commands> blocks"""
+        import re
+        
+        if self.verbose:
+            OSUtils.debug_print(f"Extracting commands from response: {response_content[:200]}...", True)
+        
+        # Find all <commands>...</commands> blocks
+        pattern = r'<commands>\s*(.*?)\s*</commands>'
+        matches = re.findall(pattern, response_content, re.DOTALL | re.IGNORECASE)
+        
+        commands = []
+        for match in matches:
+            # Split by newlines and filter empty lines
+            lines = [line.strip() for line in match.split('\n') if line.strip()]
+            # Filter out comments and empty lines
+            filtered_lines = [line for line in lines if not line.startswith('#') and not line.startswith('//')]
+            commands.extend(filtered_lines)
+        
+        # If no commands found, try alternative patterns (fallback)
+        if not commands:
+            if self.verbose:
+                OSUtils.debug_print("No <commands> blocks found, trying alternative extraction", True)
+            
+            # Try to find single command patterns like "type filename" or "cat filename"
+            common_commands = ['type', 'cat', 'dir', 'ls', 'head', 'tail', 'grep', 'findstr']
+            lines = response_content.split('\n')
+            
+            for line in lines:
+                line = line.strip()
+                # Check if line starts with common file commands
+                if any(line.lower().startswith(cmd) for cmd in common_commands):
+                    # Remove markdown code block markers if present
+                    line = line.replace('```', '').strip()
+                    if line and not line.startswith('#') and not line.startswith('//'):
+                        commands.append(line)
+        
+        if self.verbose and commands:
+            OSUtils.debug_print(f"Extracted {len(commands)} commands: {commands}", True)
+        elif self.verbose:
+            OSUtils.debug_print("No commands found in LLM response", True)
+        
+        return commands
+    
+    def _generate_fallback_command(self, user_input: str) -> str:
+        """Generate a simple fallback command when LLM fails to generate commands"""
+        import re
+        
+        user_lower = user_input.lower()
+        
+        # Look for file mentions in the user input
+        file_patterns = [
+            r'\b([a-zA-Z_][a-zA-Z0-9_]*\.[a-zA-Z]{1,4})\b',  # filename.ext
+            r'\b(app\.py|main\.py|index\.js|package\.json|requirements\.txt|config\.py)\b'  # common files
+        ]
+        
+        found_files = []
+        for pattern in file_patterns:
+            matches = re.findall(pattern, user_input, re.IGNORECASE)
+            found_files.extend(matches)
+        
+        if found_files:
+            # Use the first file found
+            target_file = found_files[0]
+            
+            # Generate OS-appropriate read command
+            if 'read' in user_lower or 'show' in user_lower or 'display' in user_lower:
+                command = OSUtils.get_file_read_command(target_file)
+                return command
+            elif 'head' in user_lower or 'first' in user_lower:
+                command = OSUtils.get_file_head_command(target_file, 20)
+                return command
+            elif 'tail' in user_lower or 'last' in user_lower:
+                command = OSUtils.get_file_tail_command(target_file, 20)
+                return command
+            else:
+                # Default to reading the file
+                command = OSUtils.get_file_read_command(target_file)
+                return command
+        
+        # No files found, try directory listing
+        if 'list' in user_lower or 'show' in user_lower or 'files' in user_lower:
+            return OSUtils.get_directory_list_command('.')
+        
+        return None
+    
+    def _handle_task_mode(self, task_request: str):
+        """Handle task mode request with enhanced progress display and shared context"""
+        try:
+            if self.verbose:
+                # Show context sharing information
+                context_count = len(self.history_manager.get_conversation_context(limit=15))
+                OSUtils.debug_print(f"Switching to task mode with {context_count} context messages available", True)
+            
             # Detect project mode and read existing structure if needed
             project_mode = self._detect_project_mode()
             
@@ -739,20 +1041,41 @@ class ChatREPL:
         self.console.print(f"\\n[bold green]🎉 Task execution completed![/bold green]")
     
     def _generate_file_content(self, step: TaskStep) -> str:
-        """Generate file content for a specific step using LLM"""
+        """Generate file content for a specific step using LLM with conversation context"""
         try:
             # Get project context
             context = self.history_manager.get_project_context()
             existing_files = self.history_manager.get_project_files()
             
-            # Build specific prompt for this file
-            file_prompt = self._build_file_generation_prompt(step, context, existing_files)
+            # CRITICAL: Get conversation context for context-aware file generation
+            conversation_context = self.history_manager.get_conversation_context(limit=15)
             
-            # Call LLM for this specific file
+            if self.verbose:
+                OSUtils.debug_print(f"🔍 File generation using {len(conversation_context)} context messages for {step.target}", True)
+            
+            # Build specific prompt for this file
+            file_prompt = self._build_file_generation_prompt(step, context, existing_files, conversation_context)
+            
+            # Prepare messages with conversation context
+            messages = [
+                {"role": "system", "content": self._get_file_generation_system_prompt()}
+            ]
+            
+            # Add conversation context (excluding system messages to avoid conflicts)
+            context_without_system = [msg for msg in conversation_context if msg.get("role") != "system"]
+            messages.extend(context_without_system)
+            
+            # Add file generation request
+            messages.append({"role": "user", "content": file_prompt})
+            
+            if self.verbose:
+                OSUtils.debug_print(f"🧠 File generation sending {len(messages)} total messages (with conversation context)", True)
+            
+            # Call LLM using chat() instead of generate() to include conversation context
             with self.console.status(f"[bold blue]Generating {step.target}..."):
-                response = self.ollama_client.generate(
-                    prompt=file_prompt,
-                    system_prompt=self._get_file_generation_system_prompt(),
+                response = self.ollama_client.chat(
+                    messages=messages,
+                    stream=False,  # Use non-streaming for file generation
                     temperature=0.3
                 )
             
@@ -764,13 +1087,22 @@ class ChatREPL:
             self.console.print(f"[red]Error generating {step.target}: {e}[/red]")
             return ""
     
-    def _build_file_generation_prompt(self, step: TaskStep, context: dict, existing_files: list) -> str:
-        """Build specific prompt for generating a single file"""
+    def _build_file_generation_prompt(self, step: TaskStep, context: dict, existing_files: list, conversation_context: list = None) -> str:
+        """Build specific prompt for generating a single file with conversation context"""
         prompt_parts = [
             f"GENERATE FILE: {step.target}",
             f"PURPOSE: {step.description}",
             f"ACTION: {step.action.upper()}"
         ]
+        
+        # CRITICAL: Add conversation context analysis instructions
+        if conversation_context:
+            prompt_parts.append("\\n🧠 CRITICAL - ANALYZE CONVERSATION CONTEXT ABOVE:")
+            prompt_parts.append("- Look for SPECIFIC API endpoints that were analyzed (GET /videos, POST /videos, etc.)")
+            prompt_parts.append("- Find EXACT data models and fields mentioned")
+            prompt_parts.append("- Identify SPECIFIC business logic and validation rules discussed") 
+            prompt_parts.append("- Use EXACT functionality from conversation, NOT generic examples!")
+            prompt_parts.append("\\n❗ IMPORTANT: If specific API/code was analyzed in conversation, REPLICATE IT EXACTLY!")
         
         # Add project context (safely handle None context)
         if context and context.get("framework"):
@@ -867,16 +1199,23 @@ class ChatREPL:
     
     def _get_file_generation_system_prompt(self) -> str:
         """Get system prompt for individual file generation"""
-        return """You are an expert software developer generating individual project files with STRICT import consistency.
+        return """You are an expert software developer generating individual project files with CONTEXT-AWARE implementation.
+
+🧠 CONTEXT-FIRST IMPLEMENTATION - CRITICAL:
+1. FIRST: Analyze the CONVERSATION CONTEXT above for specific code/API that was discussed
+2. If specific functionality was analyzed (e.g. API endpoints, data models), REPLICATE IT EXACTLY
+3. When user analyzed an API with specific endpoints (GET /videos, POST /videos), use THOSE endpoints
+4. When specific data models were mentioned, use THOSE exact field names and structures
+5. DO NOT create generic examples if specific requirements exist in conversation
 
 CRITICAL RULES:
-1. Generate ONLY the file content - no explanations or markdown
-2. Write complete, production-ready code
-3. Follow best practices for the language/framework
-4. ONLY import/require files that are explicitly listed in the context
-5. IMPLEMENT ALL functions and exports specified in "EXPECTED FILE DETAILS"
-6. Make the code immediately runnable/usable
-7. Do NOT include any wrapper text or explanations
+6. Generate ONLY the file content - no explanations or markdown
+7. Write complete, production-ready code
+8. Follow best practices for the language/framework
+9. ONLY import/require files that are explicitly listed in the context
+10. IMPLEMENT ALL functions and exports specified in "EXPECTED FILE DETAILS"
+11. Make the code immediately runnable/usable
+12. Do NOT include any wrapper text or explanations
 
 IMPORT/DEPENDENCY RULES (CRITICAL):
 - NEVER import from files that don't exist in the project structure
@@ -1141,19 +1480,21 @@ Remember: Your response will be written directly to the file! NO explanatory tex
                         progress_callback=progress_callback
                     )
                 except Exception:
-                    # Fallback to non-streaming
-                    status.update("[bold green]Thinking... (standard mode)[/bold green]")
+                    # Fallback but still use streaming
+                    status.update("[bold green]Thinking... (streaming fallback)[/bold green]")
                     return self.ollama_client.chat(
                         messages=messages,
-                        system_prompt=self.system_prompt
+                        system_prompt=self.system_prompt,
+                        stream=True
                     )
                     
         except Exception as e:
             self.console.print(f"[red]Error in chat: {e}[/red]")
-            # Final fallback
+            # Final fallback - still use streaming
             return self.ollama_client.chat(
                 messages=messages,
-                system_prompt=self.system_prompt
+                system_prompt=self.system_prompt,
+                stream=True
             )
     
     def _infer_folder_structure(self, current_file: str, all_files: list) -> str:
@@ -1441,6 +1782,10 @@ Remember: Your response will be written directly to the file! NO explanatory tex
   • /history, /hist - Show conversation history  
   • /context, /ctx  - Show project context
   • /status, /stat  - Show system status
+  • /debug, /dbg    - Show debug info OR toggle debug mode
+                      /debug true/on/enable  - Enable debug mode
+                      /debug false/off/disable - Disable debug mode
+                      /debug info/show - Show debug information
   • /scan, /structure - Show current directory structure
   • /exit, /quit, /bye - Exit XandAI
 
@@ -1530,6 +1875,100 @@ Tracked Files: {len(self.history_manager.get_project_files())}
         """
         
         self.console.print(Panel(status_text.strip(), title="System Status", border_style="green"))
+    
+    def _handle_debug_command(self, user_input: str):
+        """Handle debug command with optional parameters"""
+        parts = user_input.strip().split()
+        
+        if len(parts) == 1:
+            # Just '/debug' - show debug info
+            self._show_debug_info()
+        elif len(parts) == 2:
+            param = parts[1].lower()
+            if param in ['true', 'on', '1', 'yes', 'enable']:
+                # Enable debug mode
+                old_verbose = self.verbose
+                self.verbose = True
+                
+                if old_verbose:
+                    self.console.print("[yellow]🔧 Debug mode was already enabled[/yellow]")
+                else:
+                    self.console.print("[green]🔧 Debug mode enabled![/green]")
+                    OSUtils.debug_print("Debug mode activated by user command", True)
+                
+            elif param in ['false', 'off', '0', 'no', 'disable']:
+                # Disable debug mode
+                old_verbose = self.verbose
+                if old_verbose:
+                    OSUtils.debug_print("Debug mode being deactivated by user command", True)
+                
+                self.verbose = False
+                
+                if old_verbose:
+                    self.console.print("[yellow]🔧 Debug mode disabled[/yellow]")
+                else:
+                    self.console.print("[yellow]🔧 Debug mode was already disabled[/yellow]")
+                    
+            elif param in ['info', 'show', 'status']:
+                # Show debug info
+                self._show_debug_info()
+            else:
+                self.console.print(f"[red]Unknown debug parameter: {param}[/red]")
+                self.console.print("[dim]Valid options: true/false/on/off/enable/disable/info/show[/dim]")
+        else:
+            self.console.print("[red]Usage: /debug [true|false|on|off|enable|disable|info|show][/red]")
+    
+    def _show_debug_info(self):
+        """Show comprehensive debug information including OS and platform details"""
+        import platform
+        
+        # Get Ollama health info
+        health = self.ollama_client.health_check()
+        
+        # Get OS commands
+        os_commands = OSUtils.get_available_commands()
+        
+        debug_text = f"""
+🖥️  PLATFORM INFO:
+OS: {OSUtils.get_platform().upper()} ({platform.system()} {platform.release()})
+Architecture: {platform.machine()}
+Python: {platform.python_version()}
+Windows: {OSUtils.is_windows()}
+Unix-like: {OSUtils.is_unix_like()}
+
+🔌 OLLAMA CONNECTION:
+Connected: {'✅ Yes' if health['connected'] else '❌ No'}
+Endpoint: {health['endpoint']}
+Current Model: {health.get('current_model', 'None')}
+Available Models: {health.get('models_available', 0)}
+
+📂 WORKING DIRECTORY:
+Path: {os.getcwd()}
+Tracked Files: {len(self.history_manager.get_project_files())}
+Conversation Messages: {len(self.history_manager.conversation_history)}
+
+⚙️  OS COMMANDS AVAILABLE:
+• Read File: {os_commands.get('read_file', 'N/A')}
+• List Dir: {os_commands.get('list_dir', 'N/A')}
+• Search File: {os_commands.get('search_file', 'N/A')}
+• Head File: {os_commands.get('head_file', 'N/A')}
+• Tail File: {os_commands.get('tail_file', 'N/A')}
+
+🤖 AI PROMPT SYSTEM:
+Chat Prompt Length: {len(PromptManager.get_chat_system_prompt())} chars
+Task Prompt Length: {len(PromptManager.get_task_system_prompt_full_project())} chars
+Command Prompt Length: {len(PromptManager.get_command_generation_prompt())} chars
+
+⚡ DEBUG/VERBOSE MODE: {'✅ ENABLED' if self.verbose else '❌ DISABLED'}
+
+📝 DEBUG ACTIONS AVAILABLE:
+• OSUtils.debug_print() outputs when verbose=True
+• Detailed error information and stack traces
+• Command processing debug information
+• AI response timing and context details
+        """
+        
+        self.console.print(Panel(debug_text.strip(), title="🔧 Debug Information", border_style="cyan"))
     
     def _show_project_structure(self):
         """Show current project directory structure"""
