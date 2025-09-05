@@ -1,6 +1,6 @@
 # XandAI CLI - Intelligent Terminal Assistant
 
-[![Build and Publish](https://github.com/XandAI-project/Xandai-CLI/actions/workflows/workflow.yml/badge.svg)](https://github.com/XandAI-project/Xandai-CLI/actions/workflows/workflow.yml)
+[![Build](https://github.com/XandAI-project/Xandai-CLI/actions/workflows/workflow.yml/badge.svg)](https://github.com/XandAI-project/Xandai-CLI/actions/workflows/workflow.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 
