@@ -15,7 +15,7 @@ Please follow our [Code of Conduct](#) to maintain an inclusive, respectful, and
 ### 1. Report Bugs
 - Use GitHub Issues to report any bugs.
 - Include details such as:
-  - XandAI-CLI version (`pip show XandAI-CLI` or equivalent)
+  - XandAI-CLI version (`pip show xandai-cli` or equivalent)
   - Operating system and environment details
   - Steps to reproduce the issue
   - Expected vs. actual behavior

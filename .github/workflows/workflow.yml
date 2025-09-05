@@ -99,7 +99,7 @@ jobs:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     environment:
       name: pypi
-      url: https://pypi.org/p/xandai
+      url: https://pypi.org/p/xandai-cli
     permissions:
       id-token: write  # For trusted publishing
     
@@ -156,7 +156,7 @@ jobs:
             ### 📦 Installation
             
             ```bash
-            pip install xandai==${{ steps.tag.outputs.tag }}
+            pip install xandai-cli==${{ steps.tag.outputs.tag }}
             ```
             
             ### 📋 Changes

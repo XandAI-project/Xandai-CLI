@@ -1,7 +1,9 @@
 # XandAI CLI - Intelligent Terminal Assistant
 
 [![Tests](https://github.com/XandAI-project/Xandai-CLI/actions/workflows/test.yml/badge.svg)](https://github.com/XandAI-project/Xandai-CLI/actions/workflows/test.yml)
+[![Build and Publish](https://github.com/XandAI-project/Xandai-CLI/actions/workflows/workflow.yml/badge.svg)](https://github.com/XandAI-project/Xandai-CLI/actions/workflows/workflow.yml)
 [![PyPI version](https://badge.fury.io/py/xandai-cli.svg)](https://badge.fury.io/py/xandai-cli)
+[![PyPI - Downloads](https://img.shields.io/pypi/dm/xandai-cli)](https://pypi.org/project/xandai-cli/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 
@@ -201,6 +203,7 @@ pip install -e .
 xandai
 ```
 
+**📦 PyPI Package:** [xandai-cli on PyPI](https://pypi.org/project/xandai-cli/)  
 **Found a bug?** [Create an issue](https://github.com/XandAI-project/Xandai-CLI/issues)  
 **Have a feature idea?** [Start a discussion](https://github.com/XandAI-project/Xandai-CLI/discussions)
 
