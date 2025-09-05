@@ -12,7 +12,7 @@ with open("requirements.txt", "r", encoding="utf-8") as fh:
     requirements = [line.strip() for line in fh if line.strip() and not line.startswith("#")]
 
 setup(
-    name="xandai",
+    name="xandai-cli",
     version="2.1.0",
     author="XandAI-project",
     description="CLI Assistant with Ollama Integration and Context-Aware Interactions",

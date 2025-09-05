@@ -1,276 +1,209 @@
-# XandAI - Production-Grade CLI Assistant
+# XandAI CLI - Intelligent Terminal Assistant
 
-[![Tests](https://github.com/XandNet/XandAI-CLI/actions/workflows/test.yml/badge.svg)](https://github.com/XandNet/XandAI-CLI/actions/workflows/test.yml)
-[![PyPI](https://github.com/XandNet/XandAI-CLI/actions/workflows/workflow.yml/badge.svg)](https://github.com/XandNet/XandAI-CLI/actions/workflows/workflow.yml)
-[![PyPI version](https://badge.fury.io/py/xandai.svg)](https://badge.fury.io/py/xandai)
+[![Tests](https://github.com/XandAI-project/Xandai-CLI/actions/workflows/test.yml/badge.svg)](https://github.com/XandAI-project/Xandai-CLI/actions/workflows/test.yml)
+[![PyPI version](https://badge.fury.io/py/xandai-cli.svg)](https://badge.fury.io/py/xandai-cli)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 
-A sophisticated CLI assistant that integrates with Ollama models, featuring terminal command interception, context tracking, and structured project planning.
+**XandAI CLI** is a powerful terminal assistant that seamlessly blends AI conversation with local command execution. Built with Ollama integration, it provides intelligent code assistance, project planning, and command-line automation - all within a beautiful, interactive terminal interface.
 
-## 🚀 Key Features
-
-- **Interactive REPL**: Rich terminal interface with intelligent autocomplete and history
-- **Terminal Command Integration**: Execute system commands (ls, cd, cat, etc.) with wrapped output
-- **Context Usage Tracking**: Real-time monitoring of token usage and context limits
-- **Chat Mode**: Natural language conversations with persistent context
-- **Task Mode**: Structured project planning with ordered, executable steps
-- **File History Tracking**: Prevents duplicate files and maintains project consistency
-- **Framework Detection**: Automatically detects and maintains project patterns
-
-## 📸 Interface Preview
+## 📸 See It In Action
 
 ![XandAI CLI Interface](images/CLI.png)
 
-*XandAI CLI in action: Interactive terminal with command recognition, syntax highlighting, and intelligent autocomplete*
+*XandAI seamlessly switches between AI chat and terminal commands - ask questions, get code help, and execute commands all in one interface*
 
-## 📦 Installation
-
-```bash
-# Install from PyPI (recommended)
-pip install xandai
-
-# Or install from source
-git clone https://github.com/XandNet/XandAI-CLI.git
-cd XandAI-CLI
-pip install -e .
-
-# Or install dependencies manually
-pip install -r requirements.txt
-```
-
-### Quick Start
+## ⚡ Quick Start
 
 ```bash
-# Start XandAI CLI
+# Install XandAI
+pip install xandai-cli
+
+# Start the CLI
 xandai
 
-# Use custom Ollama server  
-xandai --endpoint http://192.168.1.10:11434
-
-# Specify model directly
-xandai --model llama3.2
-```
-
-## 🎯 Usage
-
-### Basic Usage
-```bash
-# Start interactive REPL
-xandai
-
-# Use custom Ollama server
-xandai --endpoint http://192.168.1.10:11434
-
-# Specify model directly
-xandai --model llama3.2
-```
-
-### Interactive Examples
-
-The XandAI CLI provides seamless integration between AI assistance and terminal commands:
-
-```bash
-# Start XandAI CLI
-xandai> python app.py
-$ python app.py
-[Command executed locally with wrapped output]
-
-xandai> cd "My Project Folder"
-Changed directory from C:\Users\user to C:\Users\user\My Project Folder
-
-xandai> How can I optimize this Flask route for better performance?
-[AI analyzes your code and provides optimized suggestions]
-
+# That's it! Start chatting or running commands
+xandai> python --version
+xandai> How do I optimize this Flask route?
 xandai> /task create a REST API with authentication
-[Structured task breakdown with implementation steps]
 ```
 
-### Chat Mode Features
+## 🎯 What Makes XandAI Special
+
+### 🧠 **Smart Command Recognition**
+XandAI automatically detects whether you're asking an AI question or running a terminal command:
 ```bash
-# Natural language questions
-> How do I optimize this Python function?
-
-# Terminal commands (executed locally)
-> ls -la
-> cat app.py
-> cd /path/to/project
-
-# Task planning
-> /task create a Flask API with authentication
+xandai> ls -la                    # Executes terminal command
+xandai> git status               # Executes git command  
+xandai> How do I use git rebase?  # Asks AI for help
+xandai> python app.py            # Runs your Python script
 ```
 
-### Task Mode Output Format
-```
-1 - create app.py
-2 - edit requirements.txt
-3 - run: pip install flask
+### 💬 **Intelligent Conversations**
+- **Context-Aware**: Remembers your conversation and project context
+- **Code Analysis**: Understands your codebase and provides relevant suggestions
+- **Real-time Help**: Get explanations while you work
 
-<code edit filename="app.py">
-# Complete file content here
-</code>
-
-<commands>
-pip install flask
-python app.py
-</commands>
-```
-
-## 🏗️ Architecture
-
-```
-xandai/
-├── main.py           # CLI entry point with argparse
-├── chat.py           # Interactive REPL with terminal command handling
-├── task.py           # Task mode with structured project planning
-├── ollama_client.py  # Enhanced Ollama client with context tracking
-├── history.py        # Conversation and file history management
-└── utils/            # Display utilities and helpers
-```
-
-### Key Components
-
-- **main.py**: Production-ready CLI with argument parsing and initialization
-- **chat.py**: Rich REPL interface using prompt_toolkit with command completion
-- **ollama_client.py**: Native Ollama API integration with context usage calculation
-- **history.py**: Intelligent tracking of conversations, files, and project context
-- **task.py**: Structured task planning with consistency checking
-
-## 🔧 Special Features
-
-### Terminal Command Integration
-Execute any terminal command directly in chat:
+### 🛠️ **Project Planning**
+Use `/task` mode for structured project planning:
 ```bash
-> ls -la
-> cd my-project
-> cat requirements.txt
-> grep -r "TODO" .
-```
-Results are wrapped in `<commands_output>` tags for LLM context.
+xandai> /task create a Flask API with JWT authentication
 
-### Context Usage Display
-Every LLM response shows token usage:
-```
-Context usage: 45.2% (1847/4096)
+# XandAI responds with:
+# 1. Create project structure
+# 2. Set up Flask app with blueprints  
+# 3. Implement JWT authentication
+# 4. Create user registration/login endpoints
+# [Complete implementation details follow]
 ```
 
-### Project Consistency & File Specifications
-- Tracks all file edits to prevent duplicates
-- Maintains framework consistency (Flask, React, etc.)
-- Suggests edits vs. creates for existing files
-- Preserves project structure and patterns
-- **Detailed File Specifications**: Each file includes purpose, functions, and exports
-- **Framework-Specific Patterns**: Tailored expectations for Flask, Express, React
-- **Import Consistency**: Validates all imports reference existing/planned files
-- **Complete Implementations**: Ensures all specified functions are implemented
+### 🎨 **Beautiful Interface**
+- **Syntax Highlighting**: Code blocks with proper language detection
+- **Smart Autocomplete**: Context-aware command and file suggestions  
+- **Rich Formatting**: Clean, readable output with colors and structure
+- **Command History**: Navigate through previous commands and conversations
 
-### Rich Terminal Experience
-- Syntax-highlighted code blocks with language detection
-- **Visual Interface**: Clean, modern terminal UI as shown in the preview above
-- **Intelligent Autocomplete**: Context-aware suggestions for commands and file paths
-- Command completion and history with fuzzy matching
-- Colored output with Rich library for better readability
-- Status indicators and progress bars for long-running operations
-- **Command Recognition**: Seamlessly switches between AI chat and terminal commands
-
-### Intelligent Autocomplete System
-XandAI features a smart autocomplete that provides context-aware suggestions:
-
-**Command-Specific Completions:**
-```bash
-# Directory commands (cd, mkdir) - shows only directories
-xandai> cd [TAB] → src/, docs/, tests/
-
-# File commands (cat, edit) - shows only files  
-xandai> cat [TAB] → README.md, app.py, config.json
-
-# Mixed commands (ls, cp) - shows files and directories
-xandai> ls [TAB] → src/, README.md, package.json
-
-# Slash commands
-xandai> /[TAB] → /task, /help, /status, /clear
-```
-
-**Supported Commands:**
-- **Directory only**: `cd`, `mkdir`, `rmdir`, `pushd`, `popd`
-- **File only**: `cat`, `type`, `edit`, `nano`, `vim`, `head`, `tail`
-- **Both**: `ls`, `dir`, `cp`, `mv`, `rm`, `del`, `find`, `grep`
-
-Use **Tab** to show suggestions, **↑/↓** arrows to navigate, **Enter** to select.
-
-### File Consistency & Detailed Specifications
-XandAI now generates comprehensive file specifications to ensure code consistency:
-
-**Enhanced Structure Planning:**
-```bash
-xandai> /task create a Flask API with authentication
-
-Flask Project:
-├── app.py              # Main Flask application entry point
-│                       # Functions: create_app(), register_blueprints()
-│                       # Exports: app (Flask instance)
-├── models/
-│   └── user.py         # User model and authentication
-│                       # Classes: User(db.Model)  
-│                       # Functions: hash_password(), check_password()
-│                       # Exports: User class
-├── routes/
-│   └── auth.py         # Authentication routes (/login, /register)
-│                       # Functions: login(), register(), logout()
-│                       # Exports: auth_bp (Blueprint)
-└── config.py           # Application configuration
-                        # Classes: Config, DevelopmentConfig
-                        # Exports: config classes
-```
-
-**Benefits:**
-- **Complete Implementations**: Every function and export is specified and implemented
-- **Import Consistency**: All imports reference only existing or planned files
-- **Framework Patterns**: Follows Flask, Express, React best practices automatically
-- **Production Ready**: Generated code includes error handling and documentation
-
-## 🚀 Releases & Publishing
-
-XandAI is automatically published to PyPI using GitHub Actions. New releases are triggered by creating tags:
+## 🔧 Installation & Setup
 
 ```bash
-# Create a new release
-git tag v2.1.1
-git push origin v2.1.1
+# Install from PyPI
+pip install xandai-cli
+
+# Make sure Ollama is running (install from https://ollama.ai)
+ollama serve
+
+# Start XandAI with custom options
+xandai --model llama3.2 --endpoint http://localhost:11434
 ```
 
-This triggers:
-- ✅ Automated testing across Python 3.8-3.11
-- 📦 Package building and validation
-- 🚀 Publishing to PyPI
-- 📝 GitHub release creation
+## 💡 Real-World Examples
 
-**Latest Release:** Check [PyPI](https://pypi.org/project/xandai/) or [GitHub Releases](https://github.com/XandNet/XandAI-CLI/releases)
+### Daily Development Workflow
+```bash
+# Navigate and explore your project
+xandai> cd my-project && ls -la
+xandai> git status
+xandai> cat app.py
+
+# Get AI help while coding
+xandai> This Flask route is slow, how can I optimize it?
+[AI analyzes your code and suggests specific improvements]
+
+# Continue working with AI suggestions
+xandai> git add . && git commit -m "Optimize Flask routes"
+```
+
+### Project Planning & Learning
+```bash
+# Plan complex projects
+xandai> /task create a microservices architecture with Docker
+[Detailed project structure with implementation steps]
+
+# Learn new concepts
+xandai> Explain async/await vs Promises in JavaScript with examples
+[Comprehensive explanation with code samples]
+
+# Get implementation help
+xandai> Show me how to implement JWT authentication in Express.js
+[Complete implementation with best practices]
+```
+
+## 🧠 How XandAI Works
+
+XandAI intelligently combines AI conversation with terminal command execution:
+
+- **Smart Detection**: Automatically recognizes if your input is a command or question
+- **Context Memory**: Remembers your conversation, current directory, and project state  
+- **Ollama Integration**: Uses local Ollama models for privacy and performance
+- **Rich Interface**: Beautiful terminal UI with syntax highlighting and autocompletion
+
+## 🔧 Advanced Features
+
+### Command Integration
+Any terminal command works seamlessly:
+```bash
+xandai> python --version && pip list | grep flask
+xandai> find . -name "*.py" | grep -v __pycache__
+xandai> docker ps && docker images
+```
+
+### Intelligent Autocompletion
+XandAI provides smart suggestions based on context:
+- **File commands** (`cat`, `vim`) → Shows only files
+- **Directory commands** (`cd`, `mkdir`) → Shows only directories  
+- **Mixed commands** (`ls`, `cp`) → Shows both files and directories
+- **Slash commands** → `/task`, `/help`, `/clear`, `/status`
+
+### Project Awareness
+- Tracks file changes to avoid duplicates
+- Maintains coding patterns and framework conventions
+- Provides context-aware suggestions based on your project type
+- Remembers previous conversations for better assistance
+
+## 🎨 Task Planning Example
+
+When you use `/task` mode, XandAI creates detailed project structures:
+
+```bash
+xandai> /task create a Flask API with JWT authentication
+
+# XandAI responds with complete project structure:
+Flask API Project:
+├── app.py              # Main Flask application
+├── models/user.py      # User model with authentication
+├── routes/auth.py      # Login/register endpoints  
+├── config.py           # App configuration
+└── requirements.txt    # Dependencies
+
+# Plus complete implementation for each file with:
+# - All necessary functions and classes
+# - Proper error handling  
+# - Security best practices
+# - Ready-to-run code
+```
+
+## 🛠️ Available Commands
+
+**Slash Commands:**
+- `/task <description>` - Generate structured project plans
+- `/help` - Show available commands
+- `/clear` - Clear conversation history
+- `/status` - Show system status
+- `/history` - View conversation history
+
+**Any Terminal Command:**
+```bash
+# Development commands
+xandai> python app.py
+xandai> npm start  
+xandai> docker-compose up
+
+# File operations
+xandai> ls -la && cat package.json
+xandai> git status && git log --oneline
+
+# System commands  
+xandai> ps aux | grep python
+xandai> df -h && free -m
+```
 
 ## 🤝 Contributing
 
-This project follows clean code standards, modular architecture, and comprehensive error handling for production-grade reliability.
-
-### Development Setup
+We welcome contributions! XandAI is built with Python 3.8+ and uses modern development practices.
 
 ```bash
-# Clone repository
-git clone https://github.com/XandNet/XandAI-CLI.git
-cd XandAI-CLI
-
-# Install in development mode
+# Get started
+git clone https://github.com/XandAI-project/Xandai-CLI.git
+cd Xandai-CLI
 pip install -e .
 
-# Install development dependencies
-pip install pytest flake8 black isort
-
-# Run tests
-pytest
-
-# Check code quality
-flake8 .
-black --check .
-isort --check-only .
+# Run XandAI locally
+xandai
 ```
 
-All contributions are automatically tested via GitHub Actions before merging.
+**Found a bug?** [Create an issue](https://github.com/XandAI-project/Xandai-CLI/issues)  
+**Have a feature idea?** [Start a discussion](https://github.com/XandAI-project/Xandai-CLI/discussions)
+
+---
+
+**Made with ❤️ by the XandAI team** • Built for developers who love powerful, intelligent tools
