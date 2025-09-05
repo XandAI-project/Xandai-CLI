@@ -1,0 +1,27 @@
+# Include important files in the package distribution
+include README.md
+include requirements.txt
+include usage.md
+
+# Include license if it exists
+include LICENSE*
+include COPYING*
+
+# Include configuration files
+include *.cfg
+include *.ini
+
+# Include image assets
+recursive-include images *.png *.jpg *.jpeg *.gif *.svg
+
+# Include example files
+recursive-include example *.py *.js *.json *.md *.txt
+
+# Exclude development and build files
+global-exclude __pycache__
+global-exclude *.py[cod]
+global-exclude *~
+global-exclude *.so
+global-exclude .DS_Store
+global-exclude .coverage
+global-exclude .pytest_cache

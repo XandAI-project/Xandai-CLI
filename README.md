@@ -1,5 +1,11 @@
 # XandAI - Production-Grade CLI Assistant
 
+[![Tests](https://github.com/XandNet/XandAI-CLI/actions/workflows/test.yml/badge.svg)](https://github.com/XandNet/XandAI-CLI/actions/workflows/test.yml)
+[![PyPI](https://github.com/XandNet/XandAI-CLI/actions/workflows/workflow.yml/badge.svg)](https://github.com/XandNet/XandAI-CLI/actions/workflows/workflow.yml)
+[![PyPI version](https://badge.fury.io/py/xandai.svg)](https://badge.fury.io/py/xandai)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+
 A sophisticated CLI assistant that integrates with Ollama models, featuring terminal command interception, context tracking, and structured project planning.
 
 ## 🚀 Key Features
@@ -12,14 +18,38 @@ A sophisticated CLI assistant that integrates with Ollama models, featuring term
 - **File History Tracking**: Prevents duplicate files and maintains project consistency
 - **Framework Detection**: Automatically detects and maintains project patterns
 
+## 📸 Interface Preview
+
+![XandAI CLI Interface](images/CLI.png)
+
+*XandAI CLI in action: Interactive terminal with command recognition, syntax highlighting, and intelligent autocomplete*
+
 ## 📦 Installation
 
 ```bash
-# Install from source
+# Install from PyPI (recommended)
+pip install xandai
+
+# Or install from source
+git clone https://github.com/XandNet/XandAI-CLI.git
+cd XandAI-CLI
 pip install -e .
 
-# Or install dependencies
+# Or install dependencies manually
 pip install -r requirements.txt
+```
+
+### Quick Start
+
+```bash
+# Start XandAI CLI
+xandai
+
+# Use custom Ollama server  
+xandai --endpoint http://192.168.1.10:11434
+
+# Specify model directly
+xandai --model llama3.2
 ```
 
 ## 🎯 Usage
@@ -34,6 +64,26 @@ xandai --endpoint http://192.168.1.10:11434
 
 # Specify model directly
 xandai --model llama3.2
+```
+
+### Interactive Examples
+
+The XandAI CLI provides seamless integration between AI assistance and terminal commands:
+
+```bash
+# Start XandAI CLI
+xandai> python app.py
+$ python app.py
+[Command executed locally with wrapped output]
+
+xandai> cd "My Project Folder"
+Changed directory from C:\Users\user to C:\Users\user\My Project Folder
+
+xandai> How can I optimize this Flask route for better performance?
+[AI analyzes your code and provides optimized suggestions]
+
+xandai> /task create a REST API with authentication
+[Structured task breakdown with implementation steps]
 ```
 
 ### Chat Mode Features
@@ -115,11 +165,13 @@ Context usage: 45.2% (1847/4096)
 - **Complete Implementations**: Ensures all specified functions are implemented
 
 ### Rich Terminal Experience
-- Syntax-highlighted code blocks
+- Syntax-highlighted code blocks with language detection
+- **Visual Interface**: Clean, modern terminal UI as shown in the preview above
 - **Intelligent Autocomplete**: Context-aware suggestions for commands and file paths
-- Command completion and history
-- Colored output with Rich library
-- Status indicators and progress bars
+- Command completion and history with fuzzy matching
+- Colored output with Rich library for better readability
+- Status indicators and progress bars for long-running operations
+- **Command Recognition**: Seamlessly switches between AI chat and terminal commands
 
 ### Intelligent Autocomplete System
 XandAI features a smart autocomplete that provides context-aware suggestions:
@@ -177,6 +229,48 @@ Flask Project:
 - **Framework Patterns**: Follows Flask, Express, React best practices automatically
 - **Production Ready**: Generated code includes error handling and documentation
 
+## 🚀 Releases & Publishing
+
+XandAI is automatically published to PyPI using GitHub Actions. New releases are triggered by creating tags:
+
+```bash
+# Create a new release
+git tag v2.1.1
+git push origin v2.1.1
+```
+
+This triggers:
+- ✅ Automated testing across Python 3.8-3.11
+- 📦 Package building and validation
+- 🚀 Publishing to PyPI
+- 📝 GitHub release creation
+
+**Latest Release:** Check [PyPI](https://pypi.org/project/xandai/) or [GitHub Releases](https://github.com/XandNet/XandAI-CLI/releases)
+
 ## 🤝 Contributing
 
 This project follows clean code standards, modular architecture, and comprehensive error handling for production-grade reliability.
+
+### Development Setup
+
+```bash
+# Clone repository
+git clone https://github.com/XandNet/XandAI-CLI.git
+cd XandAI-CLI
+
+# Install in development mode
+pip install -e .
+
+# Install development dependencies
+pip install pytest flake8 black isort
+
+# Run tests
+pytest
+
+# Check code quality
+flake8 .
+black --check .
+isort --check-only .
+```
+
+All contributions are automatically tested via GitHub Actions before merging.

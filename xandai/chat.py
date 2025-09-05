@@ -661,7 +661,8 @@ class ChatREPL:
                 # cd with no args - go to home
                 new_dir = str(Path.home())
             else:
-                new_dir = command_parts[1]
+                # Join all arguments after the command to handle paths with spaces
+                new_dir = ' '.join(command_parts[1:])
             
             # Change directory
             old_dir = os.getcwd()
