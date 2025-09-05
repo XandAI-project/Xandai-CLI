@@ -4,17 +4,18 @@ Centralized management of all AI prompts and templates
 """
 
 from typing import Optional
+
 from .os_utils import OSUtils
 
 
 class PromptManager:
     """
     Centralized prompt management for XandAI
-    
+
     Manages system prompts, task templates, and chat configurations
     with support for different modes and contexts.
     """
-    
+
     @staticmethod
     def get_chat_system_prompt() -> str:
         """Get system prompt for chat mode"""
@@ -329,7 +330,7 @@ ALWAYS RESPOND IN ENGLISH."""
         """Get cross-platform system prompt for generating file reading commands"""
         platform = OSUtils.get_platform()
         commands = OSUtils.get_available_commands()
-        
+
         if OSUtils.is_windows():
             cmd_examples = f"""PLATFORM: Windows
 AVAILABLE COMMANDS:
@@ -410,7 +411,7 @@ SECURITY:
 - NEVER access system files outside current directory
 
 IMPORTANT: Generate ONLY the commands for {platform}, no explanations or additional text."""
-    
+
     @staticmethod
     def get_file_read_command_for_prompt(user_request: str) -> str:
         """Generate a simple, direct prompt for file reading commands"""
@@ -430,20 +431,29 @@ Example for current platform:
 </commands>"""
 
     @staticmethod
-    def build_enhanced_prompt(user_request: str, context: dict, existing_files: list = None, 
-                            file_contents: dict = None, single_file_target: str = None) -> str:
+    def build_enhanced_prompt(
+        user_request: str,
+        context: dict,
+        existing_files: list = None,
+        file_contents: dict = None,
+        single_file_target: str = None,
+    ) -> str:
         """Build enhanced prompt with context and file information"""
         prompt_parts = [f"TASK REQUEST: {user_request}"]
-        
+
         # Add single file focus instruction
         if single_file_target:
             prompt_parts.append(f"\\n🎯 SINGLE FILE FOCUS: {single_file_target}")
             prompt_parts.append("- Make ONLY the requested changes")
             prompt_parts.append("- Do NOT create additional files")
             prompt_parts.append("- Do NOT over-engineer the solution")
-        
+
         # Add project context if available
-        if context and (context.get("framework") or context.get("language") or context.get("project_type")):
+        if context and (
+            context.get("framework")
+            or context.get("language")
+            or context.get("project_type")
+        ):
             prompt_parts.append("\\nCURRENT PROJECT CONTEXT:")
             if context.get("language"):
                 prompt_parts.append(f"- Language: {context['language']}")
@@ -451,36 +461,44 @@ Example for current platform:
                 prompt_parts.append(f"- Framework: {context['framework']}")
             if context.get("project_type"):
                 prompt_parts.append(f"- Type: {context['project_type']}")
-        
+
         # Add existing files info with contents
         if existing_files:
             prompt_parts.append(f"\\nEXISTING FILES ({len(existing_files)}):")
-            
+
             # Add file contents if available
             if file_contents:
                 prompt_parts.append("\\nRELEVANT FILE CONTENTS:")
                 for filepath, content in file_contents.items():
                     prompt_parts.append(f"\\n--- {filepath} ---")
-                    # Limit content length 
+                    # Limit content length
                     if len(content) > 1500:
                         prompt_parts.append(content[:1500] + "\\n... (truncated)")
                     else:
                         prompt_parts.append(content)
                     prompt_parts.append(f"--- End of {filepath} ---")
-            
+
             # List all files
             for filepath in existing_files[:15]:
                 prompt_parts.append(f"- {filepath}")
             if len(existing_files) > 15:
                 prompt_parts.append(f"- ... and {len(existing_files) - 15} more")
-            
-            prompt_parts.append("\\n⚠️  IMPORTANT: Use 'edit' for existing files, not 'create'!")
-            prompt_parts.append("⚠️  MAINTAIN CONSISTENCY: Keep existing code patterns, imports, and architecture!")
-        
+
+            prompt_parts.append(
+                "\\n⚠️  IMPORTANT: Use 'edit' for existing files, not 'create'!"
+            )
+            prompt_parts.append(
+                "⚠️  MAINTAIN CONSISTENCY: Keep existing code patterns, imports, and architecture!"
+            )
+
         # Add appropriate closing instruction
         if single_file_target:
-            prompt_parts.append("\\n🎯 Generate a focused, minimal change to accomplish the goal!")
+            prompt_parts.append(
+                "\\n🎯 Generate a focused, minimal change to accomplish the goal!"
+            )
         else:
-            prompt_parts.append("\\n🚀 Generate a complete, executable plan with working code!")
-        
+            prompt_parts.append(
+                "\\n🚀 Generate a complete, executable plan with working code!"
+            )
+
         return "\\n".join(prompt_parts)
