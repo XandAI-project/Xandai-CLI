@@ -601,13 +601,18 @@ class ChatREPL:
                 self._handle_clear_command(command)
                 return
             
-            # Execute other commands
+            # Check if command might be interactive
+            if self._is_potentially_interactive_command(command):
+                self._handle_interactive_command(command)
+                return
+            
+            # Execute other commands with shorter timeout for non-interactive
             result = subprocess.run(
                 command,
                 shell=True,
                 capture_output=True,
                 text=True,
-                timeout=30
+                timeout=10  # Shorter timeout to detect hanging commands
             )
             
             # Format output
@@ -638,12 +643,15 @@ class ChatREPL:
             )
             
         except subprocess.TimeoutExpired:
-            error_msg = "Command timed out (30s limit)"
-            self.console.print(f"[red]{error_msg}[/red]")
+            # Command might be interactive, offer to run in interactive mode
+            self.console.print(f"[yellow]⚠️  Command timed out - might need user input[/yellow]")
+            self.console.print(f"[cyan]💡 Tip: Use 'python -i script.py' for interactive scripts[/cyan]")
+            
+            error_msg = "Command timed out (10s limit) - possibly waiting for input"
             self.history_manager.add_conversation(
                 role="system",
                 content=f"<commands_output>\\n{error_msg}\\n</commands_output>",
-                metadata={"type": "command_error"}
+                metadata={"type": "command_timeout"}
             )
         except Exception as e:
             error_msg = f"Error executing command: {e}"
@@ -653,6 +661,106 @@ class ChatREPL:
                 content=f"<commands_output>\\n{error_msg}\\n</commands_output>",
                 metadata={"type": "command_error"}
             )
+    
+    def _is_potentially_interactive_command(self, command: str) -> bool:
+        """Detect if a command might require user input"""
+        interactive_patterns = [
+            # Python scripts that might use input()
+            r'python\s+\w+\.py',
+            r'python3\s+\w+\.py', 
+            r'py\s+\w+\.py',
+            # Node.js scripts that might use readline
+            r'node\s+\w+\.js',
+            # Interactive shells
+            r'^python$', r'^python3$', r'^node$',
+            # Other interactive programs
+            r'^npm\s+init', r'^git\s+rebase\s+-i',
+        ]
+        
+        command_lower = command.lower().strip()
+        for pattern in interactive_patterns:
+            if re.search(pattern, command_lower):
+                return True
+        return False
+    
+    def _handle_interactive_command(self, command: str):
+        """Handle potentially interactive commands with user confirmation"""
+        self.console.print(f"[yellow]🤖 This command might need user input[/yellow]")
+        self.console.print(f"[cyan]Command: {command}[/cyan]")
+        self.console.print()
+        
+        # Give user options
+        self.console.print("[bold]Choose execution mode:[/bold]")
+        self.console.print("  [green]1[/green] - Run with full terminal access (interactive)")
+        self.console.print("  [blue]2[/blue] - Run with output capture (non-interactive)")  
+        self.console.print("  [red]3[/red] - Cancel")
+        
+        try:
+            choice = input("\n[cyan]Your choice (1-3): [/cyan]").strip()
+        except (EOFError, KeyboardInterrupt):
+            choice = "3"
+        
+        if choice == "1":
+            self._execute_interactive_command(command)
+        elif choice == "2":
+            self._execute_non_interactive_command(command)
+        else:
+            self.console.print("[yellow]Command cancelled[/yellow]")
+    
+    def _execute_interactive_command(self, command: str):
+        """Execute command with full terminal access"""
+        self.console.print(f"[green]🚀 Running interactively: {command}[/green]")
+        self.console.print("[dim]Press Ctrl+C to return to XandAI if needed[/dim]")
+        self.console.print()
+        
+        try:
+            # Run with full terminal access - no output capture
+            result = subprocess.run(command, shell=True)
+            
+            if result.returncode == 0:
+                self.console.print(f"[green]✅ Command completed successfully[/green]")
+                output_msg = "Command executed interactively - output shown above"
+            else:
+                self.console.print(f"[yellow]⚠️  Command completed with exit code {result.returncode}[/yellow]")
+                output_msg = f"Interactive command completed with exit code {result.returncode}"
+            
+            # Add to history
+            self.history_manager.add_conversation(
+                role="system",
+                content=f"<commands_output>\\n{output_msg}\\n</commands_output>",
+                metadata={"type": "interactive_command", "return_code": result.returncode}
+            )
+            
+        except KeyboardInterrupt:
+            self.console.print("\\n[yellow]Command interrupted by user[/yellow]")
+        except Exception as e:
+            self.console.print(f"[red]Error running interactive command: {e}[/red]")
+    
+    def _execute_non_interactive_command(self, command: str):
+        """Execute command with output capture (might fail for interactive scripts)"""
+        self.console.print(f"[blue]📤 Running with output capture: {command}[/blue]")
+        
+        try:
+            result = subprocess.run(
+                command,
+                shell=True,
+                capture_output=True,
+                text=True,
+                timeout=5,  # Very short timeout
+                input=""  # Empty input to avoid hanging
+            )
+            
+            # Format output normally
+            if result.returncode == 0:
+                output = result.stdout.strip() if result.stdout else "Command completed"
+                self.console.print(Panel(output, title=f"Output: {command}", border_style="green"))
+            else:
+                error = result.stderr.strip() if result.stderr else f"Exit code: {result.returncode}"
+                self.console.print(Panel(f"[red]{error}[/red]", title="Error", border_style="red"))
+                
+        except subprocess.TimeoutExpired:
+            self.console.print("[red]❌ Command timed out waiting for input[/red]")
+            self.console.print("[cyan]💡 Try option 1 (interactive mode) for scripts that need input[/cyan]")
     
     def _handle_cd_command(self, command_parts: List[str]):
         """Handle cd command specially to change working directory"""
