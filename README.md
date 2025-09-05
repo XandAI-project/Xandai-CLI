@@ -2,8 +2,8 @@
 
 [![Tests](https://github.com/XandAI-project/Xandai-CLI/actions/workflows/test.yml/badge.svg)](https://github.com/XandAI-project/Xandai-CLI/actions/workflows/test.yml)
 [![Build](https://github.com/XandAI-project/Xandai-CLI/actions/workflows/workflow.yml/badge.svg)](https://github.com/XandAI-project/Xandai-CLI/actions/workflows/workflow.yml)
-[![PyPI version](https://badge.fury.io/py/xandai-cli.svg)](https://badge.fury.io/py/xandai-cli)
-[![PyPI - Downloads](https://img.shields.io/pypi/dm/xandai-cli)](https://pypi.org/project/xandai-cli/)
+[![PyPI version](https://img.shields.io/pypi/v/xandai-cli.svg)](https://pypi.org/project/xandai-cli/)
+[![PyPI - Downloads](https://img.shields.io/pypi/dm/xandai-cli.svg)](https://pypi.org/project/xandai-cli/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 
