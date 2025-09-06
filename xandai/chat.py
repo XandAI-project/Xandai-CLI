@@ -3590,6 +3590,10 @@ Remember: Your response will be written directly to the file! NO explanatory tex
         if not config["supports_inline"]:
             return True
 
+        # Empty or whitespace-only code - safer with temp file
+        if not code.strip():
+            return True
+
         # Multi-line scripts
         if "\n" in code.strip():
             return True

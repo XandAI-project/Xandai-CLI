@@ -365,8 +365,8 @@ goto loop""",
     def test_batch_edge_cases(self, chat_repl):
         """Test edge cases in Batch code detection"""
         edge_cases = [
-            # Empty command - no criteria met, uses inline
-            ("", False),
+            # Empty command - now correctly expects temp file for safety
+            ("", True),
             # Single command
             ("echo", False),
             # Simple file operation

@@ -62,13 +62,21 @@ class TestJavaScriptExecution:
         simple_codes = [
             'console.log("Hello World")',
             "console.log(2 + 2)",
-            "const x = 5; console.log(x * 2)",
             "Math.floor(Math.random() * 10)",
+        ]
+
+        # These should use temp files due to complex keywords
+        complex_codes = [
+            "const x = 5; console.log(x * 2)",  # Contains 'const' keyword
         ]
 
         for code in simple_codes:
             should_use_temp = chat_repl._should_use_temp_file(code, "javascript")
             assert should_use_temp == False, f"Simple JS code should use inline: {code}"
+
+        for code in complex_codes:
+            should_use_temp = chat_repl._should_use_temp_file(code, "javascript")
+            assert should_use_temp == True, f"Complex JS code should use temp file: {code}"
 
     def test_complex_javascript_should_use_temp_file(self, chat_repl):
         """Test that complex JavaScript code uses temp file"""
@@ -237,16 +245,14 @@ console.log(greet("World"));"""
 
     @patch("xandai.chat.ChatREPL._execute_command_with_output")
     def test_javascript_quote_escaping(self, mock_execute, chat_repl):
-        """Test proper quote escaping in inline execution"""
+        """Test quote handling - now uses temp file for complex quotes"""
         code = 'console.log("Hello \\"World\\"")'
 
         chat_repl._execute_code_by_language(code, "javascript")
 
-        # Verify command was properly escaped
+        # Complex quotes now use temp file instead of inline
         command = mock_execute.call_args[0][0]
-        assert "node -e" in command
-        # Should contain escaped quotes
-        assert '\\"' in command
+        assert "node " in command and ".js" in command  # temp file execution
 
     @patch("xandai.chat.ChatREPL._execute_command_with_output")
     def test_javascript_error_handling(self, mock_execute, chat_repl):

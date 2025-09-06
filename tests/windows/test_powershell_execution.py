@@ -365,8 +365,8 @@ Format-Table Name, Status, StartType -AutoSize""",
     def test_powershell_edge_cases(self, chat_repl):
         """Test edge cases in PowerShell code detection"""
         edge_cases = [
-            # Empty command - no criteria met, uses inline
-            ("", False),
+            # Empty command - now correctly expects temp file for safety
+            ("", True),
             # Single variable - contains '$' keyword
             ("$x", True),
             # Simple string
