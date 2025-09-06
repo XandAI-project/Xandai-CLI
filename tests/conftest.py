@@ -134,13 +134,15 @@ def pytest_runtest_makereport(item, call):
 def mock_file_operations():
     """Mock file operations for testing"""
     import tempfile
+
+    # Use ExitStack for Python 3.8+ compatibility
+    from contextlib import ExitStack
     from unittest.mock import mock_open, patch
 
-    with (
-        patch("tempfile.NamedTemporaryFile") as mock_temp,
-        patch("os.unlink") as mock_unlink,
-        patch("builtins.open", mock_open()) as mock_file,
-    ):
+    with ExitStack() as stack:
+        mock_temp = stack.enter_context(patch("tempfile.NamedTemporaryFile"))
+        mock_unlink = stack.enter_context(patch("os.unlink"))
+        mock_file = stack.enter_context(patch("builtins.open", mock_open()))
 
         # Configure mock temporary file
         mock_temp_file = MagicMock()
