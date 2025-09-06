@@ -1,0 +1,102 @@
+{
+  "timestamp": "2025-09-06T14:37:06.459959",
+  "conversation": [
+    {
+      "timestamp": "2025-09-06T14:36:14.332293",
+      "role": "user",
+      "content": "hi",
+      "context_usage": null,
+      "metadata": {
+        "type": "chat"
+      }
+    },
+    {
+      "timestamp": "2025-09-06T14:36:14.693948",
+      "role": "assistant",
+      "content": "Hi there! How can I help you today? ",
+      "context_usage": "Context: 12+11 tokens (23 total) [lm_studio]",
+      "metadata": {
+        "type": "chat"
+      }
+    },
+    {
+      "timestamp": "2025-09-06T14:36:24.935308",
+      "role": "user",
+      "content": "how much is 3+ (-15)",
+      "context_usage": null,
+      "metadata": {
+        "type": "chat"
+      }
+    },
+    {
+      "timestamp": "2025-09-06T14:36:27.336630",
+      "role": "assistant",
+      "content": "3 + (-15) = 3 - 15 = -12\n",
+      "context_usage": "Context: 51+18 tokens (69 total) [lm_studio]",
+      "metadata": {
+        "type": "chat"
+      }
+    },
+    {
+      "timestamp": "2025-09-06T14:36:39.033002",
+      "role": "user",
+      "content": "thank you",
+      "context_usage": null,
+      "metadata": {
+        "type": "chat"
+      }
+    },
+    {
+      "timestamp": "2025-09-06T14:36:41.492405",
+      "role": "assistant",
+      "content": "You're welcome! I appreciate it.\n",
+      "context_usage": "Context: 72+10 tokens (82 total) [lm_studio]",
+      "metadata": {
+        "type": "chat"
+      }
+    },
+    {
+      "timestamp": "2025-09-06T14:36:47.674922",
+      "role": "user",
+      "content": "who was albert einstein",
+      "context_usage": null,
+      "metadata": {
+        "type": "chat"
+      }
+    },
+    {
+      "timestamp": "2025-09-06T14:36:50.916382",
+      "role": "assistant",
+      "content": "Albert Einstein was a German-born physicist who is widely considered one of the most influential figures in modern science and technology. He made groundbreaking contributions to areas like:\n\n*   **Theory of Relativity:** Developed the theory of special relativity, which revolutionized our understanding of space, time, gravity, and the relationship between matter and energy.\n*   **Physics:** Pioneered the development of the theory of nuclear physics, which explains the behavior of atoms and molecules.\n*   **Mathematics:** Made significant contributions to areas such as calculus, probability, and set theory.\n*   **Philosophy:** Conducted research on fundamental questions about the nature of reality, consciousness, and humanity.\n\nHe is best known for his work on the theory of relativity, which has had a profound impact on modern physics and technology.",
+      "context_usage": "Context: 101+162 tokens (263 total) [lm_studio]",
+      "metadata": {
+        "type": "chat"
+      }
+    },
+    {
+      "timestamp": "2025-09-06T14:37:04.057372",
+      "role": "user",
+      "content": "cool bro",
+      "context_usage": null,
+      "metadata": {
+        "type": "chat"
+      }
+    },
+    {
+      "timestamp": "2025-09-06T14:37:06.459959",
+      "role": "assistant",
+      "content": "Cool bro! \ud83d\udc4b\n",
+      "context_usage": "Context: 271+5 tokens (276 total) [lm_studio]",
+      "metadata": {
+        "type": "chat"
+      }
+    }
+  ],
+  "project_context": {
+    "framework": null,
+    "language": null,
+    "project_type": null,
+    "dependencies": [],
+    "structure": {}
+  }
+}

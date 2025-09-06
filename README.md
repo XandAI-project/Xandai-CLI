@@ -1,4 +1,4 @@
-# XandAI CLI - Intelligent Terminal Assistant
+# XandAI CLI - Multi-Provider AI Terminal Assistant
 
 [![Tests](https://github.com/XandAI-project/Xandai-CLI/actions/workflows/test.yml/badge.svg)](https://github.com/XandAI-project/Xandai-CLI/actions/workflows/test.yml)
 [![Build](https://github.com/XandAI-project/Xandai-CLI/actions/workflows/workflow.yml/badge.svg)](https://github.com/XandAI-project/Xandai-CLI/actions/workflows/workflow.yml)
@@ -6,7 +6,15 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 
-**XandAI CLI** is a powerful terminal assistant that seamlessly blends AI conversation with local command execution. Built with Ollama integration, it provides intelligent code assistance, project planning, and command-line automation - all within a beautiful, interactive terminal interface.
+```
+ __  __               _       _ 
+ \ \/ /__ _ _ __   __| | __ _(_)
+  \  // _` | '_ \ / _` |/ _` | |
+  /  \ (_| | | | | (_| | (_| | |
+ /_/\_\__,_|_| |_|\__,_|\__,_|_|
+```
+
+**XandAI CLI** is a powerful terminal assistant with **multi-provider AI support** that seamlessly blends AI conversation with local command execution. Supporting **Ollama**, **LM Studio**, and more - it provides intelligent code assistance, project planning, and command-line automation all within a beautiful, interactive terminal interface.
 
 ## 📸 See It In Action
 
@@ -20,13 +28,37 @@
 # Install XandAI
 pip install xandai-cli
 
-# Start the CLI
-xandai
+# Start with auto-detection
+xandai --auto-detect
 
-# That's it! Start chatting or running commands
+# Or specify a provider
+xandai --provider ollama
+xandai --provider lm_studio --endpoint http://localhost:1234
+
+# Start chatting or running commands
 xandai> python --version
 xandai> How do I optimize this Flask route?
 xandai> /task create a REST API with authentication
+```
+
+## 🔗 Multi-Provider Support
+
+XandAI now supports multiple LLM providers with automatic detection:
+
+### Supported Providers
+- **🦙 Ollama** - Self-hosted models with extensive model library
+- **🏠 LM Studio** - Local GUI-based model management
+- **🔮 More Coming Soon** - OpenAI, Anthropic, and others
+
+### Provider Commands
+```bash
+/provider          # Check current provider status
+/providers         # List all available providers
+/switch ollama     # Switch to Ollama
+/switch lm_studio  # Switch to LM Studio
+/detect            # Auto-detect best provider
+/server <url>      # Set custom endpoint
+/models            # List and select models
 ```
 
 ## 🎯 What Makes XandAI Special

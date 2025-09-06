@@ -1,20 +1,29 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 XandAI - Main CLI Entry Point
-Production-ready CLI assistant with Ollama integration
+Production-ready CLI assistant with multi-provider support
 Enhanced with OS-aware utilities and intelligent prompts
 """
 
 import argparse
 import json
+import os
 import platform
 import sys
 from pathlib import Path
 from typing import Optional
 
+# Ensure UTF-8 encoding for Windows compatibility
+if os.name == 'nt':  # Windows
+    import codecs
+    sys.stdout = codecs.getwriter('utf-8')(sys.stdout.detach())
+    sys.stderr = codecs.getwriter('utf-8')(sys.stderr.detach())
+
 from xandai.chat import ChatREPL
 from xandai.history import HistoryManager
-from xandai.ollama_client import OllamaClient
+from xandai.integrations.provider_factory import LLMProviderFactory
+from xandai.integrations.base_provider import LLMProvider
 from xandai.utils.os_utils import OSUtils
 from xandai.utils.prompt_manager import PromptManager
 
@@ -23,31 +32,59 @@ def create_parser() -> argparse.ArgumentParser:
     """Create and configure argument parser with OS-aware debug options"""
     parser = argparse.ArgumentParser(
         prog="xandai",
-        description="XandAI - CLI Assistant with Ollama Integration (OS-Aware)",
+        description="XandAI - Multi-Provider AI Terminal Assistant with Interactive Code Execution",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=f"""
+🚀 Multi-Provider Support:
+  • Ollama (local LLM server)
+  • LM Studio (OpenAI-compatible API)
+  • Auto-detection of available providers
+
+📋 Interactive Features:
+  • Smart code detection and execution prompts  
+  • Toggle interactive mode with /interactive command
+  • Cross-platform terminal command integration
+  • Real-time conversation with context tracking
+
 Examples:
-  xandai                                    # Start interactive REPL
-  xandai --endpoint http://192.168.1.10:11434  # Use custom Ollama server
-  xandai --debug --platform-info           # Start with debug and platform info
-  xandai --show-commands                    # Show available OS commands
+  xandai                                    # Start with auto-detected provider
+  xandai --provider ollama                  # Use Ollama specifically  
+  xandai --provider lm_studio               # Use LM Studio
+  xandai --auto-detect                      # Auto-detect best provider
+  xandai --endpoint http://192.168.1.10:11434  # Custom Ollama server
+  xandai --debug --platform-info           # Debug mode with platform info
+
+🎯 Interactive Commands (available in REPL):
+  /help               - Show available commands
+  /interactive        - Toggle code execution prompts
+  /status             - Show provider and model status
+  /task <description> - Structured project planning mode
+  /debug              - Toggle debug information
+  /exit               - Exit XandAI
 
 Platform: {OSUtils.get_platform().upper()} ({platform.system()} {platform.release()})
         """,
     )
 
-    # Connection options
+    # Provider and connection options
+    parser.add_argument(
+        "--provider",
+        metavar="PROVIDER",
+        default="ollama",
+        choices=["ollama", "lm_studio"],
+        help="LLM provider to use (default: ollama) - 'ollama' for local Ollama server, 'lm_studio' for LM Studio OpenAI-compatible API",
+    )
+
     parser.add_argument(
         "--endpoint",
         metavar="URL",
-        default="http://127.0.0.1:11434",
-        help="Ollama server endpoint (default: http://127.0.0.1:11434)",
+        help="Provider server endpoint (auto-detected if not specified)",
     )
 
     parser.add_argument(
         "--model",
         metavar="MODEL",
-        help="Ollama model to use (will prompt to select if not specified)",
+        help="Model to use (will prompt to select if not specified)",
     )
 
     # Debug and platform options
@@ -72,6 +109,12 @@ Platform: {OSUtils.get_platform().upper()} ({platform.system()} {platform.releas
     )
 
     parser.add_argument(
+        "--auto-detect",
+        action="store_true", 
+        help="Auto-detect best available provider (scans for Ollama and LM Studio servers)",
+    )
+
+    parser.add_argument(
         "--test-commands",
         action="store_true",
         help="Test OS-specific commands with sample files and exit",
@@ -83,7 +126,7 @@ Platform: {OSUtils.get_platform().upper()} ({platform.system()} {platform.releas
         help="Show system prompt for specified mode and exit",
     )
 
-    parser.add_argument("--version", action="version", version="XandAI 2.1.0")
+    parser.add_argument("--version", action="version", version="XandAI 2.2.0 - Multi-Provider Edition")
 
     return parser
 
@@ -221,54 +264,85 @@ def main():
                 True,
             )
 
-        # Initialize Ollama client
-        if args.debug:
-            OSUtils.debug_print(f"Connecting to Ollama at {args.endpoint}", True)
-        print(f"🔌 Connecting to Ollama at {args.endpoint}...")
-        ollama_client = OllamaClient(base_url=args.endpoint)
+        # Initialize LLM Provider
+        print("🔌 Initializing LLM provider...")
+        
+        if args.auto_detect:
+            if args.debug:
+                OSUtils.debug_print("Auto-detecting best available provider", True)
+            print("🔍 Auto-detecting best available provider...")
+            llm_provider = LLMProviderFactory.create_auto_detect()
+        else:
+            if args.debug:
+                OSUtils.debug_print(f"Creating {args.provider} provider", True)
+            
+            config_options = {}
+            if args.endpoint:
+                config_options["base_url"] = args.endpoint
+            if args.model:
+                config_options["model"] = args.model
+                
+            llm_provider = LLMProviderFactory.create_provider(
+                provider_type=args.provider,
+                **config_options
+            )
 
         # Check connection
-        if not ollama_client.is_connected():
-            print(f"❌ Could not connect to Ollama at {args.endpoint}")
-            print("Please ensure Ollama is running and accessible.")
+        if not llm_provider.is_connected():
+            provider_name = llm_provider.get_provider_type().value.title()
+            endpoint = llm_provider.get_base_url()
+            
+            print(f"❌ Could not connect to {provider_name} at {endpoint}")
+            print(f"Please ensure {provider_name} is running and accessible.")
 
-            # OS-specific help
-            if OSUtils.is_windows():
-                print(
-                    "Windows: Try running 'ollama serve' in a separate PowerShell window"
-                )
-            else:
-                print("Unix-like: Try running 'ollama serve' in a separate terminal")
+            # Provider-specific help
+            if llm_provider.get_provider_type().value == "ollama":
+                if OSUtils.is_windows():
+                    print("Windows: Try running 'ollama serve' in a separate PowerShell window")
+                else:
+                    print("Unix-like: Try running 'ollama serve' in a separate terminal")
+            elif llm_provider.get_provider_type().value == "lm_studio":
+                print("Make sure LM Studio is running with a model loaded")
+                print("Check the 'Server' tab in LM Studio and ensure it's started")
 
             if args.debug:
                 OSUtils.debug_print(
-                    "Connection failed - check if Ollama service is running", True
+                    f"Connection failed - check if {provider_name} service is running", True
                 )
-                OSUtils.debug_print(f"Endpoint attempted: {args.endpoint}", True)
+                OSUtils.debug_print(f"Endpoint attempted: {endpoint}", True)
 
             sys.exit(1)
 
+        provider_name = llm_provider.get_provider_type().value.title()
         if args.debug:
-            OSUtils.debug_print("Ollama connection successful", True)
-        print("✅ Connected to Ollama successfully!")
+            OSUtils.debug_print(f"{provider_name} connection successful", True)
+        print(f"✅ Connected to {provider_name} successfully!")
 
         # Get available models
-        models = ollama_client.list_models()
+        models = llm_provider.list_models()
         if not models:
-            print("❌ No models found on Ollama server.")
-            if OSUtils.is_windows():
-                print("Try: ollama pull llama3.2 (in PowerShell)")
-            else:
-                print("Try: ollama pull llama3.2 (in terminal)")
+            provider_name = llm_provider.get_provider_type().value.title()
+            print(f"❌ No models found on {provider_name} server.")
+            
+            if llm_provider.get_provider_type().value == "ollama":
+                if OSUtils.is_windows():
+                    print("Try: ollama pull llama3.2 (in PowerShell)")
+                else:
+                    print("Try: ollama pull llama3.2 (in terminal)")
+            elif llm_provider.get_provider_type().value == "lm_studio":
+                print("Load a model in LM Studio first")
+                
             sys.exit(1)
 
         if args.debug:
             OSUtils.debug_print(f"Found {len(models)} models: {models}", True)
 
         # Handle model selection
+        current_model = llm_provider.get_current_model()
         if args.model:
+            # User specified a model
             if args.model in models:
-                ollama_client.set_model(args.model)
+                llm_provider.set_model(args.model)
                 print(f"📦 Using model: {args.model}")
                 if args.debug:
                     OSUtils.debug_print(f"Model set to: {args.model}", True)
@@ -276,28 +350,29 @@ def main():
                 print(f"❌ Model '{args.model}' not found.")
                 print(f"Available models: {', '.join(models)}")
                 sys.exit(1)
-        else:
-            # Interactive model selection
+        elif not current_model:
+            # No model specified - always show selection if multiple models
             if len(models) == 1:
-                ollama_client.set_model(models[0])
-                print(f"📦 Using model: {models[0]}")
+                llm_provider.set_model(models[0])
+                print(f"📦 Auto-selected model: {models[0]} (only model available)")
                 if args.debug:
                     OSUtils.debug_print(
                         f"Auto-selected single model: {models[0]}", True
                     )
             else:
-                print(f"\\n📦 Found {len(models)} models:")
+                # Always show interactive selection when multiple models available
+                print(f"📦 Available models on {llm_provider.get_provider_type().value.title()} server:")
                 for i, model in enumerate(models, 1):
                     print(f"  {i}. {model}")
 
                 while True:
                     try:
-                        choice = input(f"\\nSelect model (1-{len(models)}): ").strip()
+                        choice = input(f"Select model (1-{len(models)}): ").strip()
                         if choice.isdigit():
                             idx = int(choice) - 1
                             if 0 <= idx < len(models):
                                 selected_model = models[idx]
-                                ollama_client.set_model(selected_model)
+                                llm_provider.set_model(selected_model)
                                 print(f"📦 Using model: {selected_model}")
                                 if args.debug:
                                     OSUtils.debug_print(
@@ -306,18 +381,36 @@ def main():
                                 break
                         print("Invalid selection. Please try again.")
                     except (KeyboardInterrupt, EOFError):
-                        print("\\n👋 Goodbye!")
+                        print("👋 Goodbye!")
                         sys.exit(0)
+        else:
+            # Model was auto-selected or already configured
+            print(f"📦 Using model: {current_model}")
+            if args.debug:
+                OSUtils.debug_print(f"Using configured model: {current_model}", True)
 
         # Initialize history manager
         history_manager = HistoryManager()
         if args.debug:
             OSUtils.debug_print("History manager initialized", True)
 
-        # Show enhanced startup info
-        print("\\n🚀 Starting XandAI REPL...")
+        # Show ASCII title and startup info
+        provider_name = llm_provider.get_provider_type().value.title()
+        current_model = llm_provider.get_current_model() or "None"
+        
+        print("""
+ __  __               _       _ 
+ \\ \\/ /__ _ _ __   __| | __ _(_)
+  \\  // _` | '_ \\ / _` |/ _` | |
+  /  \\ (_| | | | | (_| | (_| | |
+ /_/\\_\\__,_|_| |_|\\__,_|\\__,_|_|
+                                """)
+        print(f"- Provider: {provider_name}")
+        print()
+        print("🚀 Starting XandAI REPL...")
         print("Type 'help' for commands or start chatting!")
         print("Use '/task <description>' for structured project planning.")
+        print(f"Model: {current_model}")
 
         # OS-specific command hints
         if OSUtils.is_windows():
@@ -332,9 +425,9 @@ def main():
 
         print("-" * 50)
 
-        # Enhanced REPL with OS-aware utilities
+        # Enhanced REPL with LLM Provider
         repl = ChatREPL(
-            ollama_client, history_manager, verbose=args.verbose or args.debug
+            llm_provider, history_manager, verbose=args.verbose or args.debug
         )
 
         if args.debug:
@@ -345,7 +438,7 @@ def main():
     except KeyboardInterrupt:
         if args.debug:
             OSUtils.debug_print("Received KeyboardInterrupt", True)
-        print("\\n👋 Goodbye!")
+        print("👋 Goodbye!")
         sys.exit(0)
     except Exception as e:
         print(f"❌ Fatal error: {e}")

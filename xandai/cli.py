@@ -16,7 +16,8 @@ from rich.text import Text
 from xandai.conversation.conversation_manager import ConversationManager
 from xandai.core.app_state import AppState
 from xandai.core.command_processor import CommandProcessor
-from xandai.integrations.ollama_client import OllamaClient
+from xandai.integrations.provider_factory import LLMProviderFactory
+from xandai.integrations.base_provider import LLMProvider
 from xandai.processors.chat_processor import ChatProcessor
 from xandai.processors.task_processor import TaskProcessor
 from xandai.utils.display_utils import DisplayUtils
@@ -28,17 +29,23 @@ class XandAICLI:
     Coordinates interactions between components and manages application state
     """
 
-    def __init__(self):
+    def __init__(self, provider_type: str = "ollama"):
         self.console = Console()
         self.app_state = AppState()
         self.command_processor = CommandProcessor(self.app_state)
         self.conversation_manager = ConversationManager()
-        self.ollama_client = OllamaClient()
+        
+        # Initialize LLM Provider with auto-detection fallback
+        try:
+            self.llm_provider = LLMProviderFactory.create_provider(provider_type)
+        except Exception:
+            self.llm_provider = LLMProviderFactory.create_auto_detect()
+            
         self.chat_processor = ChatProcessor(
-            self.ollama_client, self.conversation_manager
+            self.llm_provider, self.conversation_manager
         )
         self.task_processor = TaskProcessor(
-            self.ollama_client, self.conversation_manager
+            self.llm_provider, self.conversation_manager
         )
         self.display = DisplayUtils(self.console)
 
@@ -61,9 +68,12 @@ class XandAICLI:
             "/auto": self._enable_auto_mode,
             # Task mode
             "/task": self._process_task_mode,
-            # Ollama connection management
-            "/ollama": self._show_ollama_status,
-            "/server": self._set_ollama_server,
+            # Provider management
+            "/provider": self._show_provider_status,
+            "/providers": self._list_providers,
+            "/switch": self._switch_provider,
+            "/detect": self._auto_detect_provider,
+            "/server": self._set_server_endpoint,
             "/list-models": self._list_and_select_models,
             "/models": self._list_and_select_models,
         }
@@ -266,39 +276,126 @@ class XandAICLI:
         """
         self.console.print(Panel(help_text, title="Help", border_style="blue"))
 
-    def _show_ollama_status(self, args: str):
-        """Shows detailed Ollama connection status"""
-        status = self.ollama_client.get_connection_status()
+    def _show_provider_status(self, args: str):
+        """Shows detailed provider connection status"""
+        status = self.llm_provider.health_check()
+        provider_name = self.llm_provider.get_provider_type().value.title()
 
         if status["connected"]:
-            self.console.print("[green]✓ Ollama is connected[/green]")
-            self.console.print(f"Server: {status['base_url']}")
-            self.console.print(f"Current Model: {status['current_model']}")
+            self.console.print(f"[green]✓ {provider_name} is connected[/green]")
+            self.console.print(f"Endpoint: {status.get('endpoint', 'unknown')}")
+            self.console.print(f"Current Model: {status.get('current_model', 'None')}")
 
-            if status["available_models"]:
-                self.console.print(f"Available Models ({status['model_count']}):")
+            if status.get("available_models"):
+                model_count = len(status["available_models"])
+                self.console.print(f"Available Models ({model_count}):")
                 for model in status["available_models"][:10]:  # Show first 10
                     self.console.print(f"  • {model}")
-                if status["model_count"] > 10:
-                    self.console.print(f"  ... and {status['model_count'] - 10} more")
+                if model_count > 10:
+                    self.console.print(f"  ... and {model_count - 10} more")
             else:
                 self.console.print("[yellow]No models found[/yellow]")
         else:
-            self.console.print("[red]✗ Ollama is not connected[/red]")
-            self.console.print(f"Trying to connect to: {status['base_url']}")
-
-            if "error_help" in status:
-                self.console.print("\n[yellow]Connection Help:[/yellow]")
-                for help_item in status["error_help"]:
-                    self.console.print(f"  {help_item}")
+            self.console.print(f"[red]✗ {provider_name} is not connected[/red]")
+            self.console.print(f"Endpoint: {status.get('endpoint', 'unknown')}")
 
             self.console.print("\n[cyan]Commands:[/cyan]")
-            self.console.print("  [bold]/server <url>[/bold] - Set Ollama server URL")
-            self.console.print("  [bold]/server[/bold] - Prompt for server URL")
+            self.console.print("  [bold]/switch <provider>[/bold] - Switch to another provider")
+            self.console.print("  [bold]/detect[/bold] - Auto-detect available provider")
+            self.console.print("  [bold]/server <url>[/bold] - Set server endpoint")
             self.console.print("  [bold]/list-models[/bold] - List and select models")
-            self.console.print("  [bold]/models[/bold] - Alias for /list-models")
 
-    def _set_ollama_server(self, args: str):
+    def _list_providers(self, args: str):
+        """List all available providers"""
+        providers = LLMProviderFactory.get_supported_providers()
+        current_provider = self.llm_provider.get_provider_type().value
+        
+        self.console.print("\n[cyan]Available Providers:[/cyan]")
+        for provider in providers:
+            indicator = "[green]✓[/green]" if provider == current_provider else " "
+            self.console.print(f"{indicator} {provider.title()}")
+        
+        self.console.print(f"\nCurrent provider: [bold]{current_provider.title()}[/bold]")
+        self.console.print("Use [bold]/switch <provider>[/bold] to change providers")
+
+    def _switch_provider(self, args: str):
+        """Switch to a different provider"""
+        if not args.strip():
+            self.console.print("[yellow]Usage: /switch <provider>[/yellow]")
+            self.console.print("Available: ollama, lm_studio")
+            return
+        
+        new_provider = args.strip().lower()
+        current_provider = self.llm_provider.get_provider_type().value
+        
+        if new_provider == current_provider:
+            self.console.print(f"[yellow]Already using {new_provider.title()}[/yellow]")
+            return
+        
+        try:
+            # Create new provider
+            new_llm_provider = LLMProviderFactory.create_provider(new_provider)
+            
+            # Test connection
+            if new_llm_provider.is_connected():
+                self.llm_provider = new_llm_provider
+                
+                # Update processors
+                self.chat_processor = ChatProcessor(self.llm_provider, self.conversation_manager)
+                self.task_processor = TaskProcessor(self.llm_provider, self.conversation_manager)
+                
+                self.console.print(f"[green]✓ Switched to {new_provider.title()}[/green]")
+                
+                # Show available models and prompt selection if multiple
+                models = self.llm_provider.list_models()
+                if models:
+                    if len(models) > 1:
+                        self.console.print(f"Found {len(models)} models. Please select one:")
+                        self._show_model_selection(models)
+                    else:
+                        self.llm_provider.set_model(models[0])
+                        self.console.print(f"Using only available model: {models[0]}")
+                else:
+                    self.console.print("No models found")
+            else:
+                self.console.print(f"[red]✗ Could not connect to {new_provider.title()}[/red]")
+                self.console.print("Please ensure the provider is running and accessible")
+                
+        except Exception as e:
+            self.console.print(f"[red]Error switching to {new_provider}: {e}[/red]")
+
+    def _auto_detect_provider(self, args: str):
+        """Auto-detect the best available provider"""
+        self.console.print("[dim]🔍 Auto-detecting providers...[/dim]")
+        
+        try:
+            new_llm_provider = LLMProviderFactory.create_auto_detect()
+            detected_provider = new_llm_provider.get_provider_type().value
+            
+            self.llm_provider = new_llm_provider
+            
+            # Update processors
+            self.chat_processor = ChatProcessor(self.llm_provider, self.conversation_manager)
+            self.task_processor = TaskProcessor(self.llm_provider, self.conversation_manager)
+            
+            self.console.print(f"[green]✓ Auto-detected and switched to {detected_provider.title()}[/green]")
+            
+            # Show status and handle model selection
+            status = self.llm_provider.health_check()
+            if status.get("available_models"):
+                models = status["available_models"]
+                model_count = len(models)
+                if model_count > 1:
+                    self.console.print(f"Found {model_count} models. Please select one:")
+                    self._show_model_selection(models)
+                else:
+                    self.llm_provider.set_model(models[0])
+                    self.console.print(f"Using only available model: {models[0]}")
+                
+        except Exception as e:
+            self.console.print(f"[red]Auto-detection failed: {e}[/red]")
+
+    def _set_server_endpoint(self, args: str):
         """Sets Ollama server URL"""
         if args.strip():
             new_url = args.strip()
@@ -321,35 +418,38 @@ class XandAICLI:
         if not (new_url.startswith("http://") or new_url.startswith("https://")):
             new_url = "http://" + new_url
 
-        old_url = self.ollama_client.base_url
+        old_url = self.llm_provider.get_base_url()
         self.console.print(
             f"Switching from [dim]{old_url}[/dim] to [bold]{new_url}[/bold]..."
         )
 
-        # Update the client
-        self.ollama_client.set_base_url(new_url)
+        # Update the provider endpoint (this would need provider-specific implementation)
+        # For now, we'll create a new provider with the new URL
+        try:
+            current_provider_type = self.llm_provider.get_provider_type().value
+            self.llm_provider = LLMProviderFactory.create_provider(current_provider_type, base_url=new_url)
+            
+            # Update processors
+            self.chat_processor = ChatProcessor(self.llm_provider, self.conversation_manager)
+            self.task_processor = TaskProcessor(self.llm_provider, self.conversation_manager)
+        except Exception as e:
+            self.console.print(f"[red]Failed to update endpoint: {e}[/red]")
+            return
 
         # Test connection
-        if self.ollama_client.is_connected():
-            self.console.print("[green]✓ Successfully connected to Ollama![/green]")
+        if self.llm_provider.is_connected():
+            provider_name = self.llm_provider.get_provider_type().value.title()
+            self.console.print(f"[green]✓ Successfully connected to {provider_name}![/green]")
 
-            # Show available models
-            models = self.ollama_client.list_models()
+            # Show available models and handle selection
+            models = self.llm_provider.list_models()
             if models:
-                self.console.print(
-                    f"Found {len(models)} model(s): {', '.join(models[:3])}{'...' if len(models) > 3 else ''}"
-                )
-
-                # Ask if user wants to select a model
-                self.console.print(
-                    "\n[cyan]Would you like to select a model? (y/n)[/cyan]"
-                )
-                try:
-                    choice = input("> ").strip().lower()
-                    if choice in ["y", "yes"]:
-                        self._show_model_selection(models)
-                except (KeyboardInterrupt, EOFError):
-                    self.console.print("\n[yellow]Skipped model selection[/yellow]")
+                if len(models) > 1:
+                    self.console.print(f"Found {len(models)} models. Please select one:")
+                    self._show_model_selection(models)
+                else:
+                    self.llm_provider.set_model(models[0])
+                    self.console.print(f"Using only available model: {models[0]}")
             else:
                 self.console.print(
                     "[yellow]No models found. You may need to pull a model first.[/yellow]"
@@ -361,14 +461,15 @@ class XandAICLI:
 
     def _list_and_select_models(self, args: str):
         """Lists available models and allows selection"""
-        if not self.ollama_client.is_connected():
-            self.console.print("[red]✗ Ollama is not connected[/red]")
+        if not self.llm_provider.is_connected():
+            provider_name = self.llm_provider.get_provider_type().value.title()
+            self.console.print(f"[red]✗ {provider_name} is not connected[/red]")
             self.console.print(
-                "Use [bold]/server[/bold] to connect to an Ollama server first."
+                "Use [bold]/server[/bold] or [bold]/switch[/bold] to connect to a provider first."
             )
             return
 
-        models = self.ollama_client.list_models()
+        models = self.llm_provider.list_models()
         if not models:
             self.console.print("[yellow]No models found.[/yellow]")
             self.console.print("You may need to pull a model first:")
@@ -379,7 +480,7 @@ class XandAICLI:
 
     def _show_model_selection(self, models: List[str]):
         """Shows model selection interface"""
-        current_model = self.ollama_client.get_current_model()
+        current_model = self.llm_provider.get_current_model()
 
         self.console.print(f"\n[cyan]Available Models ({len(models)}):[/cyan]")
         self.console.print(f"[dim]Current model: [bold]{current_model}[/bold][/dim]")
@@ -409,13 +510,13 @@ class XandAICLI:
 
                     # Set the model
                     try:
-                        self.ollama_client.set_model(selected_model)
+                        self.llm_provider.set_model(selected_model)
                         self.console.print(
                             f"[green]✓ Model set to: [bold]{selected_model}[/bold][/green]"
                         )
 
                         # Show model info if available
-                        model_info = self.ollama_client.get_model_info(selected_model)
+                        model_info = self.llm_provider.get_model_info(selected_model)
                         if model_info and "details" in model_info:
                             details = model_info["details"]
                             if "parameter_size" in details:
@@ -456,23 +557,27 @@ class XandAICLI:
 
     def _show_status(self, args: str):
         """Shows application status"""
-        ollama_status = self.ollama_client.get_connection_status()
+        provider_status = self.llm_provider.health_check()
+        provider_name = self.llm_provider.get_provider_type().value.title()
         status = {
             "Mode": self._get_mode_description(),
-            "Ollama Server": ollama_status["base_url"],
-            "Ollama Connected": "Yes" if ollama_status["connected"] else "No",
-            "Current Model": ollama_status["current_model"],
-            "Available Models": ollama_status["model_count"],
+            "Provider": provider_name,
+            "Endpoint": provider_status.get("endpoint", "Unknown"),
+            "Connected": "Yes" if provider_status.get("connected", False) else "No",
+            "Current Model": provider_status.get("current_model", "None"),
+            "Available Models": len(provider_status.get("available_models", [])),
             "Conversations": len(self.conversation_manager.get_recent_history()),
             "Status": "Active",
         }
         self.display.show_status(status)
 
         # Show connection help if not connected
-        if not ollama_status["connected"] and "error_help" in ollama_status:
-            self.console.print("\n[yellow]Ollama Connection Help:[/yellow]")
-            for help_item in ollama_status["error_help"]:
-                self.console.print(f"  {help_item}")
+        if not provider_status.get("connected", False):
+            provider_name = self.llm_provider.get_provider_type().value.title()
+            self.console.print(f"\n[yellow]{provider_name} Connection Help:[/yellow]")
+            self.console.print("  Use [bold]/switch <provider>[/bold] to try another provider")
+            self.console.print("  Use [bold]/detect[/bold] to auto-detect available providers")
+            self.console.print("  Use [bold]/provider[/bold] to check current provider status")
 
     def _get_mode_description(self) -> str:
         """Returns current mode description"""
@@ -510,7 +615,7 @@ class XandAICLI:
 
 
 @click.command()
-@click.option("--model", "-m", default="llama3.2", help="Ollama model to use")
+@click.option("--model", "-m", help="Model to use (will auto-select if not specified)")
 @click.option("--verbose", "-v", is_flag=True, help="Verbose output")
 @click.argument("input_text", required=False)
 def main(model: str, verbose: bool, input_text: Optional[str]):

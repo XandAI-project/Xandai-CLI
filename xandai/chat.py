@@ -20,7 +20,7 @@ from rich.panel import Panel
 from rich.syntax import Syntax
 
 from xandai.history import HistoryManager
-from xandai.ollama_client import OllamaClient, OllamaResponse
+from xandai.integrations.base_provider import LLMProvider, LLMResponse
 from xandai.task import TaskProcessor, TaskStep
 from xandai.utils.os_utils import OSUtils
 from xandai.utils.prompt_manager import PromptManager
@@ -44,6 +44,8 @@ class IntelligentCompleter(Completer):
             "/stat",
             "/scan",
             "/structure",
+            "/interactive",
+            "/toggle",
             "/exit",
             "/quit",
             "/bye",
@@ -546,20 +548,21 @@ class ChatREPL:
 
     def __init__(
         self,
-        ollama_client: OllamaClient,
+        llm_provider: LLMProvider,
         history_manager: HistoryManager,
         verbose: bool = False,
     ):
         """Initialize Chat REPL"""
-        self.ollama_client = ollama_client
+        self.llm_provider = llm_provider
         self.history_manager = history_manager
         self.verbose = verbose
+        self.interactive_mode = True  # Default to interactive mode
 
         # Rich console for pretty output
         self.console = Console()
 
         # Task processor (with shared verbose mode)
-        self.task_processor = TaskProcessor(ollama_client, history_manager, verbose)
+        self.task_processor = TaskProcessor(llm_provider, history_manager, verbose)
 
         # Prompt session with history and completion
         self.session = PromptSession(
@@ -802,7 +805,7 @@ class ChatREPL:
         except KeyboardInterrupt:
             pass
         finally:
-            self.console.print("\\n👋 Goodbye!")
+            self.console.print("👋 Goodbye!")
 
     def _process_input(self, user_input: str):
         """Process user input - special commands, terminal commands, task mode, or LLM chat"""
@@ -903,6 +906,11 @@ class ChatREPL:
         # Scan current directory structure
         if command in ["/scan", "/structure"]:
             self._show_project_structure()
+            return True
+
+        # Interactive mode toggle
+        if command in ["/interactive", "/toggle"]:
+            self._toggle_interactive_mode()
             return True
 
         # Unknown slash command
@@ -1283,7 +1291,7 @@ class ChatREPL:
             self._display_response(response.content, allow_execution=True)
 
             # Display context usage
-            self.console.print(f"\\n[dim]{response.context_usage}[/dim]")
+            self.console.print(f"[dim]{response.context_usage}[/dim]")
 
             # Add response to history
             self.history_manager.add_conversation(
@@ -1408,7 +1416,7 @@ class ChatREPL:
                         True,
                     )
 
-                command_response = self.ollama_client.chat(
+                command_response = self.llm_provider.chat(
                     messages=command_messages,
                     stream=False,  # Use non-streaming for command generation to avoid "Extra data" JSON issues
                 )
@@ -1435,7 +1443,7 @@ class ChatREPL:
                         }
                     ]
 
-                    command_response = self.ollama_client.chat(
+                    command_response = self.llm_provider.chat(
                         messages=simple_command_messages, stream=False
                     )
                     if self.verbose:
@@ -1887,7 +1895,7 @@ class ChatREPL:
 
             # Call LLM using chat() instead of generate() to include conversation context
             with self.console.status(f"[bold blue]Generating {step.target}..."):
-                response = self.ollama_client.chat(
+                response = self.llm_provider.chat(
                     messages=messages,
                     stream=False,  # Use non-streaming for file generation
                     temperature=0.3,
@@ -2357,7 +2365,7 @@ Remember: Your response will be written directly to the file! NO explanatory tex
 
                 # Try streaming first
                 try:
-                    return self.ollama_client.chat(
+                    return self.llm_provider.chat(
                         messages=messages,
                         system_prompt=self.system_prompt,
                         stream=True,
@@ -2368,14 +2376,14 @@ Remember: Your response will be written directly to the file! NO explanatory tex
                     status.update(
                         "[bold green]Thinking... (streaming fallback)[/bold green]"
                     )
-                    return self.ollama_client.chat(
+                    return self.llm_provider.chat(
                         messages=messages, system_prompt=self.system_prompt, stream=True
                     )
 
         except Exception as e:
             self.console.print(f"[red]Error in chat: {e}[/red]")
             # Final fallback - still use streaming
-            return self.ollama_client.chat(
+            return self.llm_provider.chat(
                 messages=messages, system_prompt=self.system_prompt, stream=True
             )
 
@@ -2862,36 +2870,39 @@ Remember: Your response will be written directly to the file! NO explanatory tex
             # Show execution prompt
             self.console.print(prompt_msg, end=" ")
 
-            # Get user response
+            # Get user response with EOF handling
             import sys
 
             sys.stdout.flush()
-            response = input().strip().lower()
+            
+            # Check if interactive mode is disabled
+            if not self.interactive_mode:
+                self.console.print("[dim]Code execution skipped (interactive mode disabled).[/dim]")
+                return
+            
+            # Interactive mode is enabled - always attempt to prompt user
+            try:
+                response = input().strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                self.console.print("[dim]Code execution skipped.[/dim]")
+                return
+            except Exception as e:
+                # Handle any other input issues gracefully
+                self.console.print(f"[dim]Code execution skipped (input error: {e}).[/dim]")
+                return
 
             if response in ["y", "yes", "sim", "s"]:
                 self.console.print(exec_msg)
 
-                # Execute based on language type
-                if lang.lower() in ["bash", "shell", "sh", "cmd", "powershell"]:
-                    # Direct shell command execution
-                    self._execute_shell_code(code)
-                elif lang.lower() in ["python", "py"]:
-                    # Python code execution
-                    self._execute_python_code(code)
-                elif lang.lower() in ["node", "js"]:
-                    # Node.js code execution
-                    self._execute_node_code(code)
-                elif lang.lower() == "npm":
-                    # NPM command execution
-                    self._execute_npm_code(code)
-                else:
-                    # Fallback to shell execution
-                    self._execute_shell_code(code)
+                # Execute based on language type using generalized system
+                self._execute_code_by_language(code, lang)
             else:
                 self.console.print("[dim]Code execution skipped.[/dim]")
 
         except KeyboardInterrupt:
-            self.console.print("\\n[dim]Code execution cancelled.[/dim]")
+            self.console.print("[dim]Code execution cancelled.[/dim]")
+        except EOFError:
+            self.console.print("[dim]Code execution skipped (EOF).[/dim]")
         except Exception as e:
             self.console.print(f"[red]Error prompting for execution: {e}[/red]")
 
@@ -3474,23 +3485,358 @@ Remember: Your response will be written directly to the file! NO explanatory tex
 
                 self.console.print(f"[dim]Traceback: {traceback.format_exc()}[/dim]")
 
-    def _execute_python_code(self, code: str):
-        """Execute Python code"""
-        try:
-            command = f'python -c "{code.replace(chr(34), chr(92)+chr(34))}"'
-            self.console.print(f"[blue]$ {command}[/blue]")
-            self._execute_command_with_output(command)
-        except Exception as e:
-            self.console.print(f"[red]Error executing Python code: {e}[/red]")
+    def _get_language_config(self):
+        """Get configuration for different programming languages"""
+        import platform
+        is_windows = platform.system().lower() == 'windows'
+        
+        return {
+            # Python
+            'python': {
+                'extensions': ['.py'],
+                'inline_command': 'python -c',
+                'file_command': 'python',
+                'supports_inline': True,
+                'needs_compilation': False,
+                'complex_keywords': ['def ', 'class ', 'if __name__', 'for ', 'while ', 'with ', 'try:', 'import ', 'from ']
+            },
+            'py': {
+                'extensions': ['.py'],
+                'inline_command': 'python -c',
+                'file_command': 'python',
+                'supports_inline': True,
+                'needs_compilation': False,
+                'complex_keywords': ['def ', 'class ', 'if __name__', 'for ', 'while ', 'with ', 'try:', 'import ', 'from ']
+            },
+            
+            # JavaScript/Node.js
+            'javascript': {
+                'extensions': ['.js'],
+                'inline_command': 'node -e',
+                'file_command': 'node',
+                'supports_inline': True,
+                'needs_compilation': False,
+                'complex_keywords': ['function ', 'const ', 'let ', 'var ', 'class ', 'import ', 'require(', 'module.exports']
+            },
+            'js': {
+                'extensions': ['.js'],
+                'inline_command': 'node -e',
+                'file_command': 'node',
+                'supports_inline': True,
+                'needs_compilation': False,
+                'complex_keywords': ['function ', 'const ', 'let ', 'var ', 'class ', 'import ', 'require(', 'module.exports']
+            },
+            'node': {
+                'extensions': ['.js'],
+                'inline_command': 'node -e',
+                'file_command': 'node',
+                'supports_inline': True,
+                'needs_compilation': False,
+                'complex_keywords': ['function ', 'const ', 'let ', 'var ', 'class ', 'import ', 'require(', 'module.exports']
+            },
+            
+            # C
+            'c': {
+                'extensions': ['.c'],
+                'inline_command': None,  # No inline support
+                'file_command': 'gcc -o {output} {input} && {output}',
+                'file_command_windows': 'gcc -o {output}.exe {input} && {output}.exe',
+                'supports_inline': False,
+                'needs_compilation': True,
+                'complex_keywords': ['#include', 'int main', 'printf', 'scanf', 'struct ', 'typedef']
+            },
+            
+            # C++
+            'cpp': {
+                'extensions': ['.cpp', '.cxx', '.cc'],
+                'inline_command': None,
+                'file_command': 'g++ -o {output} {input} && {output}',
+                'file_command_windows': 'g++ -o {output}.exe {input} && {output}.exe',
+                'supports_inline': False,
+                'needs_compilation': True,
+                'complex_keywords': ['#include', 'int main', 'std::', 'cout', 'cin', 'class ', 'namespace']
+            },
+            'c++': {
+                'extensions': ['.cpp'],
+                'inline_command': None,
+                'file_command': 'g++ -o {output} {input} && {output}',
+                'file_command_windows': 'g++ -o {output}.exe {input} && {output}.exe',
+                'supports_inline': False,
+                'needs_compilation': True,
+                'complex_keywords': ['#include', 'int main', 'std::', 'cout', 'cin', 'class ', 'namespace']
+            },
+            
+            # Go
+            'go': {
+                'extensions': ['.go'],
+                'inline_command': None,
+                'file_command': 'go run',
+                'supports_inline': False,
+                'needs_compilation': False,  # go run handles compilation
+                'complex_keywords': ['package ', 'import ', 'func ', 'var ', 'const ', 'type ', 'struct']
+            },
+            
+            # Shell scripts
+            'bash': {
+                'extensions': ['.sh'],
+                'inline_command': 'bash -c' if not is_windows else 'bash -c',
+                'file_command': 'bash',
+                'supports_inline': True,
+                'needs_compilation': False,
+                'complex_keywords': ['#!/bin/bash', 'function ', 'if ', 'for ', 'while ', 'case ']
+            },
+            'sh': {
+                'extensions': ['.sh'],
+                'inline_command': 'sh -c' if not is_windows else 'sh -c',
+                'file_command': 'sh',
+                'supports_inline': True,
+                'needs_compilation': False,
+                'complex_keywords': ['#!/bin/sh', 'if ', 'for ', 'while ', 'case ']
+            },
+            'shell': {
+                'extensions': ['.sh'],
+                'inline_command': 'bash -c' if not is_windows else 'cmd /c' if is_windows else 'sh -c',
+                'file_command': 'bash' if not is_windows else 'cmd /c',
+                'supports_inline': True,
+                'needs_compilation': False,
+                'complex_keywords': ['if ', 'for ', 'while ', 'case '] if not is_windows else ['if ', 'for ']
+            },
+            
+            # Windows specific
+            'cmd': {
+                'extensions': ['.cmd', '.bat'],
+                'inline_command': 'cmd /c',
+                'file_command': 'cmd /c',
+                'supports_inline': True,
+                'needs_compilation': False,
+                'complex_keywords': ['@echo', 'if ', 'for ', 'goto ', 'call ', 'set ']
+            },
+            'batch': {
+                'extensions': ['.bat'],
+                'inline_command': 'cmd /c',
+                'file_command': 'cmd /c',
+                'supports_inline': True,
+                'needs_compilation': False,
+                'complex_keywords': ['@echo', 'if ', 'for ', 'goto ', 'call ', 'set ']
+            },
+            'bat': {
+                'extensions': ['.bat'],
+                'inline_command': 'cmd /c',
+                'file_command': 'cmd /c',
+                'supports_inline': True,
+                'needs_compilation': False,
+                'complex_keywords': ['@echo', 'if ', 'for ', 'goto ', 'call ', 'set ']
+            },
+            
+            # PowerShell
+            'powershell': {
+                'extensions': ['.ps1'],
+                'inline_command': 'powershell -Command',
+                'file_command': 'powershell -File',
+                'supports_inline': True,
+                'needs_compilation': False,
+                'complex_keywords': ['function ', 'param(', 'if (', 'foreach ', 'while (', '$', 'Get-', 'Set-']
+            },
+            'ps1': {
+                'extensions': ['.ps1'],
+                'inline_command': 'powershell -Command',
+                'file_command': 'powershell -File',
+                'supports_inline': True,
+                'needs_compilation': False,
+                'complex_keywords': ['function ', 'param(', 'if (', 'foreach ', 'while (', '$', 'Get-', 'Set-']
+            },
+            
+            # NPM/Package managers
+            'npm': {
+                'extensions': [],
+                'inline_command': None,
+                'file_command': None,  # Special handling
+                'supports_inline': False,
+                'needs_compilation': False,
+                'complex_keywords': []
+            }
+        }
 
-    def _execute_node_code(self, code: str):
-        """Execute Node.js code"""
+    def _should_use_temp_file(self, code: str, lang: str) -> bool:
+        """Generalized logic to determine if code should be executed via temporary file"""
+        lang_lower = lang.lower()
+        config = self._get_language_config().get(lang_lower)
+        
+        if not config:
+            # Unknown language, default to temp file for safety
+            return True
+        
+        # If language doesn't support inline execution, always use temp file
+        if not config['supports_inline']:
+            return True
+            
+        # Multi-line scripts
+        if '\n' in code.strip():
+            return True
+            
+        # Contains complex quotes that might break inline execution
+        if code.count('"') > 2 or code.count("'") > 2:
+            return True
+            
+        # Contains triple quotes (for languages that support them)
+        if '"""' in code or "'''" in code:
+            return True
+            
+        # Contains backslashes that might cause escaping issues  
+        if '\\' in code and not any(code.startswith(simple) for simple in ['print(', 'echo ', 'console.log(']):
+            return True
+            
+        # Long single-line scripts (>200 chars) - safer with temp file
+        if len(code) > 200:
+            return True
+            
+        # Contains language-specific complex keywords
+        if any(keyword in code for keyword in config['complex_keywords']):
+            return True
+            
+        return False
+
+    def _execute_code_by_language(self, code: str, lang: str):
+        """Execute code in specified language with intelligent temp file handling"""
+        import tempfile
+        import os
+        import platform
+        from pathlib import Path
+        
         try:
-            command = f'node -e "{code.replace(chr(34), chr(92)+chr(34))}"'
+            code = code.strip()
+            lang_lower = lang.lower()
+            config = self._get_language_config().get(lang_lower)
+            
+            if not config:
+                self.console.print(f"[yellow]Warning: Unknown language '{lang}', attempting shell execution...[/yellow]")
+                return self._execute_shell_code(code)
+            
+            # Special handling for NPM
+            if lang_lower == 'npm':
+                return self._execute_npm_code(code)
+            
+            # Determine execution method
+            needs_temp_file = self._should_use_temp_file(code, lang)
+            
+            if needs_temp_file or not config['supports_inline']:
+                # Use temporary file approach
+                self._execute_code_with_temp_file(code, lang, config)
+            else:
+                # Use inline execution
+                self._execute_code_inline(code, lang, config)
+                
+        except Exception as e:
+            self.console.print(f"[red]Error executing {lang} code: {e}[/red]")
+            import traceback
+            if self.verbose:
+                self.console.print(f"[dim]Traceback: {traceback.format_exc()}[/dim]")
+
+    def _execute_code_with_temp_file(self, code: str, lang: str, config: dict):
+        """Execute code using temporary file approach"""
+        import tempfile
+        import os
+        import platform
+        import subprocess
+        
+        is_windows = platform.system().lower() == 'windows'
+        extension = config['extensions'][0] if config['extensions'] else '.tmp'
+        
+        self.console.print(f"[dim]Creating temporary {lang} file for execution...[/dim]")
+        
+        # Create temporary file
+        with tempfile.NamedTemporaryFile(
+            mode='w',
+            suffix=extension,
+            delete=False,
+            encoding='utf-8'
+        ) as temp_file:
+            temp_file.write(code)
+            temp_file_path = temp_file.name
+        
+        try:
+            if config['needs_compilation']:
+                # Handle compiled languages (C, C++, Go)
+                self._execute_compiled_code(temp_file_path, lang, config, is_windows)
+            else:
+                # Handle interpreted languages
+                if is_windows and f'file_command_windows' in config:
+                    base_command = config['file_command_windows']
+                else:
+                    base_command = config['file_command']
+                
+                command = f'{base_command} "{temp_file_path}"'
             self.console.print(f"[blue]$ {command}[/blue]")
             self._execute_command_with_output(command)
-        except Exception as e:
-            self.console.print(f"[red]Error executing Node.js code: {e}[/red]")
+                
+        finally:
+            # Cleanup temporary file
+            try:
+                os.unlink(temp_file_path)
+                self.console.print(f"[dim]Temporary {lang} file cleaned up.[/dim]")
+            except OSError:
+                pass
+
+    def _execute_compiled_code(self, source_path: str, lang: str, config: dict, is_windows: bool):
+        """Execute compiled languages (C, C++, etc.)"""
+        import tempfile
+        import os
+        from pathlib import Path
+        
+        # Generate output executable name
+        source_stem = Path(source_path).stem
+        if is_windows:
+            output_name = f"{source_stem}_temp"
+            command_template = config.get('file_command_windows', config['file_command'])
+        else:
+            output_name = f"{source_stem}_temp"
+            command_template = config['file_command']
+        
+        try:
+            # Format the compilation command
+            command = command_template.format(
+                input=f'"{source_path}"',
+                output=output_name
+            )
+            
+            self.console.print(f"[blue]$ {command}[/blue]")
+            self._execute_command_with_output(command)
+            
+        finally:
+            # Cleanup compiled executable
+            try:
+                # Check for both .exe and non-.exe versions
+                exe_path = f"{output_name}.exe" if is_windows else output_name
+                if os.path.exists(exe_path):
+                    os.unlink(exe_path)
+                    self.console.print(f"[dim]Compiled executable cleaned up.[/dim]")
+                elif os.path.exists(output_name):
+                    os.unlink(output_name)
+                    self.console.print(f"[dim]Compiled executable cleaned up.[/dim]")
+            except OSError:
+                pass
+
+    def _execute_code_inline(self, code: str, lang: str, config: dict):
+        """Execute code using inline command approach"""
+        inline_cmd = config['inline_command']
+        
+        # Escape code for inline execution
+        if lang.lower() in ['python', 'py']:
+            escaped_code = code.replace('"', '\\"').replace('\n', '\\n')
+        elif lang.lower() in ['javascript', 'js', 'node']:
+            escaped_code = code.replace('"', '\\"').replace('\n', '\\n')
+        else:
+            # Generic escaping
+            escaped_code = code.replace('"', '\\"')
+        
+        command = f'{inline_cmd} "{escaped_code}"'
+        self.console.print(f"[blue]$ {command}[/blue]")
+        self._execute_command_with_output(command)
+
+    # Legacy function - now handled by _execute_code_by_language
+    def _execute_node_code(self, code: str):
+        """Execute Node.js code (Legacy - use _execute_code_by_language instead)"""
+        return self._execute_code_by_language(code, 'node')
 
     def _execute_npm_code(self, code: str):
         """Execute NPM commands"""
@@ -3575,6 +3921,7 @@ Remember: Your response will be written directly to the file! NO explanatory tex
                       /debug true/on/enable  - Enable debug mode
                       /debug false/off/disable - Disable debug mode
                       /debug info/show - Show debug information
+  • /interactive, /toggle - Toggle interactive mode for code execution
   • /scan, /structure - Show current directory structure
   • /exit, /quit, /bye - Exit XandAI
 
@@ -3601,6 +3948,19 @@ Remember: Your response will be written directly to the file! NO explanatory tex
         """
 
         self.console.print(Panel(help_text, title="Help", border_style="blue"))
+
+    def _toggle_interactive_mode(self):
+        """Toggle interactive mode for code execution prompts"""
+        self.interactive_mode = not self.interactive_mode
+        status = "enabled" if self.interactive_mode else "disabled"
+        color = "green" if self.interactive_mode else "yellow"
+        
+        self.console.print(f"[{color}]Interactive mode {status}[/{color}]")
+        
+        if self.interactive_mode:
+            self.console.print("[dim]You will be prompted before executing detected code blocks[/dim]")
+        else:
+            self.console.print("[dim]Code blocks will be automatically skipped without prompts[/dim]")
 
     def _clear_screen(self):
         """Clear the terminal screen"""
@@ -3656,7 +4016,7 @@ Remember: Your response will be written directly to the file! NO explanatory tex
 
     def _show_status(self):
         """Show system status"""
-        health = self.ollama_client.health_check()
+        health = self.llm_provider.health_check()
 
         status_text = f"""
 Connected: {'✅ Yes' if health['connected'] else '❌ No'}
@@ -3730,7 +4090,7 @@ Tracked Files: {len(self.history_manager.get_project_files())}
         import platform
 
         # Get Ollama health info
-        health = self.ollama_client.health_check()
+        health = self.llm_provider.health_check()
 
         # Get OS commands
         os_commands = OSUtils.get_available_commands()

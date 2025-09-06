@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
 from xandai.history import HistoryManager
-from xandai.ollama_client import OllamaClient, OllamaResponse
+from xandai.integrations.base_provider import LLMProvider, LLMResponse
 
 
 @dataclass
@@ -37,12 +37,12 @@ class TaskProcessor:
 
     def __init__(
         self,
-        ollama_client: OllamaClient,
+        llm_provider: LLMProvider,
         history_manager: HistoryManager,
         verbose: bool = False,
     ):
         """Initialize task processor"""
-        self.ollama_client = ollama_client
+        self.llm_provider = llm_provider
         self.history_manager = history_manager
         self.verbose = verbose
 
@@ -169,7 +169,7 @@ class TaskProcessor:
 
     def _get_llm_response_with_progress(
         self, prompt: str, console=None
-    ) -> OllamaResponse:
+    ) -> LLMResponse:
         """Get LLM response with streaming progress indicators"""
         # Get conversation context to maintain continuity between chat and task modes
         context_messages = self.history_manager.get_conversation_context(limit=15)
@@ -231,7 +231,7 @@ class TaskProcessor:
                         else:
                             status.update(f"[bold blue]{message}[/bold blue]")
 
-                    return self.ollama_client.chat(
+                    return self.llm_provider.chat(
                         messages=messages,
                         temperature=0.3,
                         stream=False,  # Tasks use non-streaming mode as requested
@@ -241,14 +241,14 @@ class TaskProcessor:
                 console.print(
                     "[dim]⚠️ Streaming not available, using standard mode...[/dim]"
                 )
-                return self.ollama_client.chat(
+                return self.llm_provider.chat(
                     messages=messages,
                     temperature=0.3,
                     stream=False,  # Tasks use non-streaming mode
                 )
         else:
             # Regular non-streaming mode for tasks
-            return self.ollama_client.chat(
+            return self.llm_provider.chat(
                 messages=messages,
                 temperature=0.3,
                 stream=False,  # Tasks use non-streaming mode

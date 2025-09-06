@@ -1,0 +1,80 @@
+# Pre-commit configuration for XandAI CLI
+# Runs comprehensive tests and checks before allowing commits
+
+repos:
+  # Local hooks for project-specific checks
+  - repo: local
+    hooks:
+      # Run multi-language system tests
+      - id: xandai-tests
+        name: XandAI Multi-Language Tests
+        entry: python scripts/run_precommit_tests.py
+        language: system
+        files: ^(xandai/|tests/).*\.py$
+        pass_filenames: false
+        stages: [commit]
+        verbose: true
+
+      # Python code formatting with black
+      - id: black
+        name: Format Python code with Black
+        entry: black
+        language: system
+        types: [python]
+        args: [--line-length=100, --target-version=py310]
+
+      # Python import sorting with isort
+      - id: isort
+        name: Sort Python imports with isort
+        entry: isort
+        language: system
+        types: [python]
+        args: [--profile=black, --line-length=100]
+
+      # Python linting with flake8
+      - id: flake8
+        name: Lint Python code with flake8
+        entry: flake8
+        language: system
+        types: [python]
+        args: [--max-line-length=100, --extend-ignore=E203,W503]
+
+  # Built-in hooks for general file checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      # Check for files that would conflict in case-insensitive filesystems
+      - id: check-case-conflict
+      
+      # Check for merge conflict markers
+      - id: check-merge-conflict
+      
+      # Check JSON files for syntax errors
+      - id: check-json
+      
+      # Check YAML files for syntax errors
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+      
+      # Check for Python syntax errors or undefined names
+      - id: check-ast
+      
+      # Check for debugger imports and breakpoints
+      - id: debug-statements
+      
+      # Ensure files end with newlines
+      - id: end-of-file-fixer
+        exclude: ^tests/.*\.py$  # Exclude test files that may have specific formatting
+      
+      # Remove trailing whitespace
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      
+      # Check for large files (>500KB)
+      - id: check-added-large-files
+        args: [--maxkb=500]
+
+# Global configuration
+default_stages: [commit]
+fail_fast: false  # Continue running all hooks even if one fails
+minimum_pre_commit_version: '2.20.0'

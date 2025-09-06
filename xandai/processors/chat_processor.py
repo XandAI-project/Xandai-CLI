@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 
 from xandai.conversation.conversation_manager import ConversationManager
 from xandai.core.app_state import AppState
-from xandai.integrations.ollama_client import OllamaClient, OllamaResponse
+from xandai.integrations.base_provider import LLMProvider, LLMResponse
 
 
 class ChatProcessor:
@@ -19,9 +19,9 @@ class ChatProcessor:
     """
 
     def __init__(
-        self, ollama_client: OllamaClient, conversation_manager: ConversationManager
+        self, llm_provider: LLMProvider, conversation_manager: ConversationManager
     ):
-        self.ollama_client = ollama_client
+        self.llm_provider = llm_provider
         self.conversation_manager = conversation_manager
 
         # System prompt for chat mode
@@ -140,12 +140,12 @@ RESPONSE FORMAT:
 
     def _generate_response(
         self, context: List[Dict[str, str]], app_state: AppState
-    ) -> OllamaResponse:
+    ) -> LLMResponse:
         """
         Generates response using Ollama
         """
         try:
-            response = self.ollama_client.chat(
+            response = self.llm_provider.chat(
                 messages=context, temperature=0.7, max_tokens=2048
             )
             return response
@@ -153,7 +153,7 @@ RESPONSE FORMAT:
         except Exception as e:
             # Fallback to generate if chat fails
             prompt = self._context_to_prompt(context)
-            return self.ollama_client.generate(
+            return self.llm_provider.generate(
                 prompt=prompt, temperature=0.7, max_tokens=2048
             )
 
