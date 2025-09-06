@@ -125,7 +125,10 @@ def run_direct_verification() -> Tuple[bool, str]:
             return True, f"Direct verification: {passed}/{len(tests)} tests passed"
         else:
             print(f"❌ Direct verification failed ({passed}/{len(tests)} tests)")
-            return False, f"Direct verification failed: only {passed}/{len(tests)} tests passed"
+            return (
+                False,
+                f"Direct verification failed: only {passed}/{len(tests)} tests passed",
+            )
 
     except Exception as e:
         print(f"❌ Direct verification failed with error: {e}")
@@ -147,7 +150,11 @@ def check_code_quality() -> Tuple[bool, str]:
         quality_checks.append(("Python syntax", False, stderr))
 
     # Check for obvious issues in main modules
-    critical_files = ["xandai/main.py", "xandai/chat.py", "xandai/integrations/base_provider.py"]
+    critical_files = [
+        "xandai/main.py",
+        "xandai/chat.py",
+        "xandai/integrations/base_provider.py",
+    ]
 
     for file_path in critical_files:
         if Path(file_path).exists():

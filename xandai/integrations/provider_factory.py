@@ -140,7 +140,10 @@ class LLMProviderFactory:
             config_options["max_tokens"] = 2048
 
         return LLMProviderFactory.create_provider(
-            provider_type=provider_type, base_url=base_url, model=model, **config_options
+            provider_type=provider_type,
+            base_url=base_url,
+            model=model,
+            **config_options,
         )
 
     @staticmethod

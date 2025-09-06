@@ -307,7 +307,8 @@ def main():
 
             if args.debug:
                 OSUtils.debug_print(
-                    f"Connection failed - check if {provider_name} service is running", True
+                    f"Connection failed - check if {provider_name} service is running",
+                    True,
                 )
                 OSUtils.debug_print(f"Endpoint attempted: {endpoint}", True)
 

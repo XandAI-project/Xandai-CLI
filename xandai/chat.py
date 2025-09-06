@@ -3477,7 +3477,14 @@ Remember: Your response will be written directly to the file! NO explanatory tex
                 "file_command": "bash",
                 "supports_inline": True,
                 "needs_compilation": False,
-                "complex_keywords": ["#!/bin/bash", "function ", "if ", "for ", "while ", "case "],
+                "complex_keywords": [
+                    "#!/bin/bash",
+                    "function ",
+                    "if ",
+                    "for ",
+                    "while ",
+                    "case ",
+                ],
             },
             "sh": {
                 "extensions": [".sh"],

@@ -293,8 +293,14 @@ Write-Host (Get-Greeting -Name "World")"""
         """Test detection of PowerShell cmdlets"""
         cmdlet_tests = [
             # Should use temp file (complex cmdlets with keywords)
-            ("Get-ChildItem | Where-Object {$_.Length -gt 1000}", True),  # Contains 'Get-' and '$'
-            ("Set-ExecutionPolicy -ExecutionPolicy RemoteSigned", True),  # Contains 'Set-'
+            (
+                "Get-ChildItem | Where-Object {$_.Length -gt 1000}",
+                True,
+            ),  # Contains 'Get-' and '$'
+            (
+                "Set-ExecutionPolicy -ExecutionPolicy RemoteSigned",
+                True,
+            ),  # Contains 'Set-'
             (
                 "New-Object System.Collections.ArrayList",
                 False,
@@ -366,7 +372,10 @@ Format-Table Name, Status, StartType -AutoSize""",
             # Simple string
             ('"hello"', False),
             # Complex nested quotes - >2 quotes triggers temp file
-            ('Write-Host "Say \\"Hello\\" to \'PowerShell\'"; Write-Host "Again"', True),
+            (
+                'Write-Host "Say \\"Hello\\" to \'PowerShell\'"; Write-Host "Again"',
+                True,
+            ),
             # Very long cmdlet - >200 chars triggers temp file
             ("Get-" + "A" * 200, True),
         ]

@@ -338,7 +338,10 @@ console.log(arr2);""",
             # Simple variable assignment
             ("x = 5", False),
             # Complex nested quotes
-            ('console.log("Say \\"Hello\\" to \'World\'"); console.log("Again");', True),
+            (
+                'console.log("Say \\"Hello\\" to \'World\'"); console.log("Again");',
+                True,
+            ),
             # Very long method chain
             ("obj." + "method()." * 50 + "result()", True),  # >200 chars
         ]

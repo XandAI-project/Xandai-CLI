@@ -173,7 +173,9 @@ class LMStudioProvider(LLMProvider):
 
         try:
             response = self.session.post(
-                f"{self.api_base}/chat/completions", json=payload, timeout=self.config.timeout
+                f"{self.api_base}/chat/completions",
+                json=payload,
+                timeout=self.config.timeout,
             )
             response.raise_for_status()
 
