@@ -150,7 +150,7 @@ project_name/
 │   ├── file1.ext          # Brief description of what this file does
 │   │                      # Functions: main_function(), helper_function()
 │   │                      # Exports: MainClass, utility_functions
-│   └── file2.ext          # Brief description of what this file does  
+│   └── file2.ext          # Brief description of what this file does
 │                          # Functions: process_data(), validate_input()
 │                          # Exports: DataProcessor, validators
 ├── folder2/
@@ -221,7 +221,7 @@ api_project/
 │   └── database.js     # Database connection configuration
 │                       # Functions: connectDB(), closeDB(), getConnection()
 │                       # Exports: connection instance
-└── .env.example        # Environment variables template  
+└── .env.example        # Environment variables template
                         # Variables: PORT, DB_URI, JWT_SECRET, NODE_ENV
 ```
 
@@ -319,7 +319,7 @@ CRITICAL RULES:
 
 VALID STEP EXAMPLES:
 - "1 - create src/main.py"
-- "2 - edit package.json" 
+- "2 - edit package.json"
 - "3 - command npm install"
 - "4 - create tests/test_api.py"
 
@@ -450,9 +450,7 @@ Example for current platform:
 
         # Add project context if available
         if context and (
-            context.get("framework")
-            or context.get("language")
-            or context.get("project_type")
+            context.get("framework") or context.get("language") or context.get("project_type")
         ):
             prompt_parts.append("\\nCURRENT PROJECT CONTEXT:")
             if context.get("language"):
@@ -484,21 +482,15 @@ Example for current platform:
             if len(existing_files) > 15:
                 prompt_parts.append(f"- ... and {len(existing_files) - 15} more")
 
-            prompt_parts.append(
-                "\\n⚠️  IMPORTANT: Use 'edit' for existing files, not 'create'!"
-            )
+            prompt_parts.append("\\n⚠️  IMPORTANT: Use 'edit' for existing files, not 'create'!")
             prompt_parts.append(
                 "⚠️  MAINTAIN CONSISTENCY: Keep existing code patterns, imports, and architecture!"
             )
 
         # Add appropriate closing instruction
         if single_file_target:
-            prompt_parts.append(
-                "\\n🎯 Generate a focused, minimal change to accomplish the goal!"
-            )
+            prompt_parts.append("\\n🎯 Generate a focused, minimal change to accomplish the goal!")
         else:
-            prompt_parts.append(
-                "\\n🚀 Generate a complete, executable plan with working code!"
-            )
+            prompt_parts.append("\\n🚀 Generate a complete, executable plan with working code!")
 
         return "\\n".join(prompt_parts)

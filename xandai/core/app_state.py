@@ -84,13 +84,9 @@ class AppState:
     def set_project_context(self, root_path: str, project_type: str = None):
         """Define contexto do projeto"""
         self.project_context.root_path = root_path
-        self.project_context.project_type = project_type or self._detect_project_type(
-            root_path
-        )
+        self.project_context.project_type = project_type or self._detect_project_type(root_path)
         self.project_context.last_modified = datetime.now()
-        self.project_context.is_git_repo = os.path.exists(
-            os.path.join(root_path, ".git")
-        )
+        self.project_context.is_git_repo = os.path.exists(os.path.join(root_path, ".git"))
 
     def add_tracked_file(self, file_path: str):
         """Adiciona arquivo ao tracking"""

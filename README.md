@@ -7,7 +7,7 @@
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 
 ```
- __  __               _       _ 
+ __  __               _       _
  \ \/ /__ _ _ __   __| | __ _(_)
   \  // _` | '_ \ / _` |/ _` | |
   /  \ (_| | | | | (_| | (_| | |

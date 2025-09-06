@@ -16,8 +16,8 @@ from rich.text import Text
 from xandai.conversation.conversation_manager import ConversationManager
 from xandai.core.app_state import AppState
 from xandai.core.command_processor import CommandProcessor
-from xandai.integrations.provider_factory import LLMProviderFactory
 from xandai.integrations.base_provider import LLMProvider
+from xandai.integrations.provider_factory import LLMProviderFactory
 from xandai.processors.chat_processor import ChatProcessor
 from xandai.processors.task_processor import TaskProcessor
 from xandai.utils.display_utils import DisplayUtils
@@ -34,19 +34,15 @@ class XandAICLI:
         self.app_state = AppState()
         self.command_processor = CommandProcessor(self.app_state)
         self.conversation_manager = ConversationManager()
-        
+
         # Initialize LLM Provider with auto-detection fallback
         try:
             self.llm_provider = LLMProviderFactory.create_provider(provider_type)
         except Exception:
             self.llm_provider = LLMProviderFactory.create_auto_detect()
-            
-        self.chat_processor = ChatProcessor(
-            self.llm_provider, self.conversation_manager
-        )
-        self.task_processor = TaskProcessor(
-            self.llm_provider, self.conversation_manager
-        )
+
+        self.chat_processor = ChatProcessor(self.llm_provider, self.conversation_manager)
+        self.task_processor = TaskProcessor(self.llm_provider, self.conversation_manager)
         self.display = DisplayUtils(self.console)
 
         # EditModeEnhancer state variables
@@ -309,12 +305,12 @@ class XandAICLI:
         """List all available providers"""
         providers = LLMProviderFactory.get_supported_providers()
         current_provider = self.llm_provider.get_provider_type().value
-        
+
         self.console.print("\n[cyan]Available Providers:[/cyan]")
         for provider in providers:
             indicator = "[green]✓[/green]" if provider == current_provider else " "
             self.console.print(f"{indicator} {provider.title()}")
-        
+
         self.console.print(f"\nCurrent provider: [bold]{current_provider.title()}[/bold]")
         self.console.print("Use [bold]/switch <provider>[/bold] to change providers")
 
@@ -324,28 +320,28 @@ class XandAICLI:
             self.console.print("[yellow]Usage: /switch <provider>[/yellow]")
             self.console.print("Available: ollama, lm_studio")
             return
-        
+
         new_provider = args.strip().lower()
         current_provider = self.llm_provider.get_provider_type().value
-        
+
         if new_provider == current_provider:
             self.console.print(f"[yellow]Already using {new_provider.title()}[/yellow]")
             return
-        
+
         try:
             # Create new provider
             new_llm_provider = LLMProviderFactory.create_provider(new_provider)
-            
+
             # Test connection
             if new_llm_provider.is_connected():
                 self.llm_provider = new_llm_provider
-                
+
                 # Update processors
                 self.chat_processor = ChatProcessor(self.llm_provider, self.conversation_manager)
                 self.task_processor = TaskProcessor(self.llm_provider, self.conversation_manager)
-                
+
                 self.console.print(f"[green]✓ Switched to {new_provider.title()}[/green]")
-                
+
                 # Show available models and prompt selection if multiple
                 models = self.llm_provider.list_models()
                 if models:
@@ -360,26 +356,28 @@ class XandAICLI:
             else:
                 self.console.print(f"[red]✗ Could not connect to {new_provider.title()}[/red]")
                 self.console.print("Please ensure the provider is running and accessible")
-                
+
         except Exception as e:
             self.console.print(f"[red]Error switching to {new_provider}: {e}[/red]")
 
     def _auto_detect_provider(self, args: str):
         """Auto-detect the best available provider"""
         self.console.print("[dim]🔍 Auto-detecting providers...[/dim]")
-        
+
         try:
             new_llm_provider = LLMProviderFactory.create_auto_detect()
             detected_provider = new_llm_provider.get_provider_type().value
-            
+
             self.llm_provider = new_llm_provider
-            
+
             # Update processors
             self.chat_processor = ChatProcessor(self.llm_provider, self.conversation_manager)
             self.task_processor = TaskProcessor(self.llm_provider, self.conversation_manager)
-            
-            self.console.print(f"[green]✓ Auto-detected and switched to {detected_provider.title()}[/green]")
-            
+
+            self.console.print(
+                f"[green]✓ Auto-detected and switched to {detected_provider.title()}[/green]"
+            )
+
             # Show status and handle model selection
             status = self.llm_provider.health_check()
             if status.get("available_models"):
@@ -391,7 +389,7 @@ class XandAICLI:
                 else:
                     self.llm_provider.set_model(models[0])
                     self.console.print(f"Using only available model: {models[0]}")
-                
+
         except Exception as e:
             self.console.print(f"[red]Auto-detection failed: {e}[/red]")
 
@@ -402,13 +400,9 @@ class XandAICLI:
         else:
             # Prompt for URL
             try:
-                new_url = input(
-                    "Enter Ollama server URL (e.g., http://localhost:11434): "
-                ).strip()
+                new_url = input("Enter Ollama server URL (e.g., http://localhost:11434): ").strip()
                 if not new_url:
-                    self.console.print(
-                        "[yellow]No URL provided, keeping current server[/yellow]"
-                    )
+                    self.console.print("[yellow]No URL provided, keeping current server[/yellow]")
                     return
             except (KeyboardInterrupt, EOFError):
                 self.console.print("\n[yellow]Cancelled[/yellow]")
@@ -419,16 +413,16 @@ class XandAICLI:
             new_url = "http://" + new_url
 
         old_url = self.llm_provider.get_base_url()
-        self.console.print(
-            f"Switching from [dim]{old_url}[/dim] to [bold]{new_url}[/bold]..."
-        )
+        self.console.print(f"Switching from [dim]{old_url}[/dim] to [bold]{new_url}[/bold]...")
 
         # Update the provider endpoint (this would need provider-specific implementation)
         # For now, we'll create a new provider with the new URL
         try:
             current_provider_type = self.llm_provider.get_provider_type().value
-            self.llm_provider = LLMProviderFactory.create_provider(current_provider_type, base_url=new_url)
-            
+            self.llm_provider = LLMProviderFactory.create_provider(
+                current_provider_type, base_url=new_url
+            )
+
             # Update processors
             self.chat_processor = ChatProcessor(self.llm_provider, self.conversation_manager)
             self.task_processor = TaskProcessor(self.llm_provider, self.conversation_manager)

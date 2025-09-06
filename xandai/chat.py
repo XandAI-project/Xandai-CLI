@@ -439,9 +439,7 @@ class IntelligentCompleter(Completer):
 
     def _get_command_completions(self, prefix: str):
         """Get completions for terminal commands"""
-        all_commands = (
-            self.terminal_commands + self.slash_commands + ["help", "clear", "exit"]
-        )
+        all_commands = self.terminal_commands + self.slash_commands + ["help", "clear", "exit"]
         for cmd in all_commands:
             if cmd.lower().startswith(prefix.lower()):
                 yield Completion(cmd, start_position=-len(prefix))
@@ -480,9 +478,7 @@ class IntelligentCompleter(Completer):
                         if item_name.lower().startswith(file_prefix.lower()):
                             # Add trailing slash for directories
                             suggestion = item_name + "/"
-                            yield Completion(
-                                suggestion, start_position=-len(file_prefix)
-                            )
+                            yield Completion(suggestion, start_position=-len(file_prefix))
             except (PermissionError, OSError):
                 pass
         except Exception:
@@ -519,9 +515,7 @@ class IntelligentCompleter(Completer):
                     if item.is_file() and not item.name.startswith("."):
                         item_name = item.name
                         if item_name.lower().startswith(file_prefix.lower()):
-                            yield Completion(
-                                item_name, start_position=-len(file_prefix)
-                            )
+                            yield Completion(item_name, start_position=-len(file_prefix))
             except (PermissionError, OSError):
                 pass
         except Exception:
@@ -829,16 +823,12 @@ class ChatREPL:
         except ValueError as e:
             # Handle shlex parsing errors (e.g., unmatched quotes/apostrophes)
             if self.verbose:
-                OSUtils.debug_print(
-                    f"Shlex parsing error (treating as regular chat): {e}", True
-                )
+                OSUtils.debug_print(f"Shlex parsing error (treating as regular chat): {e}", True)
             command_parts = []
 
         if command_parts and command_parts[0].lower() in self.terminal_commands:
             if self.verbose:
-                OSUtils.debug_print(
-                    f"Executing terminal command: {command_parts[0]}", True
-                )
+                OSUtils.debug_print(f"Executing terminal command: {command_parts[0]}", True)
             self._handle_terminal_command(user_input)
             return
 
@@ -936,9 +926,7 @@ class ChatREPL:
             except ValueError as e:
                 # Handle shlex parsing errors (e.g., unmatched quotes/apostrophes)
                 if self.verbose:
-                    OSUtils.debug_print(
-                        f"Shlex parsing error in terminal command: {e}", True
-                    )
+                    OSUtils.debug_print(f"Shlex parsing error in terminal command: {e}", True)
                 # Fallback: split by spaces for basic parsing
                 command_parts = command.split()
                 command_name = command_parts[0].lower() if command_parts else ""
@@ -967,9 +955,7 @@ class ChatREPL:
             # Format output
             if result.returncode == 0:
                 output = (
-                    result.stdout.strip()
-                    if result.stdout
-                    else "Command completed successfully"
+                    result.stdout.strip() if result.stdout else "Command completed successfully"
                 )
                 wrapped_output = f"<commands_output>\\n{output}\\n</commands_output>"
 
@@ -986,9 +972,7 @@ class ChatREPL:
                     if result.stderr
                     else f"Command failed with code {result.returncode}"
                 )
-                wrapped_output = (
-                    f"<commands_output>\\nError: {error_output}\\n</commands_output>"
-                )
+                wrapped_output = f"<commands_output>\\nError: {error_output}\\n</commands_output>"
 
                 self.console.print(
                     Panel(
@@ -1007,9 +991,7 @@ class ChatREPL:
 
         except subprocess.TimeoutExpired:
             # Command might be interactive, offer to run in interactive mode
-            self.console.print(
-                f"[yellow]⚠️  Command timed out - might need user input[/yellow]"
-            )
+            self.console.print(f"[yellow]⚠️  Command timed out - might need user input[/yellow]")
             self.console.print(
                 f"[cyan]💡 Tip: Use 'python -i script.py' for interactive scripts[/cyan]"
             )
@@ -1061,12 +1043,8 @@ class ChatREPL:
 
         # Give user options
         self.console.print("[bold]Choose execution mode:[/bold]")
-        self.console.print(
-            "  [green]1[/green] - Run with full terminal access (interactive)"
-        )
-        self.console.print(
-            "  [blue]2[/blue] - Run with output capture (non-interactive)"
-        )
+        self.console.print("  [green]1[/green] - Run with full terminal access (interactive)")
+        self.console.print("  [blue]2[/blue] - Run with output capture (non-interactive)")
         self.console.print("  [red]3[/red] - Cancel")
 
         try:
@@ -1098,9 +1076,7 @@ class ChatREPL:
                 self.console.print(
                     f"[yellow]⚠️  Command completed with exit code {result.returncode}[/yellow]"
                 )
-                output_msg = (
-                    f"Interactive command completed with exit code {result.returncode}"
-                )
+                output_msg = f"Interactive command completed with exit code {result.returncode}"
 
             # Add to history
             self.history_manager.add_conversation(
@@ -1134,18 +1110,12 @@ class ChatREPL:
             # Format output normally
             if result.returncode == 0:
                 output = result.stdout.strip() if result.stdout else "Command completed"
-                self.console.print(
-                    Panel(output, title=f"Output: {command}", border_style="green")
-                )
+                self.console.print(Panel(output, title=f"Output: {command}", border_style="green"))
             else:
                 error = (
-                    result.stderr.strip()
-                    if result.stderr
-                    else f"Exit code: {result.returncode}"
+                    result.stderr.strip() if result.stderr else f"Exit code: {result.returncode}"
                 )
-                self.console.print(
-                    Panel(f"[red]{error}[/red]", title="Error", border_style="red")
-                )
+                self.console.print(Panel(f"[red]{error}[/red]", title="Error", border_style="red"))
 
         except subprocess.TimeoutExpired:
             self.console.print("[red]❌ Command timed out waiting for input[/red]")
@@ -1182,9 +1152,7 @@ class ChatREPL:
 
         except Exception as e:
             error_msg = f"cd: {e}"
-            wrapped_output = (
-                f"<commands_output>\\nError: {error_msg}\\n</commands_output>"
-            )
+            wrapped_output = f"<commands_output>\\nError: {error_msg}\\n</commands_output>"
             self.console.print(f"[red]{error_msg}[/red]")
 
             self.history_manager.add_conversation(
@@ -1211,9 +1179,7 @@ class ChatREPL:
 
         except Exception as e:
             error_msg = f"Clear command error: {e}"
-            wrapped_output = (
-                f"<commands_output>\\nError: {error_msg}\\n</commands_output>"
-            )
+            wrapped_output = f"<commands_output>\\nError: {error_msg}\\n</commands_output>"
             self.console.print(f"[red]{error_msg}[/red]")
 
             self.history_manager.add_conversation(
@@ -1275,17 +1241,13 @@ class ChatREPL:
                 )
 
             if self.verbose:
-                OSUtils.debug_print(
-                    f"Sending {len(context_messages)} total messages to LLM", True
-                )
+                OSUtils.debug_print(f"Sending {len(context_messages)} total messages to LLM", True)
 
             # Show thinking indicator with streaming
             response = self._chat_with_streaming_progress(context_messages)
 
             if self.verbose:
-                OSUtils.debug_print(
-                    f"Received response: {len(response.content)} characters", True
-                )
+                OSUtils.debug_print(f"Received response: {len(response.content)} characters", True)
 
             # Display response with syntax highlighting for code and execution confirmation
             self._display_response(response.content, allow_execution=True)
@@ -1390,17 +1352,13 @@ class ChatREPL:
         """
         try:
             if self.verbose:
-                OSUtils.debug_print(
-                    "Step 1: Generating commands using Command LLM", True
-                )
+                OSUtils.debug_print("Step 1: Generating commands using Command LLM", True)
 
             # Get command generation prompt
             command_prompt = PromptManager.get_file_read_command_for_prompt(user_input)
 
             if self.verbose:
-                OSUtils.debug_print(
-                    f"Command prompt length: {len(command_prompt)} chars", True
-                )
+                OSUtils.debug_print(f"Command prompt length: {len(command_prompt)} chars", True)
 
             # Use LLM to generate commands - use the same pattern as chat with system prompt
             command_messages = [{"role": "user", "content": command_prompt}]
@@ -1430,9 +1388,7 @@ class ChatREPL:
             except Exception as e:
                 if self.verbose:
                     OSUtils.debug_print(f"Command generation LLM error: {e}", True)
-                    OSUtils.debug_print(
-                        "Trying with minimal system prompt as final fallback", True
-                    )
+                    OSUtils.debug_print("Trying with minimal system prompt as final fallback", True)
 
                 # Try with simpler system prompt as final fallback
                 try:
@@ -1464,25 +1420,19 @@ class ChatREPL:
             if not commands:
                 if self.verbose:
                     OSUtils.debug_print("No commands extracted from LLM response", True)
-                    OSUtils.debug_print(
-                        "Trying direct command generation fallback", True
-                    )
+                    OSUtils.debug_print("Trying direct command generation fallback", True)
 
                 # Fallback: Generate simple command directly based on user input
                 fallback_command = self._generate_fallback_command(user_input)
                 if fallback_command:
                     commands = [fallback_command]
                     if self.verbose:
-                        OSUtils.debug_print(
-                            f"Using fallback command: {fallback_command}", True
-                        )
+                        OSUtils.debug_print(f"Using fallback command: {fallback_command}", True)
                 else:
                     return ""
 
             if self.verbose:
-                OSUtils.debug_print(
-                    f"Step 2: Executing {len(commands)} generated commands", True
-                )
+                OSUtils.debug_print(f"Step 2: Executing {len(commands)} generated commands", True)
 
             # Execute commands and collect output
             all_output = []
@@ -1507,9 +1457,7 @@ class ChatREPL:
                         all_output.append(f"Command: {command}\n{result.stdout}\n")
 
                     if result.stderr and self.verbose:
-                        OSUtils.debug_print(
-                            f"Command stderr: {result.stderr[:100]}...", True
-                        )
+                        OSUtils.debug_print(f"Command stderr: {result.stderr[:100]}...", True)
 
                 except subprocess.TimeoutExpired:
                     if self.verbose:
@@ -1552,9 +1500,7 @@ class ChatREPL:
             lines = [line.strip() for line in match.split("\n") if line.strip()]
             # Filter out comments and empty lines
             filtered_lines = [
-                line
-                for line in lines
-                if not line.startswith("#") and not line.startswith("//")
+                line for line in lines if not line.startswith("#") and not line.startswith("//")
             ]
             commands.extend(filtered_lines)
 
@@ -1641,9 +1587,7 @@ class ChatREPL:
         try:
             if self.verbose:
                 # Show context sharing information
-                context_count = len(
-                    self.history_manager.get_conversation_context(limit=15)
-                )
+                context_count = len(self.history_manager.get_conversation_context(limit=15))
                 OSUtils.debug_print(
                     f"Switching to task mode with {context_count} context messages available",
                     True,
@@ -1656,9 +1600,7 @@ class ChatREPL:
                 self.console.print(
                     "[dim]📁 Detected existing project - reading current structure...[/dim]"
                 )
-                self.current_project_structure = (
-                    self._read_current_directory_structure()
-                )
+                self.current_project_structure = self._read_current_directory_structure()
 
                 # Display current project structure
                 if self.current_project_structure:
@@ -1673,13 +1615,9 @@ class ChatREPL:
                 # Add existing files to history for context
                 existing_files = self._flatten_file_list(self.current_project_structure)
                 for file_info in existing_files:
-                    self.history_manager.track_file_edit(
-                        file_info["full_path"], "", "existing"
-                    )
+                    self.history_manager.track_file_edit(file_info["full_path"], "", "existing")
 
-                self.console.print(
-                    f"[dim]🔍 Found {len(existing_files)} existing files[/dim]"
-                )
+                self.console.print(f"[dim]🔍 Found {len(existing_files)} existing files[/dim]")
             else:
                 self.console.print("[dim]🆕 Creating new project...[/dim]")
                 self.current_project_structure = None
@@ -1693,9 +1631,7 @@ class ChatREPL:
             if not steps and raw_response:
                 # Check if it's clarifying questions (starts with 🤔)
                 if "🤔" in raw_response or "clarify" in raw_response.lower():
-                    self.console.print(
-                        "\\n" + raw_response.split("Context usage:")[0].strip()
-                    )
+                    self.console.print("\\n" + raw_response.split("Context usage:")[0].strip())
                     return
 
             # Display task summary and steps
@@ -1706,12 +1642,8 @@ class ChatREPL:
                 ]
 
                 summary = self.task_processor.get_task_summary(steps)
-                mode_indicator = (
-                    "🔧 Editing" if project_mode == "edit" else "🆕 Creating"
-                )
-                self.console.print(
-                    f"\\n[bold green]✅ {mode_indicator} - {summary}[/bold green]"
-                )
+                mode_indicator = "🔧 Editing" if project_mode == "edit" else "🆕 Creating"
+                self.console.print(f"\\n[bold green]✅ {mode_indicator} - {summary}[/bold green]")
 
                 # First, show simple step list (required format)
                 self.console.print("\\n[bold cyan]Steps:[/bold cyan]")
@@ -1719,18 +1651,14 @@ class ChatREPL:
                     if step.action == "run":
                         self.console.print(f"{step.step_number} - run: {step.target}")
                     else:
-                        self.console.print(
-                            f"{step.step_number} - {step.action} {step.target}"
-                        )
+                        self.console.print(f"{step.step_number} - {step.action} {step.target}")
 
                 # Execute the steps (create files, etc.)
                 self.console.print("\\n[bold yellow]Executing steps...[/bold yellow]")
                 self._execute_task_steps(steps)
 
             else:
-                self.console.print(
-                    "\\n[yellow]⚠️  No executable steps generated.[/yellow]"
-                )
+                self.console.print("\\n[yellow]⚠️  No executable steps generated.[/yellow]")
                 self.console.print(
                     "[dim]Try being more specific about what you want to build.[/dim]"
                 )
@@ -1774,12 +1702,8 @@ class ChatREPL:
                             f.write(file_content)
 
                         # Show success with preview
-                        action_text = (
-                            "Created" if step.action == "create" else "Updated"
-                        )
-                        self.console.print(
-                            f"[green]✅ {action_text} {step.target}[/green]"
-                        )
+                        action_text = "Created" if step.action == "create" else "Updated"
+                        self.console.print(f"[green]✅ {action_text} {step.target}[/green]")
 
                         # Show file preview (first few lines)
                         lines = file_content.split("\\n")[:3]
@@ -1789,9 +1713,7 @@ class ChatREPL:
                         self.console.print(f"[dim]{preview}[/dim]")
 
                         # Track in history
-                        self.history_manager.track_file_edit(
-                            step.target, file_content, step.action
-                        )
+                        self.history_manager.track_file_edit(step.target, file_content, step.action)
 
                     else:
                         self.console.print(
@@ -1822,31 +1744,21 @@ class ChatREPL:
                                     f"[green]✅ Command completed successfully[/green]"
                                 )
                                 if result.stdout.strip():
-                                    self.console.print(
-                                        f"[dim]{result.stdout.strip()}[/dim]"
-                                    )
+                                    self.console.print(f"[dim]{result.stdout.strip()}[/dim]")
                             else:
                                 self.console.print(
                                     f"[yellow]⚠️  Command completed with warnings[/yellow]"
                                 )
                                 if result.stderr.strip():
-                                    self.console.print(
-                                        f"[dim]{result.stderr.strip()}[/dim]"
-                                    )
+                                    self.console.print(f"[dim]{result.stderr.strip()}[/dim]")
 
                         except subprocess.TimeoutExpired:
-                            self.console.print(
-                                f"[red]❌ Command timed out after 60s[/red]"
-                            )
+                            self.console.print(f"[red]❌ Command timed out after 60s[/red]")
                         except Exception as cmd_error:
-                            self.console.print(
-                                f"[red]❌ Command failed: {cmd_error}[/red]"
-                            )
+                            self.console.print(f"[red]❌ Command failed: {cmd_error}[/red]")
 
             except Exception as e:
-                self.console.print(
-                    f"[red]❌ Failed to execute step {step.step_number}: {e}[/red]"
-                )
+                self.console.print(f"[red]❌ Failed to execute step {step.step_number}: {e}[/red]")
 
         self.console.print(f"\\n[bold green]🎉 Task execution completed![/bold green]")
 
@@ -1858,9 +1770,7 @@ class ChatREPL:
             existing_files = self.history_manager.get_project_files()
 
             # CRITICAL: Get conversation context for context-aware file generation
-            conversation_context = self.history_manager.get_conversation_context(
-                limit=15
-            )
+            conversation_context = self.history_manager.get_conversation_context(limit=15)
 
             if self.verbose:
                 OSUtils.debug_print(
@@ -1874,9 +1784,7 @@ class ChatREPL:
             )
 
             # Prepare messages with conversation context
-            messages = [
-                {"role": "system", "content": self._get_file_generation_system_prompt()}
-            ]
+            messages = [{"role": "system", "content": self._get_file_generation_system_prompt()}]
 
             # Add conversation context (excluding system messages to avoid conflicts)
             context_without_system = [
@@ -1930,9 +1838,7 @@ class ChatREPL:
                 "- Look for SPECIFIC API endpoints that were analyzed (GET /videos, POST /videos, etc.)"
             )
             prompt_parts.append("- Find EXACT data models and fields mentioned")
-            prompt_parts.append(
-                "- Identify SPECIFIC business logic and validation rules discussed"
-            )
+            prompt_parts.append("- Identify SPECIFIC business logic and validation rules discussed")
             prompt_parts.append(
                 "- Use EXACT functionality from conversation, NOT generic examples!"
             )
@@ -1951,23 +1857,17 @@ class ChatREPL:
         # Add existing project structure if in edit mode
         if self.current_project_structure:
             prompt_parts.append(f"\\nCURRENT PROJECT STRUCTURE (edit mode):")
-            structure_display = self._format_directory_structure(
-                self.current_project_structure
-            )
+            structure_display = self._format_directory_structure(self.current_project_structure)
             prompt_parts.append(structure_display)
 
             # List existing files for import context
-            existing_project_files = self._flatten_file_list(
-                self.current_project_structure
-            )
+            existing_project_files = self._flatten_file_list(self.current_project_structure)
             if existing_project_files:
                 prompt_parts.append(f"\\nEXISTING FILES (available for import):")
                 for file_info in existing_project_files[:20]:  # Limit to first 20
                     prompt_parts.append(f"- {file_info['full_path']}")
                 if len(existing_project_files) > 20:
-                    prompt_parts.append(
-                        f"- ... and {len(existing_project_files) - 20} more files"
-                    )
+                    prompt_parts.append(f"- ... and {len(existing_project_files) - 20} more files")
 
         # Add existing tracked files
         if existing_files:
@@ -1983,9 +1883,7 @@ class ChatREPL:
                 prompt_parts.append(f"- {file}")
 
         # Add expected functions and exports for this file
-        expected_info = self._get_expected_file_info(
-            step.target, context, step.description
-        )
+        expected_info = self._get_expected_file_info(step.target, context, step.description)
         if expected_info:
             prompt_parts.append(f"\\nEXPECTED FILE DETAILS:")
             prompt_parts.append(expected_info)
@@ -1998,11 +1896,7 @@ class ChatREPL:
                 prompt_parts.append(folder_structure)
 
         # Add file-specific instructions based on extension
-        file_ext = (
-            step.target.split(".")[-1].lower()
-            if step.target and "." in step.target
-            else ""
-        )
+        file_ext = step.target.split(".")[-1].lower() if step.target and "." in step.target else ""
 
         if file_ext in ["py"]:
             prompt_parts.append("\\nPYTHON REQUIREMENTS:")
@@ -2010,17 +1904,13 @@ class ChatREPL:
             prompt_parts.append(
                 "- ONLY import from files listed in EXISTING or PLANNED files above"
             )
-            prompt_parts.append(
-                "- Use relative imports correctly based on folder structure"
-            )
+            prompt_parts.append("- Use relative imports correctly based on folder structure")
             prompt_parts.append("- Add docstrings and comments")
             prompt_parts.append("- Handle errors gracefully")
         elif file_ext in ["js"]:
             prompt_parts.append("\\nJAVASCRIPT REQUIREMENTS:")
             prompt_parts.append("- Use modern ES6+ syntax")
-            prompt_parts.append(
-                "- ONLY require/import files that exist in the project structure"
-            )
+            prompt_parts.append("- ONLY require/import files that exist in the project structure")
             prompt_parts.append("- Use proper module syntax (CommonJS or ES6)")
             prompt_parts.append("- Add proper error handling")
             prompt_parts.append("- Include JSDoc comments")
@@ -2049,9 +1939,7 @@ class ChatREPL:
         prompt_parts.append(
             f"- Use only standard library imports or dependencies from requirements/package.json"
         )
-        prompt_parts.append(
-            f"\\nGenerate complete, production-ready content for {step.target}"
-        )
+        prompt_parts.append(f"\\nGenerate complete, production-ready content for {step.target}")
 
         return "\\n".join(prompt_parts)
 
@@ -2140,9 +2028,7 @@ Remember: Your response will be written directly to the file! NO explanatory tex
         for i, line in enumerate(lines):
             # Skip lines that look like explanations
             if line and (
-                line.startswith(
-                    ("Here", "This", "The file", "Below", "I will", "Let me")
-                )
+                line.startswith(("Here", "This", "The file", "Below", "I will", "Let me"))
                 or "generate" in line.lower()
                 or "create" in line.lower()
             ):
@@ -2173,9 +2059,7 @@ Remember: Your response will be written directly to the file! NO explanatory tex
         """Get all files planned in the current task session"""
         return self.current_task_files
 
-    def _get_expected_file_info(
-        self, filename: str, context: dict, description: str
-    ) -> str:
+    def _get_expected_file_info(self, filename: str, context: dict, description: str) -> str:
         """Generate expected functions and exports for a specific file"""
         info_parts = []
 
@@ -2209,12 +2093,8 @@ Remember: Your response will be written directly to the file! NO explanatory tex
                 info_parts.append("Imports: Flask, blueprints, database, config")
             elif "models" in filename or "model" in filename:
                 info_parts.append("# Database model definitions")
-                info_parts.append(
-                    "Classes: User, Product, Order (inherit from db.Model)"
-                )
-                info_parts.append(
-                    "Functions: __init__(), __repr__(), serialize(), validate()"
-                )
+                info_parts.append("Classes: User, Product, Order (inherit from db.Model)")
+                info_parts.append("Functions: __init__(), __repr__(), serialize(), validate()")
                 info_parts.append("Exports: model classes, db instance")
                 info_parts.append("Imports: SQLAlchemy, datetime, bcrypt")
             elif "routes" in filename or "views" in filename:
@@ -2224,42 +2104,30 @@ Remember: Your response will be written directly to the file! NO explanatory tex
                 info_parts.append("Imports: Flask Blueprint, models, request, jsonify")
             elif "config" in filename:
                 info_parts.append("# Application configuration")
-                info_parts.append(
-                    "Classes: Config, DevelopmentConfig, ProductionConfig"
-                )
+                info_parts.append("Classes: Config, DevelopmentConfig, ProductionConfig")
                 info_parts.append("Functions: get_config()")
                 info_parts.append("Exports: config classes and variables")
 
         elif framework == "express" and file_ext == "js":
             if "server.js" in filename or "app.js" in filename:
                 info_parts.append("# Main Express server file")
-                info_parts.append(
-                    "Functions: startServer(), setupMiddleware(), setupRoutes()"
-                )
+                info_parts.append("Functions: startServer(), setupMiddleware(), setupRoutes()")
                 info_parts.append("Exports: app (Express instance)")
-                info_parts.append(
-                    "Imports: express, routes, middleware, database config"
-                )
+                info_parts.append("Imports: express, routes, middleware, database config")
             elif "routes" in filename:
                 info_parts.append("# Express route definitions")
-                info_parts.append(
-                    "Functions: route handlers (router.get, router.post, etc.)"
-                )
+                info_parts.append("Functions: route handlers (router.get, router.post, etc.)")
                 info_parts.append("Exports: router (Express Router)")
                 info_parts.append("Imports: express.Router, models, middleware")
             elif "models" in filename or "model" in filename:
                 info_parts.append("# Data model definitions")
                 info_parts.append("Classes: Mongoose schemas")
-                info_parts.append(
-                    "Functions: schema methods, static methods, instance methods"
-                )
+                info_parts.append("Functions: schema methods, static methods, instance methods")
                 info_parts.append("Exports: model instances")
                 info_parts.append("Imports: mongoose")
             elif "middleware" in filename:
                 info_parts.append("# Middleware functions")
-                info_parts.append(
-                    "Functions: authentication, validation, error handling"
-                )
+                info_parts.append("Functions: authentication, validation, error handling")
                 info_parts.append("Exports: middleware functions")
                 info_parts.append("Imports: jsonwebtoken, bcrypt")
             elif "config" in filename:
@@ -2282,9 +2150,7 @@ Remember: Your response will be written directly to the file! NO explanatory tex
                 info_parts.append("Imports: React, ReactDOM, App component")
             elif "components" in filename:
                 info_parts.append("# Reusable React component")
-                info_parts.append(
-                    f"Component: {basename.title()} (functional component)"
-                )
+                info_parts.append(f"Component: {basename.title()} (functional component)")
                 info_parts.append("Functions: event handlers, useEffect, useState")
                 info_parts.append(f"Exports: {basename.title()} (default export)")
                 info_parts.append("Imports: React, hooks, prop-types")
@@ -2357,9 +2223,7 @@ Remember: Your response will be written directly to the file! NO explanatory tex
                                 f"[bold green]Thinking... ({current_chunks} chunks)[/bold green]"
                             )
                         except:
-                            status.update(
-                                f"[bold green]Thinking... ({message})[/bold green]"
-                            )
+                            status.update(f"[bold green]Thinking... ({message})[/bold green]")
                     else:
                         status.update(f"[bold green]{message}[/bold green]")
 
@@ -2373,9 +2237,7 @@ Remember: Your response will be written directly to the file! NO explanatory tex
                     )
                 except Exception:
                     # Fallback but still use streaming
-                    status.update(
-                        "[bold green]Thinking... (streaming fallback)[/bold green]"
-                    )
+                    status.update("[bold green]Thinking... (streaming fallback)[/bold green]")
                     return self.llm_provider.chat(
                         messages=messages, system_prompt=self.system_prompt, stream=True
                     )
@@ -2426,9 +2288,7 @@ Remember: Your response will be written directly to the file! NO explanatory tex
 
         # Get folders and files separately
         subfolders = {
-            k: v
-            for k, v in folder_dict.items()
-            if k != "___files___" and isinstance(v, dict)
+            k: v for k, v in folder_dict.items() if k != "___files___" and isinstance(v, dict)
         }
         files = folder_dict.get("___files___", [])
 
@@ -2443,9 +2303,7 @@ Remember: Your response will be written directly to the file! NO explanatory tex
 
             # Recurse into folder
             extension = "    " if is_last_folder else "│   "
-            subfolder_lines = self._format_folder_tree(
-                folder_contents, prefix + extension, False
-            )
+            subfolder_lines = self._format_folder_tree(folder_contents, prefix + extension, False)
             if subfolder_lines:
                 lines.append(subfolder_lines)
 
@@ -2491,9 +2349,7 @@ Remember: Your response will be written directly to the file! NO explanatory tex
 
             path_lower = path.lower()
             for pattern in ignore_patterns:
-                if pattern in path_lower or path_lower.endswith(
-                    pattern.replace("*", "")
-                ):
+                if pattern in path_lower or path_lower.endswith(pattern.replace("*", "")):
                     return True
             return False
 
@@ -2527,9 +2383,7 @@ Remember: Your response will be written directly to the file! NO explanatory tex
                     elif item.is_dir():
                         # Recursively read subdirectory
                         subdir_structure = read_directory(item, current_depth + 1)
-                        if subdir_structure.get("files") or subdir_structure.get(
-                            "folders"
-                        ):
+                        if subdir_structure.get("files") or subdir_structure.get("folders"):
                             structure["folders"][item.name] = subdir_structure
 
             except (PermissionError, OSError):
@@ -2603,9 +2457,7 @@ Remember: Your response will be written directly to the file! NO explanatory tex
         code_files = [
             f
             for f in all_files
-            if f["name"].endswith(
-                (".py", ".js", ".ts", ".java", ".cpp", ".c", ".go", ".rs")
-            )
+            if f["name"].endswith((".py", ".js", ".ts", ".java", ".cpp", ".c", ".go", ".rs"))
         ]
         if len(code_files) >= 3:
             return "edit"
@@ -2621,17 +2473,13 @@ Remember: Your response will be written directly to the file! NO explanatory tex
         for file_info in structure.get("files", []):
             file_copy = file_info.copy()
             file_copy["full_path"] = (
-                os.path.join(current_path, file_info["name"])
-                if current_path
-                else file_info["name"]
+                os.path.join(current_path, file_info["name"]) if current_path else file_info["name"]
             )
             files.append(file_copy)
 
         # Recursively add files from subdirectories
         for folder_name, folder_contents in structure.get("folders", {}).items():
-            subpath = (
-                os.path.join(current_path, folder_name) if current_path else folder_name
-            )
+            subpath = os.path.join(current_path, folder_name) if current_path else folder_name
             files.extend(self._flatten_file_list(folder_contents, subpath))
 
         return files
@@ -2751,9 +2599,7 @@ Remember: Your response will be written directly to the file! NO explanatory tex
                         try:
                             # Detect language from filename for syntax highlighting
                             file_ext = (
-                                filename.split(".")[-1].lower()
-                                if "." in filename
-                                else "text"
+                                filename.split(".")[-1].lower() if "." in filename else "text"
                             )
                             lang_map = {
                                 "py": "python",
@@ -2801,9 +2647,7 @@ Remember: Your response will be written directly to the file! NO explanatory tex
 
                         # Always prompt for file operations
                         if allow_execution:
-                            self._prompt_file_operation(
-                                block["code"], filename, operation
-                            )
+                            self._prompt_file_operation(block["code"], filename, operation)
                     else:
                         # Regular code block display
                         try:
@@ -2831,14 +2675,10 @@ Remember: Your response will be written directly to the file! NO explanatory tex
                             and block["lang"]
                             and block["lang"].lower() in executable_types
                         ):
-                            self._prompt_code_execution(
-                                block["code"], block["lang"], block["type"]
-                            )
+                            self._prompt_code_execution(block["code"], block["lang"], block["type"])
 
                         # NEW: Check if this looks like a complete file and offer to save it
-                        if allow_execution and self._is_complete_file(
-                            block["code"], block["lang"]
-                        ):
+                        if allow_execution and self._is_complete_file(block["code"], block["lang"]):
                             self._prompt_file_save(block["code"], block["lang"])
 
                 last_pos = block["end"]
@@ -2851,9 +2691,7 @@ Remember: Your response will be written directly to the file! NO explanatory tex
             # No code blocks, display as is
             self.console.print(content)
 
-    def _prompt_code_execution(
-        self, code: str, lang: str, block_type: str = "markdown"
-    ):
+    def _prompt_code_execution(self, code: str, lang: str, block_type: str = "markdown"):
         """Prompt user to execute detected code/command"""
         try:
             # Customize prompt based on block type
@@ -2861,10 +2699,14 @@ Remember: Your response will be written directly to the file! NO explanatory tex
                 prompt_msg = f"\\n[yellow]⚡ Detected <commands> block. Execute these commands? (y/N):[/yellow]"
                 exec_msg = "[green]🚀 Executing commands...[/green]"
             elif block_type == "code_tag":
-                prompt_msg = f"\\n[yellow]⚡ Detected <code> tag ({lang}). Execute it? (y/N):[/yellow]"
+                prompt_msg = (
+                    f"\\n[yellow]⚡ Detected <code> tag ({lang}). Execute it? (y/N):[/yellow]"
+                )
                 exec_msg = f"[green]🚀 Executing {lang} code...[/green]"
             else:
-                prompt_msg = f"\\n[yellow]⚡ Detected executable {lang} code. Execute it? (y/N):[/yellow]"
+                prompt_msg = (
+                    f"\\n[yellow]⚡ Detected executable {lang} code. Execute it? (y/N):[/yellow]"
+                )
                 exec_msg = f"[green]🚀 Executing {lang} code...[/green]"
 
             # Show execution prompt
@@ -2874,12 +2716,12 @@ Remember: Your response will be written directly to the file! NO explanatory tex
             import sys
 
             sys.stdout.flush()
-            
+
             # Check if interactive mode is disabled
             if not self.interactive_mode:
                 self.console.print("[dim]Code execution skipped (interactive mode disabled).[/dim]")
                 return
-            
+
             # Interactive mode is enabled - always attempt to prompt user
             try:
                 response = input().strip().lower()
@@ -3082,14 +2924,7 @@ Remember: Your response will be written directly to the file! NO explanatory tex
 
         has_structure = any(keyword in code.lower() for keyword in structure_keywords)
         has_multiple_statements = (
-            len(
-                [
-                    line
-                    for line in lines
-                    if line.strip() and not line.strip().startswith("//")
-                ]
-            )
-            >= 5
+            len([line for line in lines if line.strip() and not line.strip().startswith("//")]) >= 5
         )
 
         return has_structure and has_multiple_statements
@@ -3144,10 +2979,7 @@ Remember: Your response will be written directly to the file! NO explanatory tex
                 match = re.search(filename_pattern, line)
                 if match:
                     potential_filename = match.group(1)
-                    if (
-                        potential_filename.endswith(extension)
-                        or "." in potential_filename
-                    ):
+                    if potential_filename.endswith(extension) or "." in potential_filename:
                         return potential_filename
 
         # Try to extract class name or main function name
@@ -3171,9 +3003,7 @@ Remember: Your response will be written directly to the file! NO explanatory tex
         # Look for specific patterns
         if "package.json" in code or '"name"' in code and lang_lower == "json":
             return "package.json"
-        elif "docker" in code.lower() and (
-            "from " in code.lower() or "run " in code.lower()
-        ):
+        elif "docker" in code.lower() and ("from " in code.lower() or "run " in code.lower()):
             return "Dockerfile"
         elif "requirements" in code.lower() and lang_lower == "txt":
             return "requirements.txt"
@@ -3228,9 +3058,7 @@ Remember: Your response will be written directly to the file! NO explanatory tex
                 filename_input = input().strip()
 
                 # Use suggested filename if none provided
-                final_filename = (
-                    filename_input if filename_input else suggested_filename
-                )
+                final_filename = filename_input if filename_input else suggested_filename
 
                 # Save the file
                 self._execute_file_create(code, final_filename)
@@ -3274,9 +3102,7 @@ Remember: Your response will be written directly to the file! NO explanatory tex
                 elif operation == "edit":
                     self._execute_file_edit(content, filename)
                 else:
-                    self.console.print(
-                        f"[red]Unknown file operation: {operation}[/red]"
-                    )
+                    self.console.print(f"[red]Unknown file operation: {operation}[/red]")
             else:
                 self.console.print(f"[dim]File operation cancelled.[/dim]")
 
@@ -3313,9 +3139,7 @@ Remember: Your response will be written directly to the file! NO explanatory tex
             # Track file in history
             self.history_manager.track_file_edit(filename, content, "create")
 
-            self.console.print(
-                f"[green]✅ File '{filename}' created successfully![/green]"
-            )
+            self.console.print(f"[green]✅ File '{filename}' created successfully![/green]")
 
         except Exception as e:
             self.console.print(f"[red]Error creating file '{filename}': {e}[/red]")
@@ -3357,9 +3181,7 @@ Remember: Your response will be written directly to the file! NO explanatory tex
             # Track file in history
             self.history_manager.track_file_edit(filename, content, "edit")
 
-            self.console.print(
-                f"[green]✅ File '{filename}' edited successfully![/green]"
-            )
+            self.console.print(f"[green]✅ File '{filename}' edited successfully![/green]")
 
         except Exception as e:
             self.console.print(f"[red]Error editing file '{filename}': {e}[/red]")
@@ -3477,9 +3299,7 @@ Remember: Your response will be written directly to the file! NO explanatory tex
                 self.console.print(f"[red]⏰ Command timed out (60s): {command}[/red]")
 
         except Exception as e:
-            self.console.print(
-                f"[red]❌ Error executing command '{command}': {e}[/red]"
-            )
+            self.console.print(f"[red]❌ Error executing command '{command}': {e}[/red]")
             if self.verbose:
                 import traceback
 
@@ -3488,287 +3308,382 @@ Remember: Your response will be written directly to the file! NO explanatory tex
     def _get_language_config(self):
         """Get configuration for different programming languages"""
         import platform
-        is_windows = platform.system().lower() == 'windows'
-        
+
+        is_windows = platform.system().lower() == "windows"
+
         return {
             # Python
-            'python': {
-                'extensions': ['.py'],
-                'inline_command': 'python -c',
-                'file_command': 'python',
-                'supports_inline': True,
-                'needs_compilation': False,
-                'complex_keywords': ['def ', 'class ', 'if __name__', 'for ', 'while ', 'with ', 'try:', 'import ', 'from ']
+            "python": {
+                "extensions": [".py"],
+                "inline_command": "python -c",
+                "file_command": "python",
+                "supports_inline": True,
+                "needs_compilation": False,
+                "complex_keywords": [
+                    "def ",
+                    "class ",
+                    "if __name__",
+                    "for ",
+                    "while ",
+                    "with ",
+                    "try:",
+                    "import ",
+                    "from ",
+                ],
             },
-            'py': {
-                'extensions': ['.py'],
-                'inline_command': 'python -c',
-                'file_command': 'python',
-                'supports_inline': True,
-                'needs_compilation': False,
-                'complex_keywords': ['def ', 'class ', 'if __name__', 'for ', 'while ', 'with ', 'try:', 'import ', 'from ']
+            "py": {
+                "extensions": [".py"],
+                "inline_command": "python -c",
+                "file_command": "python",
+                "supports_inline": True,
+                "needs_compilation": False,
+                "complex_keywords": [
+                    "def ",
+                    "class ",
+                    "if __name__",
+                    "for ",
+                    "while ",
+                    "with ",
+                    "try:",
+                    "import ",
+                    "from ",
+                ],
             },
-            
             # JavaScript/Node.js
-            'javascript': {
-                'extensions': ['.js'],
-                'inline_command': 'node -e',
-                'file_command': 'node',
-                'supports_inline': True,
-                'needs_compilation': False,
-                'complex_keywords': ['function ', 'const ', 'let ', 'var ', 'class ', 'import ', 'require(', 'module.exports']
+            "javascript": {
+                "extensions": [".js"],
+                "inline_command": "node -e",
+                "file_command": "node",
+                "supports_inline": True,
+                "needs_compilation": False,
+                "complex_keywords": [
+                    "function ",
+                    "const ",
+                    "let ",
+                    "var ",
+                    "class ",
+                    "import ",
+                    "require(",
+                    "module.exports",
+                ],
             },
-            'js': {
-                'extensions': ['.js'],
-                'inline_command': 'node -e',
-                'file_command': 'node',
-                'supports_inline': True,
-                'needs_compilation': False,
-                'complex_keywords': ['function ', 'const ', 'let ', 'var ', 'class ', 'import ', 'require(', 'module.exports']
+            "js": {
+                "extensions": [".js"],
+                "inline_command": "node -e",
+                "file_command": "node",
+                "supports_inline": True,
+                "needs_compilation": False,
+                "complex_keywords": [
+                    "function ",
+                    "const ",
+                    "let ",
+                    "var ",
+                    "class ",
+                    "import ",
+                    "require(",
+                    "module.exports",
+                ],
             },
-            'node': {
-                'extensions': ['.js'],
-                'inline_command': 'node -e',
-                'file_command': 'node',
-                'supports_inline': True,
-                'needs_compilation': False,
-                'complex_keywords': ['function ', 'const ', 'let ', 'var ', 'class ', 'import ', 'require(', 'module.exports']
+            "node": {
+                "extensions": [".js"],
+                "inline_command": "node -e",
+                "file_command": "node",
+                "supports_inline": True,
+                "needs_compilation": False,
+                "complex_keywords": [
+                    "function ",
+                    "const ",
+                    "let ",
+                    "var ",
+                    "class ",
+                    "import ",
+                    "require(",
+                    "module.exports",
+                ],
             },
-            
             # C
-            'c': {
-                'extensions': ['.c'],
-                'inline_command': None,  # No inline support
-                'file_command': 'gcc -o {output} {input} && {output}',
-                'file_command_windows': 'gcc -o {output}.exe {input} && {output}.exe',
-                'supports_inline': False,
-                'needs_compilation': True,
-                'complex_keywords': ['#include', 'int main', 'printf', 'scanf', 'struct ', 'typedef']
+            "c": {
+                "extensions": [".c"],
+                "inline_command": None,  # No inline support
+                "file_command": "gcc -o {output} {input} && {output}",
+                "file_command_windows": "gcc -o {output}.exe {input} && {output}.exe",
+                "supports_inline": False,
+                "needs_compilation": True,
+                "complex_keywords": [
+                    "#include",
+                    "int main",
+                    "printf",
+                    "scanf",
+                    "struct ",
+                    "typedef",
+                ],
             },
-            
             # C++
-            'cpp': {
-                'extensions': ['.cpp', '.cxx', '.cc'],
-                'inline_command': None,
-                'file_command': 'g++ -o {output} {input} && {output}',
-                'file_command_windows': 'g++ -o {output}.exe {input} && {output}.exe',
-                'supports_inline': False,
-                'needs_compilation': True,
-                'complex_keywords': ['#include', 'int main', 'std::', 'cout', 'cin', 'class ', 'namespace']
+            "cpp": {
+                "extensions": [".cpp", ".cxx", ".cc"],
+                "inline_command": None,
+                "file_command": "g++ -o {output} {input} && {output}",
+                "file_command_windows": "g++ -o {output}.exe {input} && {output}.exe",
+                "supports_inline": False,
+                "needs_compilation": True,
+                "complex_keywords": [
+                    "#include",
+                    "int main",
+                    "std::",
+                    "cout",
+                    "cin",
+                    "class ",
+                    "namespace",
+                ],
             },
-            'c++': {
-                'extensions': ['.cpp'],
-                'inline_command': None,
-                'file_command': 'g++ -o {output} {input} && {output}',
-                'file_command_windows': 'g++ -o {output}.exe {input} && {output}.exe',
-                'supports_inline': False,
-                'needs_compilation': True,
-                'complex_keywords': ['#include', 'int main', 'std::', 'cout', 'cin', 'class ', 'namespace']
+            "c++": {
+                "extensions": [".cpp"],
+                "inline_command": None,
+                "file_command": "g++ -o {output} {input} && {output}",
+                "file_command_windows": "g++ -o {output}.exe {input} && {output}.exe",
+                "supports_inline": False,
+                "needs_compilation": True,
+                "complex_keywords": [
+                    "#include",
+                    "int main",
+                    "std::",
+                    "cout",
+                    "cin",
+                    "class ",
+                    "namespace",
+                ],
             },
-            
             # Go
-            'go': {
-                'extensions': ['.go'],
-                'inline_command': None,
-                'file_command': 'go run',
-                'supports_inline': False,
-                'needs_compilation': False,  # go run handles compilation
-                'complex_keywords': ['package ', 'import ', 'func ', 'var ', 'const ', 'type ', 'struct']
+            "go": {
+                "extensions": [".go"],
+                "inline_command": None,
+                "file_command": "go run",
+                "supports_inline": False,
+                "needs_compilation": False,  # go run handles compilation
+                "complex_keywords": [
+                    "package ",
+                    "import ",
+                    "func ",
+                    "var ",
+                    "const ",
+                    "type ",
+                    "struct",
+                ],
             },
-            
             # Shell scripts
-            'bash': {
-                'extensions': ['.sh'],
-                'inline_command': 'bash -c' if not is_windows else 'bash -c',
-                'file_command': 'bash',
-                'supports_inline': True,
-                'needs_compilation': False,
-                'complex_keywords': ['#!/bin/bash', 'function ', 'if ', 'for ', 'while ', 'case ']
+            "bash": {
+                "extensions": [".sh"],
+                "inline_command": "bash -c" if not is_windows else "bash -c",
+                "file_command": "bash",
+                "supports_inline": True,
+                "needs_compilation": False,
+                "complex_keywords": ["#!/bin/bash", "function ", "if ", "for ", "while ", "case "],
             },
-            'sh': {
-                'extensions': ['.sh'],
-                'inline_command': 'sh -c' if not is_windows else 'sh -c',
-                'file_command': 'sh',
-                'supports_inline': True,
-                'needs_compilation': False,
-                'complex_keywords': ['#!/bin/sh', 'if ', 'for ', 'while ', 'case ']
+            "sh": {
+                "extensions": [".sh"],
+                "inline_command": "sh -c" if not is_windows else "sh -c",
+                "file_command": "sh",
+                "supports_inline": True,
+                "needs_compilation": False,
+                "complex_keywords": ["#!/bin/sh", "if ", "for ", "while ", "case "],
             },
-            'shell': {
-                'extensions': ['.sh'],
-                'inline_command': 'bash -c' if not is_windows else 'cmd /c' if is_windows else 'sh -c',
-                'file_command': 'bash' if not is_windows else 'cmd /c',
-                'supports_inline': True,
-                'needs_compilation': False,
-                'complex_keywords': ['if ', 'for ', 'while ', 'case '] if not is_windows else ['if ', 'for ']
+            "shell": {
+                "extensions": [".sh"],
+                "inline_command": (
+                    "bash -c" if not is_windows else "cmd /c" if is_windows else "sh -c"
+                ),
+                "file_command": "bash" if not is_windows else "cmd /c",
+                "supports_inline": True,
+                "needs_compilation": False,
+                "complex_keywords": (
+                    ["if ", "for ", "while ", "case "] if not is_windows else ["if ", "for "]
+                ),
             },
-            
             # Windows specific
-            'cmd': {
-                'extensions': ['.cmd', '.bat'],
-                'inline_command': 'cmd /c',
-                'file_command': 'cmd /c',
-                'supports_inline': True,
-                'needs_compilation': False,
-                'complex_keywords': ['@echo', 'if ', 'for ', 'goto ', 'call ', 'set ']
+            "cmd": {
+                "extensions": [".cmd", ".bat"],
+                "inline_command": "cmd /c",
+                "file_command": "cmd /c",
+                "supports_inline": True,
+                "needs_compilation": False,
+                "complex_keywords": ["@echo", "if ", "for ", "goto ", "call ", "set "],
             },
-            'batch': {
-                'extensions': ['.bat'],
-                'inline_command': 'cmd /c',
-                'file_command': 'cmd /c',
-                'supports_inline': True,
-                'needs_compilation': False,
-                'complex_keywords': ['@echo', 'if ', 'for ', 'goto ', 'call ', 'set ']
+            "batch": {
+                "extensions": [".bat"],
+                "inline_command": "cmd /c",
+                "file_command": "cmd /c",
+                "supports_inline": True,
+                "needs_compilation": False,
+                "complex_keywords": ["@echo", "if ", "for ", "goto ", "call ", "set "],
             },
-            'bat': {
-                'extensions': ['.bat'],
-                'inline_command': 'cmd /c',
-                'file_command': 'cmd /c',
-                'supports_inline': True,
-                'needs_compilation': False,
-                'complex_keywords': ['@echo', 'if ', 'for ', 'goto ', 'call ', 'set ']
+            "bat": {
+                "extensions": [".bat"],
+                "inline_command": "cmd /c",
+                "file_command": "cmd /c",
+                "supports_inline": True,
+                "needs_compilation": False,
+                "complex_keywords": ["@echo", "if ", "for ", "goto ", "call ", "set "],
             },
-            
             # PowerShell
-            'powershell': {
-                'extensions': ['.ps1'],
-                'inline_command': 'powershell -Command',
-                'file_command': 'powershell -File',
-                'supports_inline': True,
-                'needs_compilation': False,
-                'complex_keywords': ['function ', 'param(', 'if (', 'foreach ', 'while (', '$', 'Get-', 'Set-']
+            "powershell": {
+                "extensions": [".ps1"],
+                "inline_command": "powershell -Command",
+                "file_command": "powershell -File",
+                "supports_inline": True,
+                "needs_compilation": False,
+                "complex_keywords": [
+                    "function ",
+                    "param(",
+                    "if (",
+                    "foreach ",
+                    "while (",
+                    "$",
+                    "Get-",
+                    "Set-",
+                ],
             },
-            'ps1': {
-                'extensions': ['.ps1'],
-                'inline_command': 'powershell -Command',
-                'file_command': 'powershell -File',
-                'supports_inline': True,
-                'needs_compilation': False,
-                'complex_keywords': ['function ', 'param(', 'if (', 'foreach ', 'while (', '$', 'Get-', 'Set-']
+            "ps1": {
+                "extensions": [".ps1"],
+                "inline_command": "powershell -Command",
+                "file_command": "powershell -File",
+                "supports_inline": True,
+                "needs_compilation": False,
+                "complex_keywords": [
+                    "function ",
+                    "param(",
+                    "if (",
+                    "foreach ",
+                    "while (",
+                    "$",
+                    "Get-",
+                    "Set-",
+                ],
             },
-            
             # NPM/Package managers
-            'npm': {
-                'extensions': [],
-                'inline_command': None,
-                'file_command': None,  # Special handling
-                'supports_inline': False,
-                'needs_compilation': False,
-                'complex_keywords': []
-            }
+            "npm": {
+                "extensions": [],
+                "inline_command": None,
+                "file_command": None,  # Special handling
+                "supports_inline": False,
+                "needs_compilation": False,
+                "complex_keywords": [],
+            },
         }
 
     def _should_use_temp_file(self, code: str, lang: str) -> bool:
         """Generalized logic to determine if code should be executed via temporary file"""
         lang_lower = lang.lower()
         config = self._get_language_config().get(lang_lower)
-        
+
         if not config:
             # Unknown language, default to temp file for safety
             return True
-        
+
         # If language doesn't support inline execution, always use temp file
-        if not config['supports_inline']:
+        if not config["supports_inline"]:
             return True
-            
+
         # Multi-line scripts
-        if '\n' in code.strip():
+        if "\n" in code.strip():
             return True
-            
+
         # Contains complex quotes that might break inline execution
         if code.count('"') > 2 or code.count("'") > 2:
             return True
-            
+
         # Contains triple quotes (for languages that support them)
         if '"""' in code or "'''" in code:
             return True
-            
-        # Contains backslashes that might cause escaping issues  
-        if '\\' in code and not any(code.startswith(simple) for simple in ['print(', 'echo ', 'console.log(']):
+
+        # Contains backslashes that might cause escaping issues
+        if "\\" in code and not any(
+            code.startswith(simple) for simple in ["print(", "echo ", "console.log("]
+        ):
             return True
-            
+
         # Long single-line scripts (>200 chars) - safer with temp file
         if len(code) > 200:
             return True
-            
+
         # Contains language-specific complex keywords
-        if any(keyword in code for keyword in config['complex_keywords']):
+        if any(keyword in code for keyword in config["complex_keywords"]):
             return True
-            
+
         return False
 
     def _execute_code_by_language(self, code: str, lang: str):
         """Execute code in specified language with intelligent temp file handling"""
-        import tempfile
         import os
         import platform
+        import tempfile
         from pathlib import Path
-        
+
         try:
             code = code.strip()
             lang_lower = lang.lower()
             config = self._get_language_config().get(lang_lower)
-            
+
             if not config:
-                self.console.print(f"[yellow]Warning: Unknown language '{lang}', attempting shell execution...[/yellow]")
+                self.console.print(
+                    f"[yellow]Warning: Unknown language '{lang}', attempting shell execution...[/yellow]"
+                )
                 return self._execute_shell_code(code)
-            
+
             # Special handling for NPM
-            if lang_lower == 'npm':
+            if lang_lower == "npm":
                 return self._execute_npm_code(code)
-            
+
             # Determine execution method
             needs_temp_file = self._should_use_temp_file(code, lang)
-            
-            if needs_temp_file or not config['supports_inline']:
+
+            if needs_temp_file or not config["supports_inline"]:
                 # Use temporary file approach
                 self._execute_code_with_temp_file(code, lang, config)
             else:
                 # Use inline execution
                 self._execute_code_inline(code, lang, config)
-                
+
         except Exception as e:
             self.console.print(f"[red]Error executing {lang} code: {e}[/red]")
             import traceback
+
             if self.verbose:
                 self.console.print(f"[dim]Traceback: {traceback.format_exc()}[/dim]")
 
     def _execute_code_with_temp_file(self, code: str, lang: str, config: dict):
         """Execute code using temporary file approach"""
-        import tempfile
         import os
         import platform
         import subprocess
-        
-        is_windows = platform.system().lower() == 'windows'
-        extension = config['extensions'][0] if config['extensions'] else '.tmp'
-        
+        import tempfile
+
+        is_windows = platform.system().lower() == "windows"
+        extension = config["extensions"][0] if config["extensions"] else ".tmp"
+
         self.console.print(f"[dim]Creating temporary {lang} file for execution...[/dim]")
-        
+
         # Create temporary file
         with tempfile.NamedTemporaryFile(
-            mode='w',
-            suffix=extension,
-            delete=False,
-            encoding='utf-8'
+            mode="w", suffix=extension, delete=False, encoding="utf-8"
         ) as temp_file:
             temp_file.write(code)
             temp_file_path = temp_file.name
-        
+
         try:
-            if config['needs_compilation']:
+            if config["needs_compilation"]:
                 # Handle compiled languages (C, C++, Go)
                 self._execute_compiled_code(temp_file_path, lang, config, is_windows)
             else:
                 # Handle interpreted languages
-                if is_windows and f'file_command_windows' in config:
-                    base_command = config['file_command_windows']
+                if is_windows and f"file_command_windows" in config:
+                    base_command = config["file_command_windows"]
                 else:
-                    base_command = config['file_command']
-                
+                    base_command = config["file_command"]
+
                 command = f'{base_command} "{temp_file_path}"'
             self.console.print(f"[blue]$ {command}[/blue]")
             self._execute_command_with_output(command)
-                
+
         finally:
             # Cleanup temporary file
             try:
@@ -3779,29 +3694,26 @@ Remember: Your response will be written directly to the file! NO explanatory tex
 
     def _execute_compiled_code(self, source_path: str, lang: str, config: dict, is_windows: bool):
         """Execute compiled languages (C, C++, etc.)"""
-        import tempfile
         import os
+        import tempfile
         from pathlib import Path
-        
+
         # Generate output executable name
         source_stem = Path(source_path).stem
         if is_windows:
             output_name = f"{source_stem}_temp"
-            command_template = config.get('file_command_windows', config['file_command'])
+            command_template = config.get("file_command_windows", config["file_command"])
         else:
             output_name = f"{source_stem}_temp"
-            command_template = config['file_command']
-        
+            command_template = config["file_command"]
+
         try:
             # Format the compilation command
-            command = command_template.format(
-                input=f'"{source_path}"',
-                output=output_name
-            )
-            
+            command = command_template.format(input=f'"{source_path}"', output=output_name)
+
             self.console.print(f"[blue]$ {command}[/blue]")
             self._execute_command_with_output(command)
-            
+
         finally:
             # Cleanup compiled executable
             try:
@@ -3818,17 +3730,17 @@ Remember: Your response will be written directly to the file! NO explanatory tex
 
     def _execute_code_inline(self, code: str, lang: str, config: dict):
         """Execute code using inline command approach"""
-        inline_cmd = config['inline_command']
-        
+        inline_cmd = config["inline_command"]
+
         # Escape code for inline execution
-        if lang.lower() in ['python', 'py']:
-            escaped_code = code.replace('"', '\\"').replace('\n', '\\n')
-        elif lang.lower() in ['javascript', 'js', 'node']:
-            escaped_code = code.replace('"', '\\"').replace('\n', '\\n')
+        if lang.lower() in ["python", "py"]:
+            escaped_code = code.replace('"', '\\"').replace("\n", "\\n")
+        elif lang.lower() in ["javascript", "js", "node"]:
+            escaped_code = code.replace('"', '\\"').replace("\n", "\\n")
         else:
             # Generic escaping
             escaped_code = code.replace('"', '\\"')
-        
+
         command = f'{inline_cmd} "{escaped_code}"'
         self.console.print(f"[blue]$ {command}[/blue]")
         self._execute_command_with_output(command)
@@ -3836,7 +3748,7 @@ Remember: Your response will be written directly to the file! NO explanatory tex
     # Legacy function - now handled by _execute_code_by_language
     def _execute_node_code(self, code: str):
         """Execute Node.js code (Legacy - use _execute_code_by_language instead)"""
-        return self._execute_code_by_language(code, 'node')
+        return self._execute_code_by_language(code, "node")
 
     def _execute_npm_code(self, code: str):
         """Execute NPM commands"""
@@ -3860,14 +3772,10 @@ Remember: Your response will be written directly to the file! NO explanatory tex
         in_commands_block = False
 
         for line in formatted_steps.split("\\n"):
-            if line.startswith(
-                ("<code edit filename=", "</code>", "<commands>", "</commands>")
-            ):
+            if line.startswith(("<code edit filename=", "</code>", "<commands>", "</commands>")):
                 if line.startswith("<code edit filename="):
                     filename = line.split('"')[1]
-                    self.console.print(
-                        f"\\n[bold green]📝 File: {filename}[/bold green]"
-                    )
+                    self.console.print(f"\\n[bold green]📝 File: {filename}[/bold green]")
                     in_code_block = True
                 elif line == "</code>":
                     in_code_block = False
@@ -3914,7 +3822,7 @@ Remember: Your response will be written directly to the file! NO explanatory tex
 [yellow]Special Commands (/ prefix):[/yellow]
   • /help, /h       - Show this help
   • /clear, /cls    - Clear screen
-  • /history, /hist - Show conversation history  
+  • /history, /hist - Show conversation history
   • /context, /ctx  - Show project context
   • /status, /stat  - Show system status
   • /debug, /dbg    - Show debug info OR toggle debug mode
@@ -3954,13 +3862,17 @@ Remember: Your response will be written directly to the file! NO explanatory tex
         self.interactive_mode = not self.interactive_mode
         status = "enabled" if self.interactive_mode else "disabled"
         color = "green" if self.interactive_mode else "yellow"
-        
+
         self.console.print(f"[{color}]Interactive mode {status}[/{color}]")
-        
+
         if self.interactive_mode:
-            self.console.print("[dim]You will be prompted before executing detected code blocks[/dim]")
+            self.console.print(
+                "[dim]You will be prompted before executing detected code blocks[/dim]"
+            )
         else:
-            self.console.print("[dim]Code blocks will be automatically skipped without prompts[/dim]")
+            self.console.print(
+                "[dim]Code blocks will be automatically skipped without prompts[/dim]"
+            )
 
     def _clear_screen(self):
         """Clear the terminal screen"""
@@ -4010,9 +3922,7 @@ Remember: Your response will be written directly to the file! NO explanatory tex
         else:
             info_text += "\\nNo files tracked yet\\n"
 
-        self.console.print(
-            Panel(info_text.strip(), title="Project Context", border_style="cyan")
-        )
+        self.console.print(Panel(info_text.strip(), title="Project Context", border_style="cyan"))
 
     def _show_status(self):
         """Show system status"""
@@ -4029,9 +3939,7 @@ Conversation Messages: {len(self.history_manager.conversation_history)}
 Tracked Files: {len(self.history_manager.get_project_files())}
         """
 
-        self.console.print(
-            Panel(status_text.strip(), title="System Status", border_style="green")
-        )
+        self.console.print(Panel(status_text.strip(), title="System Status", border_style="green"))
 
     def _handle_debug_command(self, user_input: str):
         """Handle debug command with optional parameters"""
@@ -4048,9 +3956,7 @@ Tracked Files: {len(self.history_manager.get_project_files())}
                 self.verbose = True
 
                 if old_verbose:
-                    self.console.print(
-                        "[yellow]🔧 Debug mode was already enabled[/yellow]"
-                    )
+                    self.console.print("[yellow]🔧 Debug mode was already enabled[/yellow]")
                 else:
                     self.console.print("[green]🔧 Debug mode enabled![/green]")
                     OSUtils.debug_print("Debug mode activated by user command", True)
@@ -4059,18 +3965,14 @@ Tracked Files: {len(self.history_manager.get_project_files())}
                 # Disable debug mode
                 old_verbose = self.verbose
                 if old_verbose:
-                    OSUtils.debug_print(
-                        "Debug mode being deactivated by user command", True
-                    )
+                    OSUtils.debug_print("Debug mode being deactivated by user command", True)
 
                 self.verbose = False
 
                 if old_verbose:
                     self.console.print("[yellow]🔧 Debug mode disabled[/yellow]")
                 else:
-                    self.console.print(
-                        "[yellow]🔧 Debug mode was already disabled[/yellow]"
-                    )
+                    self.console.print("[yellow]🔧 Debug mode was already disabled[/yellow]")
 
             elif param in ["info", "show", "status"]:
                 # Show debug info
@@ -4149,9 +4051,7 @@ Command Prompt Length: {len(PromptManager.get_command_generation_prompt())} char
                 structure_display = self._format_directory_structure(structure)
                 all_files = self._flatten_file_list(structure)
 
-                mode_text = (
-                    "🔧 Edit Mode" if project_mode == "edit" else "🆕 Create Mode"
-                )
+                mode_text = "🔧 Edit Mode" if project_mode == "edit" else "🆕 Create Mode"
 
                 info_text = f"""
 {mode_text} - Current Directory Structure

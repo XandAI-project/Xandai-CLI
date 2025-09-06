@@ -18,9 +18,7 @@ class TestBasicImports(unittest.TestCase):
         try:
             import xandai
 
-            self.assertTrue(
-                hasattr(xandai, "__version__") or hasattr(xandai, "__name__")
-            )
+            self.assertTrue(hasattr(xandai, "__version__") or hasattr(xandai, "__name__"))
         except ImportError as e:
             self.fail(f"Failed to import xandai module: {e}")
 

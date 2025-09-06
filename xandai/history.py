@@ -37,16 +37,13 @@ class HistoryManager:
 
         except (OSError, FileExistsError, PermissionError) as e:
             # Windows-specific handling for WinError 183 and similar issues
-            print(
-                f"⚠️  Warning: Could not create history directory '{history_dir}': {e}"
-            )
+            print(f"⚠️  Warning: Could not create history directory '{history_dir}': {e}")
 
             # Try alternative locations in order of preference
             alternative_paths = [
                 Path.home() / ".xandai_history",  # User home directory
                 Path.cwd() / "xandai_history",  # Current working directory
-                Path(os.environ.get("TEMP", "/tmp"))
-                / "xandai_history",  # Temp directory
+                Path(os.environ.get("TEMP", "/tmp")) / "xandai_history",  # Temp directory
             ]
 
             success = False
@@ -110,11 +107,7 @@ class HistoryManager:
 
     def get_recent_conversation(self, limit: int = 20) -> List[Dict[str, Any]]:
         """Get recent conversation messages"""
-        return (
-            self.conversation_history[-limit:]
-            if limit > 0
-            else self.conversation_history
-        )
+        return self.conversation_history[-limit:] if limit > 0 else self.conversation_history
 
     def get_conversation_context(self, limit: int = 10) -> List[Dict[str, str]]:
         """Get conversation context for LLM (role/content format)"""
@@ -271,10 +264,7 @@ class HistoryManager:
                 elif "fastapi" in content_lower:
                     self.project_context["framework"] = "fastapi"
             elif ext == ".py":
-                if (
-                    "from flask import" in content_lower
-                    or "import flask" in content_lower
-                ):
+                if "from flask import" in content_lower or "import flask" in content_lower:
                     self.project_context["framework"] = "flask"
                 elif "from django" in content_lower or "import django" in content_lower:
                     self.project_context["framework"] = "django"
@@ -297,9 +287,7 @@ class HistoryManager:
             history_file = self.history_dir / "conversation.json"
             export_data = {
                 "timestamp": datetime.now().isoformat(),
-                "conversation": self.conversation_history[
-                    -50:
-                ],  # Save last 50 messages
+                "conversation": self.conversation_history[-50:],  # Save last 50 messages
                 "project_context": self.project_context,
             }
 

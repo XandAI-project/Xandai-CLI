@@ -15,15 +15,16 @@ from pathlib import Path
 from typing import Optional
 
 # Ensure UTF-8 encoding for Windows compatibility
-if os.name == 'nt':  # Windows
+if os.name == "nt":  # Windows
     import codecs
-    sys.stdout = codecs.getwriter('utf-8')(sys.stdout.detach())
-    sys.stderr = codecs.getwriter('utf-8')(sys.stderr.detach())
+
+    sys.stdout = codecs.getwriter("utf-8")(sys.stdout.detach())
+    sys.stderr = codecs.getwriter("utf-8")(sys.stderr.detach())
 
 from xandai.chat import ChatREPL
 from xandai.history import HistoryManager
-from xandai.integrations.provider_factory import LLMProviderFactory
 from xandai.integrations.base_provider import LLMProvider
+from xandai.integrations.provider_factory import LLMProviderFactory
 from xandai.utils.os_utils import OSUtils
 from xandai.utils.prompt_manager import PromptManager
 
@@ -41,14 +42,14 @@ def create_parser() -> argparse.ArgumentParser:
   • Auto-detection of available providers
 
 📋 Interactive Features:
-  • Smart code detection and execution prompts  
+  • Smart code detection and execution prompts
   • Toggle interactive mode with /interactive command
   • Cross-platform terminal command integration
   • Real-time conversation with context tracking
 
 Examples:
   xandai                                    # Start with auto-detected provider
-  xandai --provider ollama                  # Use Ollama specifically  
+  xandai --provider ollama                  # Use Ollama specifically
   xandai --provider lm_studio               # Use LM Studio
   xandai --auto-detect                      # Auto-detect best provider
   xandai --endpoint http://192.168.1.10:11434  # Custom Ollama server
@@ -110,7 +111,7 @@ Platform: {OSUtils.get_platform().upper()} ({platform.system()} {platform.releas
 
     parser.add_argument(
         "--auto-detect",
-        action="store_true", 
+        action="store_true",
         help="Auto-detect best available provider (scans for Ollama and LM Studio servers)",
     )
 
@@ -126,7 +127,9 @@ Platform: {OSUtils.get_platform().upper()} ({platform.system()} {platform.releas
         help="Show system prompt for specified mode and exit",
     )
 
-    parser.add_argument("--version", action="version", version="XandAI 2.2.0 - Multi-Provider Edition")
+    parser.add_argument(
+        "--version", action="version", version="XandAI 2.2.0 - Multi-Provider Edition"
+    )
 
     return parser
 
@@ -186,9 +189,7 @@ def test_os_commands():
         print(f"• Read entire file: {OSUtils.get_file_read_command(test_file)}")
         print(f"• First 5 lines: {OSUtils.get_file_head_command(test_file, 5)}")
         print(f"• Last 5 lines: {OSUtils.get_file_tail_command(test_file, 5)}")
-        print(
-            f"• Search 'import': {OSUtils.get_file_search_command('import', test_file)}"
-        )
+        print(f"• Search 'import': {OSUtils.get_file_search_command('import', test_file)}")
         print()
 
         # Test directory commands
@@ -266,7 +267,7 @@ def main():
 
         # Initialize LLM Provider
         print("🔌 Initializing LLM provider...")
-        
+
         if args.auto_detect:
             if args.debug:
                 OSUtils.debug_print("Auto-detecting best available provider", True)
@@ -275,23 +276,22 @@ def main():
         else:
             if args.debug:
                 OSUtils.debug_print(f"Creating {args.provider} provider", True)
-            
+
             config_options = {}
             if args.endpoint:
                 config_options["base_url"] = args.endpoint
             if args.model:
                 config_options["model"] = args.model
-                
+
             llm_provider = LLMProviderFactory.create_provider(
-                provider_type=args.provider,
-                **config_options
+                provider_type=args.provider, **config_options
             )
 
         # Check connection
         if not llm_provider.is_connected():
             provider_name = llm_provider.get_provider_type().value.title()
             endpoint = llm_provider.get_base_url()
-            
+
             print(f"❌ Could not connect to {provider_name} at {endpoint}")
             print(f"Please ensure {provider_name} is running and accessible.")
 
@@ -323,7 +323,7 @@ def main():
         if not models:
             provider_name = llm_provider.get_provider_type().value.title()
             print(f"❌ No models found on {provider_name} server.")
-            
+
             if llm_provider.get_provider_type().value == "ollama":
                 if OSUtils.is_windows():
                     print("Try: ollama pull llama3.2 (in PowerShell)")
@@ -331,7 +331,7 @@ def main():
                     print("Try: ollama pull llama3.2 (in terminal)")
             elif llm_provider.get_provider_type().value == "lm_studio":
                 print("Load a model in LM Studio first")
-                
+
             sys.exit(1)
 
         if args.debug:
@@ -356,12 +356,12 @@ def main():
                 llm_provider.set_model(models[0])
                 print(f"📦 Auto-selected model: {models[0]} (only model available)")
                 if args.debug:
-                    OSUtils.debug_print(
-                        f"Auto-selected single model: {models[0]}", True
-                    )
+                    OSUtils.debug_print(f"Auto-selected single model: {models[0]}", True)
             else:
                 # Always show interactive selection when multiple models available
-                print(f"📦 Available models on {llm_provider.get_provider_type().value.title()} server:")
+                print(
+                    f"📦 Available models on {llm_provider.get_provider_type().value.title()} server:"
+                )
                 for i, model in enumerate(models, 1):
                     print(f"  {i}. {model}")
 
@@ -397,14 +397,16 @@ def main():
         # Show ASCII title and startup info
         provider_name = llm_provider.get_provider_type().value.title()
         current_model = llm_provider.get_current_model() or "None"
-        
-        print("""
- __  __               _       _ 
+
+        print(
+            """
+ __  __               _       _
  \\ \\/ /__ _ _ __   __| | __ _(_)
   \\  // _` | '_ \\ / _` |/ _` | |
   /  \\ (_| | | | | (_| | (_| | |
  /_/\\_\\__,_|_| |_|\\__,_|\\__,_|_|
-                                """)
+                                """
+        )
         print(f"- Provider: {provider_name}")
         print()
         print("🚀 Starting XandAI REPL...")
@@ -426,9 +428,7 @@ def main():
         print("-" * 50)
 
         # Enhanced REPL with LLM Provider
-        repl = ChatREPL(
-            llm_provider, history_manager, verbose=args.verbose or args.debug
-        )
+        repl = ChatREPL(llm_provider, history_manager, verbose=args.verbose or args.debug)
 
         if args.debug:
             OSUtils.debug_print("Starting REPL with enhanced configuration", True)

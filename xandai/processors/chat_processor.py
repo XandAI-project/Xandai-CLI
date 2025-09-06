@@ -18,9 +18,7 @@ class ChatProcessor:
     and applies optimized prompts for conversational experience.
     """
 
-    def __init__(
-        self, llm_provider: LLMProvider, conversation_manager: ConversationManager
-    ):
+    def __init__(self, llm_provider: LLMProvider, conversation_manager: ConversationManager):
         self.llm_provider = llm_provider
         self.conversation_manager = conversation_manager
 
@@ -93,16 +91,12 @@ RESPONSE FORMAT:
             )
             return error_msg
 
-    def _prepare_context(
-        self, user_input: str, app_state: AppState
-    ) -> List[Dict[str, str]]:
+    def _prepare_context(self, user_input: str, app_state: AppState) -> List[Dict[str, str]]:
         """
         Prepares context for sending to AI
         """
         # Basic context with system prompt
-        context = [
-            {"role": "system", "content": self._get_enhanced_system_prompt(app_state)}
-        ]
+        context = [{"role": "system", "content": self._get_enhanced_system_prompt(app_state)}]
 
         # Add relevant history
         history = self.conversation_manager.get_context_for_ai(max_tokens=3000)
@@ -138,24 +132,18 @@ RESPONSE FORMAT:
 
         return enhanced_prompt
 
-    def _generate_response(
-        self, context: List[Dict[str, str]], app_state: AppState
-    ) -> LLMResponse:
+    def _generate_response(self, context: List[Dict[str, str]], app_state: AppState) -> LLMResponse:
         """
         Generates response using Ollama
         """
         try:
-            response = self.llm_provider.chat(
-                messages=context, temperature=0.7, max_tokens=2048
-            )
+            response = self.llm_provider.chat(messages=context, temperature=0.7, max_tokens=2048)
             return response
 
         except Exception as e:
             # Fallback to generate if chat fails
             prompt = self._context_to_prompt(context)
-            return self.llm_provider.generate(
-                prompt=prompt, temperature=0.7, max_tokens=2048
-            )
+            return self.llm_provider.generate(prompt=prompt, temperature=0.7, max_tokens=2048)
 
     def _context_to_prompt(self, context: List[Dict[str, str]]) -> str:
         """

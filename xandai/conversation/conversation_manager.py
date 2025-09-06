@@ -256,12 +256,8 @@ class ConversationManager:
 
         for msg in self.current_session.messages:
             timestamp = msg.timestamp.strftime("%H:%M:%S")
-            role_emoji = {"user": "👤", "assistant": "🤖", "system": "⚙️"}.get(
-                msg.role, "❓"
-            )
-            lines.append(
-                f"\n[{timestamp}] {role_emoji} {msg.role.upper()} ({msg.mode}):"
-            )
+            role_emoji = {"user": "👤", "assistant": "🤖", "system": "⚙️"}.get(msg.role, "❓")
+            lines.append(f"\n[{timestamp}] {role_emoji} {msg.role.upper()} ({msg.mode}):")
             lines.append(msg.content)
 
         return "\n".join(lines)

@@ -13,16 +13,16 @@ jobs:
     strategy:
       matrix:
         python-version: ["3.8", "3.9", "3.10", "3.11"]
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      
+
       - name: Cache pip dependencies
         uses: actions/cache@v4
         with:
@@ -30,40 +30,40 @@ jobs:
           key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
           restore-keys: |
             ${{ runner.os }}-pip-
-      
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pytest pytest-cov flake8 black isort mypy
-      
+
       - name: Lint with flake8
         run: |
           flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
           flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-      
+
       - name: Check formatting with black
         run: |
           black --check --diff .
-      
+
       - name: Check import sorting
         run: |
           isort --check-only --diff .
-      
+
       - name: Type check with mypy
         run: |
           mypy xandai --ignore-missing-imports
         continue-on-error: true
-      
+
       - name: Run tests
         run: |
           pytest --cov=xandai --cov-report=term-missing --cov-report=xml --cov-report=html
-      
+
       - name: Test installation
         run: |
           pip install -e .
           xandai --help
-      
+
       - name: Upload coverage reports
         uses: codecov/codecov-action@v4
         with:

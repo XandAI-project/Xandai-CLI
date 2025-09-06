@@ -45,9 +45,7 @@ class TaskProcessor:
     with ordered steps, each corresponding to an LLM call.
     """
 
-    def __init__(
-        self, llm_provider: LLMProvider, conversation_manager: ConversationManager
-    ):
+    def __init__(self, llm_provider: LLMProvider, conversation_manager: ConversationManager):
         self.llm_provider = llm_provider
         self.conversation_manager = conversation_manager
 
@@ -108,7 +106,7 @@ CRITICAL RULES:
 
 VALID STEP EXAMPLES:
 - "1 - create src/main.py"
-- "2 - edit package.json" 
+- "2 - edit package.json"
 - "3 - command npm install"
 - "4 - create tests/test_api.py"
 
@@ -177,21 +175,15 @@ ALWAYS RESPOND IN ENGLISH."""
                 notes=[error_msg],
             )
 
-    def _prepare_task_context(
-        self, user_input: str, app_state: AppState
-    ) -> List[Dict[str, str]]:
+    def _prepare_task_context(self, user_input: str, app_state: AppState) -> List[Dict[str, str]]:
         """
         Prepares specific context for task mode
         """
         # Context with system prompt
-        context = [
-            {"role": "system", "content": self._get_enhanced_task_prompt(app_state)}
-        ]
+        context = [{"role": "system", "content": self._get_enhanced_task_prompt(app_state)}]
 
         # Add relevant task history
-        task_history = self.conversation_manager.get_recent_history(
-            limit=5, mode_filter="task"
-        )
+        task_history = self.conversation_manager.get_recent_history(limit=5, mode_filter="task")
         for msg in task_history[-3:]:  # Last 3 tasks for context
             context.append({"role": msg.role, "content": msg.content})
 
@@ -214,9 +206,7 @@ ALWAYS RESPOND IN ENGLISH."""
             enhanced_prompt += f"\n\nCURRENT CONTEXT:\n"
             enhanced_prompt += f"- Project type: {context_info.get('project_type')}\n"
             enhanced_prompt += f"- Directory: {context_info.get('root_path')}\n"
-            enhanced_prompt += (
-                f"- Existing files: {context_info.get('tracked_files')}\n"
-            )
+            enhanced_prompt += f"- Existing files: {context_info.get('tracked_files')}\n"
             enhanced_prompt += "- CONSIDER existing project when planning steps\n"
 
         return enhanced_prompt
@@ -231,9 +221,7 @@ ALWAYS RESPOND IN ENGLISH."""
 
         # Add context if relevant
         if context_info.get("project_type") != "unknown":
-            enhanced += (
-                f"CONTEXT: I'm working on a {context_info.get('project_type')} project "
-            )
+            enhanced += f"CONTEXT: I'm working on a {context_info.get('project_type')} project "
             enhanced += f"in directory {context_info.get('root_path')}\n\n"
 
         enhanced += "Please create a structured plan following the specified format."
@@ -257,13 +245,9 @@ ALWAYS RESPOND IN ENGLISH."""
         except Exception as e:
             # Fallback
             prompt = self._context_to_prompt(context)
-            return self.llm_provider.generate(
-                prompt=prompt, temperature=0.3, max_tokens=4096
-            )
+            return self.llm_provider.generate(prompt=prompt, temperature=0.3, max_tokens=4096)
 
-    def _parse_task_response(
-        self, response_content: str, original_input: str
-    ) -> TaskResult:
+    def _parse_task_response(self, response_content: str, original_input: str) -> TaskResult:
         """
         Parses AI response into structured TaskResult
         """
@@ -284,15 +268,11 @@ ALWAYS RESPOND IN ENGLISH."""
             notes = self._extract_notes(response_content)
 
             return TaskResult(
-                description=(
-                    project_match.group(1).strip() if project_match else original_input
-                ),
+                description=(project_match.group(1).strip() if project_match else original_input),
                 steps=steps,
                 project_type=type_match.group(1).strip() if type_match else "unknown",
                 estimated_time=time_match.group(1).strip() if time_match else "N/A",
-                complexity=(
-                    complexity_match.group(1).strip() if complexity_match else "medium"
-                ),
+                complexity=(complexity_match.group(1).strip() if complexity_match else "medium"),
                 dependencies=dependencies,
                 notes=notes,
             )
@@ -378,13 +358,13 @@ ALWAYS RESPOND IN ENGLISH."""
 
             elif step.action == "command":
                 # Look for corresponding <commands> block
-                pattern = rf"=== STEP {step.step_number}:.*?===\s*\n<commands>\s*\n(.*?)\n</commands>"
+                pattern = (
+                    rf"=== STEP {step.step_number}:.*?===\s*\n<commands>\s*\n(.*?)\n</commands>"
+                )
                 match = re.search(pattern, content, re.DOTALL)
                 if match:
                     commands = [
-                        cmd.strip()
-                        for cmd in match.group(1).strip().split("\n")
-                        if cmd.strip()
+                        cmd.strip() for cmd in match.group(1).strip().split("\n") if cmd.strip()
                     ]
                     step.commands = commands
 

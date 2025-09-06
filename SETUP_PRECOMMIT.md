@@ -93,7 +93,7 @@ python scripts/run_precommit_tests.py
 
 ### 1. XandAI Multi-Language Tests (`xandai-tests`)
 - **Purpose**: Ensures the multi-language execution system works
-- **Strategy**: 
+- **Strategy**:
   - Tries pytest with multiple configurations
   - Falls back to direct functionality verification
   - Handles Windows IO buffer issues gracefully

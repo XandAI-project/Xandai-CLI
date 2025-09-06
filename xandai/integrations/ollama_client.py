@@ -80,10 +80,10 @@ Please check:
 
 To use a different server, set the OLLAMA_HOST environment variable:
   export OLLAMA_HOST=http://your-server:11434
-  
+
 Or use XandAI commands:
   /server http://your-server:11434
-  
+
 Note: XandAI uses Ollama's native API endpoints
 """
         raise ConnectionError(error_msg)
@@ -229,9 +229,7 @@ Note: XandAI uses Ollama's native API endpoints
 
         available_models = self.list_models()
         if available_models and model not in available_models:
-            raise ValueError(
-                f"Model '{model}' not available. Available models: {available_models}"
-            )
+            raise ValueError(f"Model '{model}' not available. Available models: {available_models}")
         self.current_model = model
 
     def set_base_url(self, base_url: str):
@@ -256,14 +254,10 @@ Note: XandAI uses Ollama's native API endpoints
     def pull_model(self, model: str) -> bool:
         """Downloads a model using Ollama's /api/pull endpoint"""
         try:
-            response = requests.post(
-                f"{self.base_url}/api/pull", json={"name": model}, timeout=300
-            )
+            response = requests.post(f"{self.base_url}/api/pull", json={"name": model}, timeout=300)
             return response.status_code == 200
         except:
-            print(
-                f"Note: Model pulling failed. Try 'ollama pull {model}' in your terminal"
-            )
+            print(f"Note: Model pulling failed. Try 'ollama pull {model}' in your terminal")
             return False
 
     def update_options(self, **options):

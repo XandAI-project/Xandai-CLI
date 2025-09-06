@@ -88,17 +88,17 @@ async function toggleTodo(id) {
             throw new Error(`HTTP error! status: ${getTodoResponse.status}`);
         }
         const currentTodo = await getTodoResponse.json();
-        
+
         // Toggle the completed status
         const response = await fetch(`/api/todos/${id}`, {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ 
+            body: JSON.stringify({
                 title: currentTodo.title,
                 description: currentTodo.description || '',
-                completed: !currentTodo.completed 
+                completed: !currentTodo.completed
             })
         });
 

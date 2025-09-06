@@ -18,11 +18,11 @@ async function startServer(port = 3000) {
   try {
     // Connect to database
     await connectToDatabase();
-    
+
     // Setup middleware and routes
     setupMiddleware(app);
     setupRoutes(app);
-    
+
     // Start server
     app.listen(port, () => {
       console.log(`Server running on http://localhost:${port}`);
@@ -41,10 +41,10 @@ async function startServer(port = 3000) {
 function setupMiddleware(app) {
   // Parse JSON bodies
   app.use(express.json());
-  
+
   // Serve static files from public directory
   app.use(express.static(path.join(__dirname, 'public')));
-  
+
   // Parse URL-encoded bodies
   app.use(express.urlencoded({ extended: true }));
 }
@@ -57,7 +57,7 @@ function setupMiddleware(app) {
 function setupRoutes(app) {
   // API routes
   app.use('/api/todos', todoRoutes);
-  
+
   // Serve index.html for all other routes (for SPA)
   app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));

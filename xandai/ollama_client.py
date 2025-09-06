@@ -97,9 +97,7 @@ class OllamaClient:
         """Get detailed model information"""
         try:
             payload = {"name": model_name}
-            response = self.session.post(
-                f"{self.base_url}/api/show", json=payload, timeout=10
-            )
+            response = self.session.post(f"{self.base_url}/api/show", json=payload, timeout=10)
             response.raise_for_status()
             return response.json()
         except requests.RequestException:
@@ -194,9 +192,7 @@ class OllamaClient:
 
         return self.chat(messages, model, **options)
 
-    def _chat_with_streaming_progress(
-        self, payload: Dict, progress_callback
-    ) -> OllamaResponse:
+    def _chat_with_streaming_progress(self, payload: Dict, progress_callback) -> OllamaResponse:
         """Handle streaming chat with progress updates"""
         payload["stream"] = True
 
@@ -238,15 +234,11 @@ class OllamaClient:
 
                                 # Progress callback every 10 chunks
                                 if chunk_count % 10 == 0 and progress_callback:
-                                    progress_callback(
-                                        f"📦 {chunk_count} chunks received..."
-                                    )
+                                    progress_callback(f"📦 {chunk_count} chunks received...")
 
                                 # Extract content from chunk
                                 if "message" in chunk_data:
-                                    chunk_content = chunk_data["message"].get(
-                                        "content", ""
-                                    )
+                                    chunk_content = chunk_data["message"].get("content", "")
                                     if chunk_content:
                                         content_chunks.append(chunk_content)
 
@@ -265,9 +257,7 @@ class OllamaClient:
                                         chunk_count += 1
 
                                         if "message" in chunk_data:
-                                            chunk_content = chunk_data["message"].get(
-                                                "content", ""
-                                            )
+                                            chunk_content = chunk_data["message"].get("content", "")
                                             if chunk_content:
                                                 content_chunks.append(chunk_content)
 
@@ -391,9 +381,7 @@ class OllamaClient:
                     model_info = self.get_model_info(self.current_model)
                     health_info["current_model_info"] = {
                         "name": model_info.get("modelfile", {}).get("name", "Unknown"),
-                        "size": model_info.get("details", {}).get(
-                            "parameter_size", "Unknown"
-                        ),
+                        "size": model_info.get("details", {}).get("parameter_size", "Unknown"),
                     }
         except Exception as e:
             health_info["error"] = str(e)

@@ -75,20 +75,14 @@ class DisplayUtils:
         for step in task_result.steps:
             step_text = Text()
             step_text.append(f"{step.step_number} - ", style="bold")
-            step_text.append(
-                f"{step.action} ", style=self._get_action_style(step.action)
-            )
+            step_text.append(f"{step.action} ", style=self._get_action_style(step.action))
             step_text.append(step.target)
 
             self.console.print(step_text)
 
             # Show content preview if available
             if step.content:
-                preview = (
-                    step.content[:100] + "..."
-                    if len(step.content) > 100
-                    else step.content
-                )
+                preview = step.content[:100] + "..." if len(step.content) > 100 else step.content
                 self.console.print(f"    [dim]Content preview: {preview}[/dim]")
             elif step.commands:
                 cmd_preview = ", ".join(step.commands[:2])
@@ -111,15 +105,11 @@ class DisplayUtils:
             self.console.print("[yellow]No conversation history found[/yellow]")
             return
 
-        self.console.print(
-            Panel("[bold]Recent Conversation History[/bold]", border_style="blue")
-        )
+        self.console.print(Panel("[bold]Recent Conversation History[/bold]", border_style="blue"))
 
         for msg in messages[-10:]:  # Show last 10 messages
             timestamp = msg.timestamp.strftime("%H:%M:%S")
-            role_emoji = {"user": "👤", "assistant": "🤖", "system": "⚙️"}.get(
-                msg.role, "❓"
-            )
+            role_emoji = {"user": "👤", "assistant": "🤖", "system": "⚙️"}.get(msg.role, "❓")
 
             # Message header
             header = Text()

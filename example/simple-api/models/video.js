@@ -36,19 +36,19 @@ const videoSchema = new mongoose.Schema({
  */
 videoSchema.statics.validateVideoData = function(videoData) {
   const errors = [];
-  
+
   if (!videoData.title || videoData.title.trim() === '') {
     errors.push('Title is required');
   }
-  
+
   if (typeof videoData.views !== 'number' || videoData.views < 0) {
     errors.push('Views must be a non-negative number');
   }
-  
+
   if (typeof videoData.likes !== 'number' || videoData.likes < 0) {
     errors.push('Likes must be a non-negative number');
   }
-  
+
   return {
     isValid: errors.length === 0,
     errors

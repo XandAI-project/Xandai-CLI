@@ -82,7 +82,7 @@ class Database {
         VALUES (?, ?, ?)
       `;
       const params = [todo.title, todo.description || '', todo.completed || false];
-      
+
       this.db.run(query, params, function(err) {
         if (err) {
           reject(err);
@@ -102,12 +102,12 @@ class Database {
   async updateTodo(id, todo) {
     return new Promise((resolve, reject) => {
       const query = `
-        UPDATE todos 
+        UPDATE todos
         SET title = ?, description = ?, completed = ?, updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `;
       const params = [todo.title, todo.description || '', todo.completed || false, id];
-      
+
       this.db.run(query, params, function(err) {
         if (err) {
           reject(err);

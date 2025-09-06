@@ -57,9 +57,7 @@ class TaskProcessor:
             r"^.{1,15}$",  # Very short requests
         ]
 
-    def process_task(
-        self, user_request: str, console=None
-    ) -> Tuple[str, List[TaskStep]]:
+    def process_task(self, user_request: str, console=None) -> Tuple[str, List[TaskStep]]:
         """
         Process task request and return structured plan
 
@@ -167,9 +165,7 @@ class TaskProcessor:
 
         return "\\n".join(questions)
 
-    def _get_llm_response_with_progress(
-        self, prompt: str, console=None
-    ) -> LLMResponse:
+    def _get_llm_response_with_progress(self, prompt: str, console=None) -> LLMResponse:
         """Get LLM response with streaming progress indicators"""
         # Get conversation context to maintain continuity between chat and task modes
         context_messages = self.history_manager.get_conversation_context(limit=15)
@@ -191,9 +187,7 @@ class TaskProcessor:
         messages = [{"role": "system", "content": self.system_prompt}]
 
         # Add conversation context (excluding system messages to avoid conflicts)
-        context_without_system = [
-            msg for msg in context_messages if msg.get("role") != "system"
-        ]
+        context_without_system = [msg for msg in context_messages if msg.get("role") != "system"]
         messages.extend(context_without_system)
 
         # Debug output for final message count
@@ -238,9 +232,7 @@ class TaskProcessor:
                     )
             except Exception:
                 # Fallback to non-streaming
-                console.print(
-                    "[dim]⚠️ Streaming not available, using standard mode...[/dim]"
-                )
+                console.print("[dim]⚠️ Streaming not available, using standard mode...[/dim]")
                 return self.llm_provider.chat(
                     messages=messages,
                     temperature=0.3,
@@ -270,14 +262,10 @@ class TaskProcessor:
                 print(f"\\n[dim]Detected project structure:\\n{folder_structure}[/dim]")
 
         # Strategy 1: Look for formal STEPS: section
-        steps_match = re.search(
-            r"STEPS:\s*\n((?:\d+\s*-\s*.+\n?)*)", response, re.MULTILINE
-        )
+        steps_match = re.search(r"STEPS:\s*\n((?:\d+\s*-\s*.+\n?)*)", response, re.MULTILINE)
         if steps_match:
             step_lines = [
-                line.strip()
-                for line in steps_match.group(1).strip().split("\n")
-                if line.strip()
+                line.strip() for line in steps_match.group(1).strip().split("\n") if line.strip()
             ]
             for line in step_lines:
                 step = self._parse_step_line(line)
@@ -316,9 +304,7 @@ class TaskProcessor:
         desc_lower = description.lower()
 
         # Look for action keywords
-        if any(
-            word in desc_lower for word in ["create", "new", "add", "make", "build"]
-        ):
+        if any(word in desc_lower for word in ["create", "new", "add", "make", "build"]):
             action = "create"
         elif any(word in desc_lower for word in ["edit", "update", "modify", "change"]):
             action = "edit"
@@ -359,9 +345,7 @@ class TaskProcessor:
         command_blocks = re.findall(r"<commands>(.*?)</commands>", response, re.DOTALL)
         if command_blocks:
             cmd_content = command_blocks[0].strip()
-            cmd_lines = [
-                line.strip() for line in cmd_content.split("\n") if line.strip()
-            ]
+            cmd_lines = [line.strip() for line in cmd_content.split("\n") if line.strip()]
             if cmd_lines:
                 steps.append(
                     TaskStep(
@@ -375,9 +359,7 @@ class TaskProcessor:
 
         return steps
 
-    def _salvage_or_regenerate(
-        self, user_request: str, failed_response: str
-    ) -> List[TaskStep]:
+    def _salvage_or_regenerate(self, user_request: str, failed_response: str) -> List[TaskStep]:
         """Attempt to salvage failed parsing or generate minimal steps"""
 
         # Try to create at least one meaningful step from the request
@@ -388,16 +370,10 @@ class TaskProcessor:
         if "web" in request_lower or "html" in request_lower:
             steps.append(TaskStep(1, "create", "index.html", "Create main HTML file"))
             if "css" in request_lower:
-                steps.append(
-                    TaskStep(2, "create", "style.css", "Create CSS stylesheet")
-                )
+                steps.append(TaskStep(2, "create", "style.css", "Create CSS stylesheet"))
 
         if "python" in request_lower or "flask" in request_lower:
-            steps.append(
-                TaskStep(
-                    len(steps) + 1, "create", "app.py", "Create Python application"
-                )
-            )
+            steps.append(TaskStep(len(steps) + 1, "create", "app.py", "Create Python application"))
             steps.append(
                 TaskStep(
                     len(steps) + 1,
@@ -437,7 +413,7 @@ class TaskProcessor:
 
 🧠 CONTEXT-AWARE PLANNING - CRITICAL:
 1. ALWAYS analyze the PREVIOUS CONVERSATION CONTEXT first
-2. If code was analyzed or discussed, use THAT SPECIFIC functionality  
+2. If code was analyzed or discussed, use THAT SPECIFIC functionality
 3. When user says "create a version of that API" or "write that in Python", they mean the SPECIFIC API/code discussed previously
 4. DO NOT create generic examples - replicate the EXACT functionality, endpoints, features discussed
 5. Use conversation context to understand specific requirements, endpoints, data models, business logic
@@ -477,7 +453,7 @@ project_name/
 │   ├── file1.ext          # Brief description of what this file does
 │   │                      # Functions: main_function(), helper_function()
 │   │                      # Exports: MainClass, utility_functions
-│   └── file2.ext          # Brief description of what this file does  
+│   └── file2.ext          # Brief description of what this file does
 │                          # Functions: process_data(), validate_input()
 │                          # Exports: DataProcessor, validators
 ├── folder2/
@@ -499,12 +475,12 @@ STEPS:
 🔍 CONTEXT ANALYSIS PRIORITY:
 Before using generic examples, FIRST analyze the conversation context for:
 - Specific API endpoints mentioned (GET /videos, POST /users, etc.)
-- Data models discussed (Video, User, Product with specific fields)  
+- Data models discussed (Video, User, Product with specific fields)
 - Business logic requirements (validation rules, authentication, etc.)
 - Technology stack preferences mentioned in conversation
 - Specific features or functionality that was analyzed or requested
 
-If previous conversation contains code analysis or specific requirements, 
+If previous conversation contains code analysis or specific requirements,
 REPLICATE THAT EXACT FUNCTIONALITY rather than creating generic examples.
 
 EXAMPLES OF COMPLETE PROJECTS (use ONLY if no specific context exists):
@@ -559,7 +535,7 @@ api_project/
 │   └── database.js     # Database connection configuration
 │                       # Functions: connectDB(), closeDB(), getConnection()
 │                       # Exports: connection instance
-└── .env.example        # Environment variables template  
+└── .env.example        # Environment variables template
                         # Variables: PORT, DB_URI, JWT_SECRET, NODE_ENV
 ```
 
@@ -596,7 +572,7 @@ QUALITY STANDARDS:
 - Clean, well-documented code
 - Immediate runnable state after completion
 
-🎯 FINAL REMINDER: 
+🎯 FINAL REMINDER:
 1. Use CONVERSATION CONTEXT FIRST - if specific API/code was discussed, replicate it exactly
 2. Plan the ENTIRE project structure - missing files break everything!
 3. When in doubt, ask "What specific functionality was mentioned in the conversation?"
@@ -613,13 +589,9 @@ ALWAYS RESPOND IN ENGLISH."""
 
         # Emphasize conversation context analysis
         if conversation_context:
-            prompt_parts.append(
-                "\\n🧠 CRITICAL: Analyze the PREVIOUS CONVERSATION above for:"
-            )
+            prompt_parts.append("\\n🧠 CRITICAL: Analyze the PREVIOUS CONVERSATION above for:")
             prompt_parts.append("- Specific code that was read/analyzed")
-            prompt_parts.append(
-                "- Exact API endpoints mentioned (GET /videos, POST /users, etc.)"
-            )
+            prompt_parts.append("- Exact API endpoints mentioned (GET /videos, POST /users, etc.)")
             prompt_parts.append("- Data models with specific fields")
             prompt_parts.append("- Business logic and validation rules")
             prompt_parts.append("- Any specific functionality discussed")
@@ -648,31 +620,19 @@ ALWAYS RESPOND IN ENGLISH."""
             if len(existing_files) > 10:
                 prompt_parts.append(f"- ... and {len(existing_files) - 10} more")
 
-            prompt_parts.append(
-                "\\n⚠️  IMPORTANT: Use 'edit' for existing files, not 'create'!"
-            )
+            prompt_parts.append("\\n⚠️  IMPORTANT: Use 'edit' for existing files, not 'create'!")
 
-        prompt_parts.append(
-            "\\n🚀 Generate a complete, executable plan with working code!"
-        )
-        prompt_parts.append(
-            "🎯 REMEMBER: Use conversation context FIRST, generic examples LAST!"
-        )
+        prompt_parts.append("\\n🚀 Generate a complete, executable plan with working code!")
+        prompt_parts.append("🎯 REMEMBER: Use conversation context FIRST, generic examples LAST!")
 
         # Add mode-specific instruction
         project_mode = self._detect_project_mode()
         if project_mode == "edit":
             prompt_parts.append("\\n⚠️  EDIT MODE DETECTED:")
             prompt_parts.append("- You're modifying an existing project")
-            prompt_parts.append(
-                "- Preserve existing functionality unless explicitly changing"
-            )
-            prompt_parts.append(
-                "- Use 'edit' for existing files, 'create' for new files"
-            )
-            prompt_parts.append(
-                "- Maintain consistency with existing code style and patterns"
-            )
+            prompt_parts.append("- Preserve existing functionality unless explicitly changing")
+            prompt_parts.append("- Use 'edit' for existing files, 'create' for new files")
+            prompt_parts.append("- Maintain consistency with existing code style and patterns")
         else:
             prompt_parts.append("\\n🆕 CREATE MODE:")
             prompt_parts.append("- You're creating a new project from scratch")
@@ -728,9 +688,7 @@ ALWAYS RESPOND IN ENGLISH."""
         action = match.group(2)
         target = match.group(3).strip()
 
-        return TaskStep(
-            step_number=step_num, action=action, target=target, description=line
-        )
+        return TaskStep(step_number=step_num, action=action, target=target, description=line)
 
     def _associate_step_content(self, steps: List[TaskStep], response: str):
         """Associate detailed content with parsed steps"""
@@ -744,26 +702,22 @@ ALWAYS RESPOND IN ENGLISH."""
 
                     # Track the file edit in history
                     action_type = "create" if step.action == "create" else "edit"
-                    self.history_manager.track_file_edit(
-                        step.target, step.content, action_type
-                    )
+                    self.history_manager.track_file_edit(step.target, step.content, action_type)
 
             elif step.action == "run":
                 # Look for corresponding <commands> block
-                pattern = rf"=== STEP {step.step_number}:.*?===.*?\n<commands>\s*\n(.*?)\n</commands>"
+                pattern = (
+                    rf"=== STEP {step.step_number}:.*?===.*?\n<commands>\s*\n(.*?)\n</commands>"
+                )
                 match = re.search(pattern, response, re.DOTALL | re.IGNORECASE)
                 if match:
                     command_text = match.group(1).strip()
-                    step.commands = [
-                        cmd.strip() for cmd in command_text.split("\n") if cmd.strip()
-                    ]
+                    step.commands = [cmd.strip() for cmd in command_text.split("\n") if cmd.strip()]
 
     def format_steps_for_display(self, steps: List[TaskStep]) -> str:
         """Format steps for clean display to user"""
         if not steps:
-            return (
-                "❌ No executable steps found. Please try with a more specific request."
-            )
+            return "❌ No executable steps found. Please try with a more specific request."
 
         output_lines = []
 
