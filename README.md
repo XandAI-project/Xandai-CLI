@@ -50,17 +50,6 @@ XandAI now supports multiple LLM providers with automatic detection:
 - **🏠 LM Studio** - Local GUI-based model management
 - **🔮 More Coming Soon** - OpenAI, Anthropic, and others
 
-### Provider Commands
-```bash
-/provider          # Check current provider status
-/providers         # List all available providers
-/switch ollama     # Switch to Ollama
-/switch lm_studio  # Switch to LM Studio
-/detect            # Auto-detect best provider
-/server <url>      # Set custom endpoint
-/models            # List and select models
-```
-
 ## 🎯 What Makes XandAI Special
 
 ### 🧠 **Smart Command Recognition**
@@ -241,3 +230,4 @@ xandai
 ---
 
 **Made with ❤️ by the XandAI team** • Built for developers who love powerful, intelligent tools
+
