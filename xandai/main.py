@@ -133,7 +133,7 @@ Platform: {OSUtils.get_platform().upper()} ({platform.system()} {platform.releas
     )
 
     parser.add_argument(
-        "--version", action="version", version="XandAI 2.1.4 - Multi-Provider Edition"
+        "--version", action="version", version="XandAI 2.1.5 - Multi-Provider Edition"
     )
 
     return parser
