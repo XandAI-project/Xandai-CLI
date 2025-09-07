@@ -17,9 +17,14 @@ from typing import Optional
 # Ensure UTF-8 encoding for Windows compatibility
 if os.name == "nt":  # Windows
     import codecs
+    import locale
 
+    # Set UTF-8 encoding for stdout/stderr to avoid UnicodeEncodeError
     sys.stdout = codecs.getwriter("utf-8")(sys.stdout.detach())
     sys.stderr = codecs.getwriter("utf-8")(sys.stderr.detach())
+
+    # Set default encoding for subprocess operations
+    os.environ["PYTHONIOENCODING"] = "utf-8"
 
 from xandai.chat import ChatREPL
 from xandai.history import HistoryManager

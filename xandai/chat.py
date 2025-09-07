@@ -19,11 +19,14 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.syntax import Syntax
 
+from xandai.core.app_state import AppState
 from xandai.history import HistoryManager
 from xandai.integrations.base_provider import LLMProvider, LLMResponse
+from xandai.integrations.provider_factory import LLMProviderFactory
 from xandai.task import TaskProcessor, TaskStep
 from xandai.utils.os_utils import OSUtils
 from xandai.utils.prompt_manager import PromptManager
+from xandai.web.web_manager import WebManager
 
 
 class IntelligentCompleter(Completer):
@@ -46,6 +49,12 @@ class IntelligentCompleter(Completer):
             "/structure",
             "/interactive",
             "/toggle",
+            "/provider",
+            "/providers",
+            "/switch",
+            "/detect",
+            "/server",
+            "/models",
             "/exit",
             "/quit",
             "/bye",
@@ -555,8 +564,18 @@ class ChatREPL:
         # Rich console for pretty output
         self.console = Console()
 
+        # Initialize app state for configuration
+        self.app_state = AppState()
+
         # Task processor (with shared verbose mode)
         self.task_processor = TaskProcessor(llm_provider, history_manager, verbose)
+
+        # Web integration manager
+        self.web_manager = WebManager(
+            enabled=self.app_state.get_preference("web_integration_enabled", False),
+            timeout=self.app_state.get_preference("web_request_timeout", 10),
+            max_links=self.app_state.get_preference("max_links_per_request", 3),
+        )
 
         # Prompt session with history and completion
         self.session = PromptSession(
@@ -854,6 +873,15 @@ class ChatREPL:
         if command in ["/exit", "/quit", "/bye"]:
             raise KeyboardInterrupt()  # Will be caught by main loop
 
+        # Web integration toggle
+        if command == "/web":
+            self._handle_web_command()
+            return True
+
+        if command.startswith("/web "):
+            self._handle_web_command(user_input[5:].strip())
+            return True
+
         # Task mode
         if command.startswith("/task "):
             task_request = user_input[6:].strip()
@@ -903,6 +931,41 @@ class ChatREPL:
             self._toggle_interactive_mode()
             return True
 
+        # Provider management commands
+        if command in ["/provider"]:
+            self._show_provider_status()
+            return True
+
+        if command in ["/providers"]:
+            self._list_available_providers()
+            return True
+
+        if command.startswith("/switch "):
+            provider_name = user_input[8:].strip()
+            if provider_name:
+                self._switch_provider(provider_name)
+            else:
+                self.console.print("[yellow]Usage: /switch <provider>[/yellow]")
+                self.console.print("[dim]Available: ollama, lm_studio[/dim]")
+            return True
+
+        if command in ["/detect"]:
+            self._auto_detect_provider()
+            return True
+
+        if command.startswith("/server "):
+            server_url = user_input[8:].strip()
+            if server_url:
+                self._set_server_endpoint(server_url)
+            else:
+                self.console.print("[yellow]Usage: /server <url>[/yellow]")
+                self.console.print("[dim]Example: /server http://localhost:11434[/dim]")
+            return True
+
+        if command in ["/models"]:
+            self._list_and_select_models()
+            return True
+
         # Unknown slash command
         self.console.print(f"[red]Unknown command: {command}[/red]")
         self.console.print("[dim]Type 'help' or '/help' for available commands.[/dim]")
@@ -949,6 +1012,8 @@ class ChatREPL:
                 shell=True,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",  # Replace problematic chars instead of crashing
                 timeout=10,  # Shorter timeout to detect hanging commands
             )
 
@@ -1067,7 +1132,7 @@ class ChatREPL:
 
         try:
             # Run with full terminal access - no output capture
-            result = subprocess.run(command, shell=True)
+            result = subprocess.run(command, shell=True, encoding="utf-8", errors="replace")
 
             if result.returncode == 0:
                 self.console.print(f"[green]✅ Command completed successfully[/green]")
@@ -1103,6 +1168,8 @@ class ChatREPL:
                 shell=True,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=5,  # Very short timeout
                 input="",  # Empty input to avoid hanging
             )
@@ -1197,7 +1264,25 @@ class ChatREPL:
                     True,
                 )
 
-            # Add user message to history
+            # Process web integration if enabled
+            web_result = self.web_manager.process_user_input(user_input)
+
+            if web_result.success and web_result.extracted_contents:
+                if self.verbose:
+                    OSUtils.debug_print(
+                        f"Web integration: processed {web_result.processing_info.get('successful_extractions', 0)} links",
+                        True,
+                    )
+
+                # Show user what web content was found
+                self._display_web_integration_info(web_result)
+
+                # Use enhanced input with web context
+                processed_input = web_result.processed_text
+            else:
+                processed_input = user_input
+
+            # Add user message to history (original input for history tracking)
             self.history_manager.add_conversation(
                 role="user", content=user_input, metadata={"type": "chat"}
             )
@@ -1222,8 +1307,8 @@ class ChatREPL:
                     True,
                 )
 
-            # Add current user input
-            context_messages.append({"role": "user", "content": user_input})
+            # Add current user input (use processed input with web context if available)
+            context_messages.append({"role": "user", "content": processed_input})
 
             # If we have command output, add it as additional context
             if command_output:
@@ -1449,6 +1534,8 @@ class ChatREPL:
                         shell=True,
                         capture_output=True,
                         text=True,
+                        encoding="utf-8",
+                        errors="replace",
                         cwd=os.getcwd(),
                         timeout=30,
                     )
@@ -1736,6 +1823,8 @@ class ChatREPL:
                                 shell=True,
                                 capture_output=True,
                                 text=True,
+                                encoding="utf-8",
+                                errors="replace",
                                 timeout=60,
                             )
 
@@ -3244,6 +3333,8 @@ Remember: Your response will be written directly to the file! NO explanatory tex
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 bufsize=1,  # Line buffered
                 universal_newlines=True,
             )
@@ -3844,6 +3935,22 @@ Remember: Your response will be written directly to the file! NO explanatory tex
   • /scan, /structure - Show current directory structure
   • /exit, /quit, /bye - Exit XandAI
 
+[yellow]Provider Management:[/yellow]
+  • /provider         - Show current provider status
+  • /providers        - List all available providers
+  • /switch <provider> - Switch to another provider (ollama, lm_studio)
+  • /detect           - Auto-detect best available provider
+  • /server <url>     - Set custom server endpoint
+  • /models           - List available models
+
+[yellow]Web Integration:[/yellow]
+  • /web              - Show web integration status
+  • /web on           - Enable web integration (fetch content from links)
+  • /web off          - Disable web integration
+  • /web status       - Show detailed status and configuration
+  • /web stats        - Show statistics and cache information
+  • /web clear        - Clear web content cache
+
 [yellow]Alternative Commands (no prefix):[/yellow]
   • help, clear, history, context, status
   • exit, quit, bye
@@ -3884,6 +3991,249 @@ Remember: Your response will be written directly to the file! NO explanatory tex
             self.console.print(
                 "[dim]Code blocks will be automatically skipped without prompts[/dim]"
             )
+
+    # ===== Provider Management Commands =====
+
+    def _show_provider_status(self):
+        """Show current provider status and connection info"""
+        try:
+            health = self.llm_provider.health_check()
+            provider_type = self.llm_provider.get_provider_type().value.upper()
+            current_model = self.llm_provider.get_current_model() or "None"
+
+            # Status display
+            status_info = f"""
+[bold cyan]Provider Status:[/bold cyan]
+
+🔧 Provider: [green]{provider_type}[/green]
+🌐 Endpoint: {health.get('endpoint', 'Unknown')}
+🔗 Connected: {'[green]Yes[/green]' if health.get('connected', False) else '[red]No[/red]'}
+🤖 Current Model: [yellow]{current_model}[/yellow]
+📊 Available Models: {len(health.get('available_models', []))}
+
+💡 Use [bold]/providers[/bold] to see all available providers
+💡 Use [bold]/switch <provider>[/bold] to change provider
+💡 Use [bold]/models[/bold] to list and select models
+"""
+
+            self.console.print(
+                Panel(status_info.strip(), title="Provider Information", border_style="cyan")
+            )
+
+            # Show connection help if not connected
+            if not health.get("connected", False):
+                self.console.print("\n[yellow]Connection Help:[/yellow]")
+                self.console.print(
+                    "  • Use [bold]/detect[/bold] to auto-detect available providers"
+                )
+                self.console.print("  • Use [bold]/server <url>[/bold] to set custom endpoint")
+                self.console.print("  • Ensure your LLM server is running and accessible")
+
+        except Exception as e:
+            self.console.print(f"[red]Error getting provider status: {e}[/red]")
+
+    def _list_available_providers(self):
+        """List all available providers and their status"""
+        self.console.print("[bold cyan]Available Providers:[/bold cyan]\n")
+
+        providers = ["ollama", "lm_studio"]
+        current_provider = self.llm_provider.get_provider_type().value
+
+        for provider_name in providers:
+            try:
+                # Test connection to each provider
+                test_provider = LLMProviderFactory.create_provider(provider_name)
+                health = test_provider.health_check()
+                connected = health.get("connected", False)
+                endpoint = health.get("endpoint", "Unknown")
+
+                status_icon = "🟢" if connected else "🔴"
+                current_marker = (
+                    " [bold yellow](current)[/bold yellow]"
+                    if provider_name == current_provider
+                    else ""
+                )
+
+                self.console.print(
+                    f"{status_icon} [bold]{provider_name.upper()}[/bold]{current_marker}"
+                )
+                self.console.print(f"   Endpoint: {endpoint}")
+                self.console.print(f"   Status: {'Connected' if connected else 'Not available'}")
+
+                if connected:
+                    models = health.get("available_models", [])
+                    model_count = len(models)
+                    self.console.print(f"   Models: {model_count} available")
+
+                self.console.print()
+
+            except Exception as e:
+                status_icon = "❌"
+                current_marker = (
+                    " [bold yellow](current)[/bold yellow]"
+                    if provider_name == current_provider
+                    else ""
+                )
+                self.console.print(
+                    f"{status_icon} [bold]{provider_name.upper()}[/bold]{current_marker}"
+                )
+                self.console.print(f"   Status: Error - {str(e)}")
+                self.console.print()
+
+        self.console.print("[dim]💡 Use [bold]/switch <provider>[/bold] to change provider[/dim]")
+
+    def _switch_provider(self, provider_name: str):
+        """Switch to a different provider"""
+        provider_name = provider_name.lower()
+
+        if provider_name not in ["ollama", "lm_studio"]:
+            self.console.print(f"[red]Unknown provider: {provider_name}[/red]")
+            self.console.print("[yellow]Available providers: ollama, lm_studio[/yellow]")
+            return
+
+        try:
+            # Create new provider instance
+            new_provider = LLMProviderFactory.create_provider(provider_name)
+
+            # Test connection
+            health = new_provider.health_check()
+            if not health.get("connected", False):
+                self.console.print(
+                    f"[red]Cannot switch to {provider_name.upper()}: Not connected[/red]"
+                )
+                self.console.print(
+                    f"[yellow]Endpoint: {health.get('endpoint', 'Unknown')}[/yellow]"
+                )
+                self.console.print("[dim]Make sure the server is running and accessible[/dim]")
+                return
+
+            # Switch provider
+            old_provider = self.llm_provider.get_provider_type().value
+            self.llm_provider = new_provider
+            self.task_processor.llm_provider = new_provider  # Update task processor too
+
+            # Get model info
+            current_model = new_provider.get_current_model() or "None"
+            available_models = health.get("available_models", [])
+
+            self.console.print(
+                f"[green]✅ Switched from {old_provider.upper()} to {provider_name.upper()}[/green]"
+            )
+            self.console.print(f"[blue]Endpoint: {health.get('endpoint')}[/blue]")
+            self.console.print(f"[yellow]Current Model: {current_model}[/yellow]")
+            self.console.print(f"[dim]Available Models: {len(available_models)}[/dim]")
+
+            if len(available_models) > 1:
+                self.console.print(
+                    "\n[dim]💡 Use [bold]/models[/bold] to select a different model[/dim]"
+                )
+
+        except Exception as e:
+            self.console.print(f"[red]Failed to switch to {provider_name}: {e}[/red]")
+
+    def _auto_detect_provider(self):
+        """Auto-detect the best available provider"""
+        self.console.print("[blue]🔍 Auto-detecting providers...[/blue]")
+
+        try:
+            # Use factory's auto-detection
+            detected_provider = LLMProviderFactory.create_auto_detect()
+            health = detected_provider.health_check()
+
+            if health.get("connected", False):
+                provider_type = detected_provider.get_provider_type().value
+                old_provider = self.llm_provider.get_provider_type().value
+
+                if provider_type != old_provider:
+                    self.llm_provider = detected_provider
+                    self.task_processor.llm_provider = detected_provider
+
+                    current_model = detected_provider.get_current_model() or "None"
+                    available_models = health.get("available_models", [])
+
+                    self.console.print(
+                        f"[green]✅ Auto-detected and switched to {provider_type.upper()}[/green]"
+                    )
+                    self.console.print(f"[blue]Endpoint: {health.get('endpoint')}[/blue]")
+                    self.console.print(f"[yellow]Current Model: {current_model}[/yellow]")
+                    self.console.print(f"[dim]Available Models: {len(available_models)}[/dim]")
+                else:
+                    self.console.print(
+                        f"[yellow]Already using the best available provider: {provider_type.upper()}[/yellow]"
+                    )
+            else:
+                self.console.print("[red]❌ No providers available or connected[/red]")
+                self.console.print("[dim]Make sure Ollama or LM Studio is running[/dim]")
+
+        except Exception as e:
+            self.console.print(f"[red]Auto-detection failed: {e}[/red]")
+
+    def _set_server_endpoint(self, server_url: str):
+        """Set custom server endpoint for current provider"""
+        try:
+            provider_type = self.llm_provider.get_provider_type().value
+
+            # Create new provider with custom endpoint
+            new_provider = LLMProviderFactory.create_provider(provider_type, base_url=server_url)
+
+            # Test connection
+            health = new_provider.health_check()
+            if health.get("connected", False):
+                self.llm_provider = new_provider
+                self.task_processor.llm_provider = new_provider
+
+                current_model = new_provider.get_current_model() or "None"
+                available_models = health.get("available_models", [])
+
+                self.console.print(f"[green]✅ Updated {provider_type.upper()} endpoint[/green]")
+                self.console.print(f"[blue]New Endpoint: {server_url}[/blue]")
+                self.console.print(f"[yellow]Current Model: {current_model}[/yellow]")
+                self.console.print(f"[dim]Available Models: {len(available_models)}[/dim]")
+            else:
+                self.console.print(f"[red]❌ Cannot connect to {server_url}[/red]")
+                self.console.print("[dim]Verify the URL and ensure the server is running[/dim]")
+
+        except Exception as e:
+            self.console.print(f"[red]Failed to set endpoint: {e}[/red]")
+
+    def _list_and_select_models(self):
+        """List available models and allow selection"""
+        try:
+            health = self.llm_provider.health_check()
+
+            if not health.get("connected", False):
+                self.console.print("[red]❌ Not connected to provider[/red]")
+                self.console.print(
+                    "[dim]Use [bold]/provider[/bold] to check connection status[/dim]"
+                )
+                return
+
+            models = health.get("available_models", [])
+            current_model = self.llm_provider.get_current_model()
+            provider_type = self.llm_provider.get_provider_type().value.upper()
+
+            if not models:
+                self.console.print(f"[yellow]No models available from {provider_type}[/yellow]")
+                return
+
+            self.console.print(f"[bold cyan]Available Models ({provider_type}):[/bold cyan]\n")
+
+            for i, model in enumerate(models, 1):
+                current_marker = (
+                    " [bold yellow](current)[/bold yellow]" if model == current_model else ""
+                )
+                self.console.print(f"  {i:2}. [green]{model}[/green]{current_marker}")
+
+            self.console.print(f"\nCurrent model: [yellow]{current_model or 'None'}[/yellow]")
+            self.console.print(
+                "\n[dim]💡 Model selection/switching will be implemented in future version[/dim]"
+            )
+            self.console.print(
+                "[dim]For now, use your provider's native tools to change models[/dim]"
+            )
+
+        except Exception as e:
+            self.console.print(f"[red]Error listing models: {e}[/red]")
 
     def _clear_screen(self):
         """Clear the terminal screen"""
@@ -4121,3 +4471,147 @@ CAPABILITIES:
 - Best practices and code reviews
 
 Remember: Users can run terminal commands directly, and you'll see the results. Use this to provide contextual, actionable advice."""
+
+    def _display_web_integration_info(self, web_result):
+        """Display information about web content that was processed"""
+        if not web_result.extracted_contents:
+            return
+
+        info_parts = []
+
+        for i, content in enumerate(web_result.extracted_contents, 1):
+            title = content.title or "Untitled"
+            word_count = content.word_count
+
+            info_parts.append(f"📄 Page {i}: {title}")
+            if word_count > 0:
+                info_parts.append(f"   📊 {word_count} words processed")
+
+            if content.language:
+                info_parts.append(f"   💻 Technology: {content.language}")
+
+            if content.code_blocks:
+                info_parts.append(f"   🔧 {len(content.code_blocks)} code examples found")
+
+        # Show summary
+        processing_info = web_result.processing_info
+        total_links = processing_info.get("links_found", 0)
+        processed_links = processing_info.get("successful_extractions", 0)
+
+        summary = f"🌐 Web Integration: Processed {processed_links}/{total_links} links"
+
+        info_text = summary + "\n" + "\n".join(info_parts)
+
+        self.console.print(
+            Panel(info_text, title="Web Content Integrated", border_style="blue", padding=(0, 1))
+        )
+
+    def _handle_web_command(self, parameter: str = None):
+        """Handle web integration commands"""
+        if parameter is None:
+            # Show current status
+            self._show_web_status()
+            return
+
+        param = parameter.lower().strip()
+
+        if param in ["on", "enable", "true", "1"]:
+            self.web_manager.set_enabled(True)
+            self.app_state.set_preference("web_integration_enabled", True)
+            self.console.print("🌐 [green]Web integration enabled[/green]")
+            self.console.print(
+                "Links in your messages will now be automatically fetched and processed."
+            )
+
+        elif param in ["off", "disable", "false", "0"]:
+            self.web_manager.set_enabled(False)
+            self.app_state.set_preference("web_integration_enabled", False)
+            self.console.print("🌐 [yellow]Web integration disabled[/yellow]")
+
+        elif param == "status":
+            self._show_web_status()
+
+        elif param == "clear":
+            self.web_manager.clear_cache()
+            self.console.print("🗑️ Web content cache cleared")
+
+        elif param == "stats":
+            self._show_web_stats()
+
+        else:
+            self.console.print(
+                """[yellow]Web Integration Commands:[/yellow]
+
+/web                 - Show current status
+/web on              - Enable web integration
+/web off             - Disable web integration
+/web status          - Show detailed status
+/web stats           - Show statistics
+/web clear           - Clear web content cache
+
+When enabled, links in your messages will be automatically fetched
+and their content added to the AI's context for better assistance.
+
+Note: Only processes links that appear in regular text, not in
+commands or code examples."""
+            )
+
+    def _show_web_status(self):
+        """Show current web integration status"""
+        enabled = self.web_manager.is_enabled()
+        stats = self.web_manager.get_stats()
+        cache_info = self.web_manager.get_cache_info()
+
+        status_text = f"""🌐 Web Integration Status: {'🟢 ENABLED' if enabled else '🔴 DISABLED'}
+
+Configuration:
+• Request timeout: {stats['timeout']} seconds
+• Max links per request: {stats['max_links']}
+• Cache size: {cache_info['size']}/{cache_info['max_size']}
+
+Components:
+• Link detector: {stats['components']['link_detector']}
+• Web fetcher: {stats['components']['web_fetcher']}
+• Content extractor: {stats['components']['content_extractor']}
+
+Usage: Type '/web on' to enable or '/web help' for more options."""
+
+        self.console.print(
+            Panel(status_text, title="Web Integration", border_style="blue" if enabled else "dim")
+        )
+
+    def _show_web_stats(self):
+        """Show web integration statistics"""
+        cache_info = self.web_manager.get_cache_info()
+        stats = self.web_manager.get_stats()
+
+        stats_text = f"""📊 Web Integration Statistics
+
+Cache Information:
+• Cached URLs: {cache_info['size']}
+• Cache capacity: {cache_info['max_size']}
+• Memory efficiency: {cache_info['size']}/{cache_info['max_size']} ({(cache_info['size']/cache_info['max_size']*100):.1f}%)
+
+Configuration:
+• Timeout: {stats['timeout']}s
+• Max links: {stats['max_links']}
+• Status: {'Enabled' if stats['enabled'] else 'Disabled'}"""
+
+        if cache_info["urls"]:
+            stats_text += "\n\nRecently cached domains:"
+            domains = set()
+            for url in cache_info["urls"][-10:]:  # Show last 10
+                try:
+                    from urllib.parse import urlparse
+
+                    domain = urlparse(url).netloc
+                    domains.add(domain)
+                except:
+                    continue
+
+            for domain in sorted(domains):
+                stats_text += f"\n• {domain}"
+
+        self.console.print(
+            Panel(stats_text, title="Web Integration Statistics", border_style="cyan")
+        )
