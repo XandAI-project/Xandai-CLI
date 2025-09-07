@@ -3,3 +3,4 @@ prompt-toolkit>=3.0.47
 rich>=13.0.0
 colorama>=0.4.6
 pydantic>=2.0.0
+beautifulsoup4>=4.12.0

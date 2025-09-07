@@ -26,7 +26,13 @@ def run_command(cmd: List[str], timeout: int = 60) -> Tuple[int, str, str]:
     """Run a command with timeout and return exit code, stdout, stderr"""
     try:
         result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=timeout, cwd=project_root
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout,
+            cwd=project_root,
         )
         return result.returncode, result.stdout, result.stderr
     except subprocess.TimeoutExpired:

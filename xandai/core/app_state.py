@@ -185,6 +185,10 @@ class AppState:
             "show_timestamps": False,
             "compact_mode": False,
             "default_model": "llama3.2",
+            # Web integration settings
+            "web_integration_enabled": False,
+            "web_request_timeout": 10,
+            "max_links_per_request": 3,
         }
 
     def set_preference(self, key: str, value: Any):
