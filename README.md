@@ -94,6 +94,29 @@ xandai> edit styles.css adding dark mode
 xandai> create config.json with API settings
 ```
 
+## Code Execution
+
+XandAI can detect and execute code in various languages:
+
+```bash
+xandai> create a math.py that will receive two args and sum them
+# AI generates complete Python script with argument handling
+💾 This looks like a complete python file. Save it? (y/N): y
+📝 Filename: math.py
+✅ File 'math.py' created successfully!
+
+xandai> python math.py 2 2
+$ python math.py 2 2
+2.0 + 2.0 = 4.0
+✅ Command completed successfully
+```
+
+Features:
+- ✅ Automatic code detection for Python, JavaScript, Bash, and more
+- ✅ Interactive execution mode for scripts requiring input
+- ✅ Non-interactive capture mode for automation
+- ✅ Smart prompts for user choice between modes
+
 ## Code Review
 
 AI-powered code review with Git integration. Analyzes your code changes and provides detailed feedback on security, quality, and best practices.
