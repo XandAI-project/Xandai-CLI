@@ -25,6 +25,7 @@ from xandai.integrations.base_provider import LLMProvider, LLMResponse
 from xandai.integrations.provider_factory import LLMProviderFactory
 from xandai.processors.review_processor import ReviewProcessor
 from xandai.task import TaskProcessor, TaskStep
+from xandai.utils.enhanced_file_handler import EnhancedFileHandler
 from xandai.utils.os_utils import OSUtils
 from xandai.utils.prompt_manager import PromptManager
 from xandai.web.web_manager import WebManager
@@ -574,6 +575,14 @@ class ChatREPL:
 
         # Review processor
         self.review_processor = ReviewProcessor(llm_provider, history_manager)
+
+        # Enhanced file handler (replaces legacy file operations)
+        self.enhanced_file_handler = EnhancedFileHandler(
+            llm_provider=llm_provider,
+            history_manager=history_manager,
+            console=self.console,
+            verbose=verbose,
+        )
 
         # Web integration manager
         self.web_manager = WebManager(
@@ -1274,6 +1283,9 @@ class ChatREPL:
     def _handle_chat(self, user_input: str):
         """Handle LLM chat conversation with intelligent command generation"""
         try:
+            # Save user input for context checking
+            self._last_user_input = user_input
+
             if self.verbose:
                 OSUtils.debug_print(
                     f"Starting chat processing for {len(user_input)} character input",
@@ -1341,6 +1353,72 @@ class ChatREPL:
                     }
                 )
 
+                # If this is a file edit operation, add explicit instruction to use <code edit> tags
+                if self._is_file_edit_request(user_input):
+                    if self.verbose:
+                        OSUtils.debug_print(
+                            "Detected file edit operation - adding explicit <code edit> instruction",
+                            True,
+                        )
+
+                    context_messages.append(
+                        {
+                            "role": "system",
+                            "content": """CRITICAL INSTRUCTION: The user is requesting to EDIT an existing file.
+
+YOU MUST USE THIS EXACT FORMAT (do NOT use markdown code blocks):
+
+<code edit filename="path/to/file.ext">
+[COMPLETE updated file content - include ALL code, not just changes]
+</code>
+
+WRONG (do NOT do this):
+```python
+code here
+```
+
+RIGHT (do this):
+<code edit filename="index.py">
+from flask import Flask
+app = Flask(__name__)
+</code>""",
+                        }
+                    )
+
+                # If this is a file create operation, add explicit instruction to use <code filename> tags
+                elif self._is_file_create_request(user_input):
+                    if self.verbose:
+                        OSUtils.debug_print(
+                            "Detected file create operation - adding explicit <code filename> instruction",
+                            True,
+                        )
+
+                    context_messages.append(
+                        {
+                            "role": "system",
+                            "content": """CRITICAL INSTRUCTION: The user is requesting to CREATE a new file.
+
+YOU MUST USE THIS EXACT FORMAT (do NOT use markdown code blocks):
+
+<code create filename="path/to/file.ext">
+[COMPLETE file content]
+</code>
+
+WRONG (do NOT do this):
+```python
+code here
+```
+
+RIGHT (do this):
+<code create filename="tokens.py">
+from flask import Flask
+app = Flask(__name__)
+</code>
+
+Remember: ALWAYS include the filename in the tag!""",
+                        }
+                    )
+
             if self.verbose:
                 OSUtils.debug_print(f"Sending {len(context_messages)} total messages to LLM", True)
 
@@ -1371,6 +1449,51 @@ class ChatREPL:
 
                 self.console.print(traceback.format_exc())
 
+    def _is_file_edit_request(self, user_input: str) -> bool:
+        """
+        Detect if the user is requesting to edit/modify a file
+        Returns True if the user input suggests they want to edit/modify a file
+        """
+        edit_keywords = [
+            "edit",
+            "modify",
+            "update",
+            "change",
+            "fix",
+            "add to",
+            "remove from",
+            "delete from",
+            "refactor",
+            "alter",
+        ]
+
+        user_lower = user_input.lower()
+        return any(keyword in user_lower for keyword in edit_keywords)
+
+    def _is_file_create_request(self, user_input: str) -> bool:
+        """
+        Detect if the user is requesting to create a file
+        Returns True if the user input suggests they want to create a file
+        """
+        create_keywords = [
+            "create",
+            "make",
+            "generate",
+            "build",
+            "add a new",
+            "new file",
+            "write",
+        ]
+
+        user_lower = user_input.lower()
+        has_create_intent = any(keyword in user_lower for keyword in create_keywords)
+
+        # Check for file extensions or file-related words
+        file_indicators = [".py", ".js", ".ts", ".html", ".css", ".json", "file", "script"]
+        has_file_ref = any(indicator in user_lower for indicator in file_indicators)
+
+        return has_create_intent and has_file_ref
+
     def _should_generate_commands(self, user_input: str) -> bool:
         """
         Determine if we should use two-stage LLM processing (command generation + chat)
@@ -1395,6 +1518,15 @@ class ChatREPL:
             "open",
             "cat",
             "type",
+            "edit",
+            "modify",
+            "update",
+            "change",
+            "fix",
+            "add to",
+            "remove from",
+            "delete from",
+            "refactor",
         ]
 
         # File-related keywords
@@ -2732,6 +2864,9 @@ Remember: Your response will be written directly to the file! NO explanatory tex
                 }
             )
 
+        # Track positions to avoid duplicate detection
+        detected_positions = set()
+
         # Find <code edit filename="..."> and <code create filename="..."> tags
         file_operation_pattern = (
             r'<code\s+(edit|create)\s+filename=["\']([^"\']+)["\']>(.*?)</code>'
@@ -2740,6 +2875,13 @@ Remember: Your response will be written directly to the file! NO explanatory tex
             operation = match.group(1)  # 'edit' or 'create'
             filename = match.group(2)  # filename
             code_content = match.group(3).strip()
+
+            # Skip if already detected at this position
+            pos_key = (match.start(), match.end())
+            if pos_key in detected_positions:
+                continue
+            detected_positions.add(pos_key)
+
             all_code_blocks.append(
                 {
                     "lang": "file_operation",  # Special type for file operations
@@ -2747,6 +2889,31 @@ Remember: Your response will be written directly to the file! NO explanatory tex
                     "type": f"code_{operation}_file",
                     "filename": filename,
                     "operation": operation,
+                    "full_match": match.group(0),
+                    "start": match.start(),
+                    "end": match.end(),
+                }
+            )
+
+        # Also find <code filename="..."> tags (shorthand for create)
+        # This pattern should NOT match if 'edit' or 'create' keywords are present
+        simple_file_pattern = r'<code\s+filename=["\']([^"\']+)["\']>(.*?)</code>'
+        for match in re.finditer(simple_file_pattern, content, re.DOTALL):
+            # Skip if already detected at this position
+            pos_key = (match.start(), match.end())
+            if pos_key in detected_positions:
+                continue
+            detected_positions.add(pos_key)
+
+            filename = match.group(1)  # filename
+            code_content = match.group(2).strip()
+            all_code_blocks.append(
+                {
+                    "lang": "file_operation",  # Special type for file operations
+                    "code": code_content,
+                    "type": "code_create_file",
+                    "filename": filename,
+                    "operation": "create",
                     "full_match": match.group(0),
                     "start": match.start(),
                     "end": match.end(),
@@ -2855,9 +3022,17 @@ Remember: Your response will be written directly to the file! NO explanatory tex
                         ):
                             self._prompt_code_execution(block["code"], block["lang"], block["type"])
 
-                        # NEW: Check if this looks like a complete file and offer to save it
-                        if allow_execution and self._is_complete_file(block["code"], block["lang"]):
-                            self._prompt_file_save(block["code"], block["lang"])
+                        # Smart file detection: only when user explicitly requested file operation
+                        # Check context to see if user wanted to create/edit a file
+                        if allow_execution and hasattr(self, "_last_user_input"):
+                            is_create = self._is_file_create_request(self._last_user_input)
+                            is_edit = self._is_file_edit_request(self._last_user_input)
+
+                            if (is_create or is_edit) and self._is_complete_file(
+                                block["code"], block["lang"]
+                            ):
+                                # User wanted file operation but AI used markdown - help them out
+                                self._prompt_file_save(block["code"], block["lang"])
 
                 last_pos = block["end"]
 
@@ -3208,11 +3383,30 @@ Remember: Your response will be written directly to the file! NO explanatory tex
 
         return default_names.get(lang_lower, f"file{extension}")
 
+    def _extract_filename_from_input(self, user_input: str) -> str:
+        """Extract filename from user input like 'create tokens.py' or 'edit app.js'"""
+        import re
+
+        # Pattern to match common file extensions
+        pattern = r"\b([a-zA-Z0-9_\-]+\.[a-zA-Z0-9]+)\b"
+        matches = re.findall(pattern, user_input)
+
+        if matches:
+            # Return the first filename found
+            return matches[0]
+
+        return None
+
     def _prompt_file_save(self, code: str, lang: str):
         """Prompt user to save a detected code file"""
         try:
-            # Infer filename
-            suggested_filename = self._infer_filename(code, lang)
+            # Try to extract filename from user's original input
+            extracted_filename = None
+            if hasattr(self, "_last_user_input"):
+                extracted_filename = self._extract_filename_from_input(self._last_user_input)
+
+            # Infer filename from code if not extracted
+            suggested_filename = extracted_filename or self._infer_filename(code, lang)
 
             # Show save prompt
             self.console.print(
@@ -3227,16 +3421,21 @@ Remember: Your response will be written directly to the file! NO explanatory tex
             response = input().strip().lower()
 
             if response in ["y", "yes", "sim", "s"]:
-                # Ask for filename
-                self.console.print(
-                    f"[cyan]📝 Filename [default: {suggested_filename}]:[/cyan]",
-                    end=" ",
-                )
-                sys.stdout.flush()
-                filename_input = input().strip()
+                # If we extracted filename from user input, use it directly
+                if extracted_filename:
+                    final_filename = extracted_filename
+                    self.console.print(f"[cyan]📝 Filename: {final_filename}[/cyan]")
+                else:
+                    # Ask for filename
+                    self.console.print(
+                        f"[cyan]📝 Filename [default: {suggested_filename}]:[/cyan]",
+                        end=" ",
+                    )
+                    sys.stdout.flush()
+                    filename_input = input().strip()
 
-                # Use suggested filename if none provided
-                final_filename = filename_input if filename_input else suggested_filename
+                    # Use suggested filename if none provided
+                    final_filename = filename_input if filename_input else suggested_filename
 
                 # Save the file
                 self._execute_file_create(code, final_filename)
@@ -3249,20 +3448,25 @@ Remember: Your response will be written directly to the file! NO explanatory tex
             self.console.print(f"[red]Error prompting for file save: {e}[/red]")
 
     def _prompt_file_operation(self, content: str, filename: str, operation: str):
-        """Prompt user to execute file create/edit operations"""
+        """Prompt user to execute file create/edit operations - Enhanced version"""
         try:
-            # Customize prompt based on operation type
-            if operation == "create":
-                prompt_msg = f"\\n[yellow]📄 Create file '{filename}'? (y/N):[/yellow]"
-                exec_msg = f"[green]🚀 Creating file '{filename}'...[/green]"
-            elif operation == "edit":
-                prompt_msg = f"\\n[yellow]✏️  Edit file '{filename}'? (y/N):[/yellow]"
-                exec_msg = f"[green]🚀 Editing file '{filename}'...[/green]"
+            # Normalize operation type
+            if operation.lower() in ["edit", "update"]:
+                op_type = "update"
             else:
-                prompt_msg = f"\\n[yellow]📝 Apply file operation to '{filename}'? (y/N):[/yellow]"
-                exec_msg = f"[green]🚀 Applying operation to '{filename}'...[/green]"
+                op_type = "create"
 
-            # Show file operation prompt
+            # Customize prompt based on operation type
+            if op_type == "create":
+                prompt_msg = f"\\n[yellow]📄 Create file '{filename}'? (y/N):[/yellow]"
+            else:
+                prompt_msg = f"\\n[yellow]✏️  Edit file '{filename}'? (y/N):[/yellow]"
+
+            # Show file operation prompt (only if interactive)
+            if not self.interactive_mode:
+                self.console.print("[dim]File operation skipped (interactive mode disabled).[/dim]")
+                return
+
             self.console.print(prompt_msg, end=" ")
 
             # Get user response
@@ -3272,15 +3476,11 @@ Remember: Your response will be written directly to the file! NO explanatory tex
             response = input().strip().lower()
 
             if response in ["y", "yes", "sim", "s"]:
-                self.console.print(exec_msg)
-
-                # Execute file operation
-                if operation == "create":
+                # Execute using enhanced file handler
+                if op_type == "create":
                     self._execute_file_create(content, filename)
-                elif operation == "edit":
-                    self._execute_file_edit(content, filename)
                 else:
-                    self.console.print(f"[red]Unknown file operation: {operation}[/red]")
+                    self._execute_file_edit(content, filename)
             else:
                 self.console.print(f"[dim]File operation cancelled.[/dim]")
 
@@ -3290,79 +3490,30 @@ Remember: Your response will be written directly to the file! NO explanatory tex
             self.console.print(f"[red]Error prompting for file operation: {e}[/red]")
 
     def _execute_file_create(self, content: str, filename: str):
-        """Create a new file with the given content"""
-        try:
-            import os
-            from pathlib import Path
+        """Create a new file with the given content - Enhanced version"""
+        operation = self.enhanced_file_handler.file_ops.create_file(
+            file_path=filename,
+            content=content,
+            overwrite=False,
+            interactive=self.interactive_mode,
+        )
 
-            # Create directory if it doesn't exist
-            file_path = Path(filename)
-            file_path.parent.mkdir(parents=True, exist_ok=True)
-
-            # Check if file already exists
-            if file_path.exists():
-                self.console.print(
-                    f"[yellow]⚠️  File '{filename}' already exists. Overwrite? (y/N):[/yellow]",
-                    end=" ",
-                )
-                response = input().strip().lower()
-                if response not in ["y", "yes", "sim", "s"]:
-                    self.console.print("[dim]File creation cancelled.[/dim]")
-                    return
-
-            # Write file content
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.write(content)
-
-            # Track file in history
-            self.history_manager.track_file_edit(filename, content, "create")
-
-            self.console.print(f"[green]✅ File '{filename}' created successfully![/green]")
-
-        except Exception as e:
-            self.console.print(f"[red]Error creating file '{filename}': {e}[/red]")
+        # History tracking is already handled by file_ops if successful
+        if not operation.success and operation.error:
+            self.console.print(f"[red]Error: {operation.error}[/red]")
 
     def _execute_file_edit(self, content: str, filename: str):
-        """Edit an existing file with the given content"""
-        try:
-            import os
-            from pathlib import Path
+        """Edit an existing file with the given content - Enhanced version"""
+        operation = self.enhanced_file_handler.file_ops.update_file(
+            file_path=filename,
+            content=content,
+            create_if_missing=True,
+            interactive=self.interactive_mode,
+        )
 
-            file_path = Path(filename)
-
-            # Check if file exists for editing
-            if not file_path.exists():
-                self.console.print(
-                    f"[yellow]⚠️  File '{filename}' doesn't exist. Create it? (y/N):[/yellow]",
-                    end=" ",
-                )
-                response = input().strip().lower()
-                if response in ["y", "yes", "sim", "s"]:
-                    self._execute_file_create(content, filename)
-                    return
-                else:
-                    self.console.print("[dim]File edit cancelled.[/dim]")
-                    return
-
-            # Create backup of existing file
-            backup_path = f"{filename}.backup"
-            if file_path.exists():
-                import shutil
-
-                shutil.copy2(file_path, backup_path)
-                self.console.print(f"[dim]Backup created: {backup_path}[/dim]")
-
-            # Write new content
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.write(content)
-
-            # Track file in history
-            self.history_manager.track_file_edit(filename, content, "edit")
-
-            self.console.print(f"[green]✅ File '{filename}' edited successfully![/green]")
-
-        except Exception as e:
-            self.console.print(f"[red]Error editing file '{filename}': {e}[/red]")
+        # History tracking is already handled by file_ops if successful
+        if not operation.success and operation.error:
+            self.console.print(f"[red]Error: {operation.error}[/red]")
 
     def _execute_shell_code(self, code: str):
         """Execute shell/bash commands (handles multiple separators)"""
