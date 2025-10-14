@@ -60,9 +60,9 @@ Simply ask to create a file with a specific name:
 xandai> create tokens.py with authentication functions
 # AI generates complete code
 # System detects filename automatically
-💾 This looks like a complete python file. Save it? (y/N): y
-📝 Filename: tokens.py
-✅ File 'tokens.py' created successfully!
+This looks like a complete python file. Save it? (y/N): y
+Filename: tokens.py
+File 'tokens.py' created successfully!
 ```
 
 ### Editing Files
@@ -73,17 +73,17 @@ Edit existing files by name:
 xandai> edit index.py adding a health endpoint
 # AI reads current file content
 # Generates complete updated version
-✏️  Edit file 'index.py'? (y/N): y
-✅ File 'index.py' updated successfully!
+Edit file 'index.py'? (y/N): y
+File 'index.py' updated successfully!
 ```
 
 ### Smart Detection
 
 The AI automatically:
-- ✅ Reads files when editing (preserves existing code)
-- ✅ Extracts filenames from your request
-- ✅ Provides complete file content (never placeholders)
-- ✅ Only prompts when you explicitly request file operations
+- Reads files when editing (preserves existing code)
+- Extracts filenames from your request
+- Provides complete file content (never placeholders)
+- Only prompts when you explicitly request file operations
 
 ### Supported Formats
 
@@ -101,21 +101,21 @@ XandAI can detect and execute code in various languages:
 ```bash
 xandai> create a math.py that will receive two args and sum them
 # AI generates complete Python script with argument handling
-💾 This looks like a complete python file. Save it? (y/N): y
-📝 Filename: math.py
-✅ File 'math.py' created successfully!
+This looks like a complete python file. Save it? (y/N): y
+Filename: math.py
+File 'math.py' created successfully!
 
 xandai> python math.py 2 2
 $ python math.py 2 2
 2.0 + 2.0 = 4.0
-✅ Command completed successfully
+Command completed successfully
 ```
 
 Features:
-- ✅ Automatic code detection for Python, JavaScript, Bash, and more
-- ✅ Interactive execution mode for scripts requiring input
-- ✅ Non-interactive capture mode for automation
-- ✅ Smart prompts for user choice between modes
+- Automatic code detection for Python, JavaScript, Bash, and more
+- Interactive execution mode for scripts requiring input
+- Non-interactive capture mode for automation
+- Smart prompts for user choice between modes
 
 ## Code Review
 
