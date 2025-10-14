@@ -13,6 +13,7 @@ from rich.table import Table
 from rich.text import Text
 
 from xandai.conversation.conversation_manager import ConversationMessage
+from xandai.processors.review_processor import ReviewResult
 from xandai.processors.task_processor import TaskResult
 
 
@@ -195,6 +196,99 @@ class DisplayUtils:
         progress_text.append(message, style="dim")
 
         self.console.print(progress_text)
+
+    def show_review_result(self, review_result: ReviewResult):
+        """Display code review result in structured format"""
+        # Header with score
+        header = Text()
+        header.append("🔍 CODE REVIEW RESULT", style="bold blue")
+
+        # Score color based on value
+        score = review_result.code_quality_score
+        if score >= 8:
+            score_style = "bold green"
+        elif score >= 6:
+            score_style = "bold yellow"
+        else:
+            score_style = "bold red"
+
+        header.append(f" - Score: {score}/10", style=score_style)
+
+        self.console.print(Panel(header, border_style="blue"))
+
+        # Summary section
+        if review_result.summary:
+            summary_panel = Panel(
+                review_result.summary, title="📋 Executive Summary", border_style="cyan"
+            )
+            self.console.print(summary_panel)
+
+        # Files reviewed info
+        if review_result.files_reviewed:
+            files_text = Text()
+            files_text.append(
+                f"📁 Files reviewed: {len(review_result.files_reviewed)}\n", style="bold"
+            )
+            files_text.append(f"📊 Lines analyzed: {review_result.total_lines_reviewed}\n")
+            files_text.append(
+                f"⏱️  Estimated manual review time: {review_result.review_time_estimate}"
+            )
+
+            self.console.print(Panel(files_text, title="📈 Statistics", border_style="blue"))
+
+        # Key issues (critical problems)
+        if review_result.key_issues:
+            issues_text = "\n".join(f"• {issue}" for issue in review_result.key_issues)
+            self.console.print(Panel(issues_text, title="🚨 Critical Issues", border_style="red"))
+
+        # Suggestions for improvement
+        if review_result.suggestions:
+            suggestions_text = "\n".join(
+                f"• {suggestion}" for suggestion in review_result.suggestions
+            )
+            self.console.print(
+                Panel(suggestions_text, title="💡 Improvement Suggestions", border_style="yellow")
+            )
+
+        # Architecture notes
+        if review_result.architecture_notes:
+            arch_text = "\n".join(f"• {note}" for note in review_result.architecture_notes)
+            self.console.print(
+                Panel(arch_text, title="🏗️  Architecture & Design", border_style="blue")
+            )
+
+        # Security concerns
+        if review_result.security_concerns:
+            security_text = "\n".join(f"• {concern}" for concern in review_result.security_concerns)
+            self.console.print(Panel(security_text, title="🔒 Security", border_style="red"))
+
+        # Performance notes
+        if review_result.performance_notes:
+            perf_text = "\n".join(f"• {note}" for note in review_result.performance_notes)
+            self.console.print(Panel(perf_text, title="⚡ Performance", border_style="green"))
+
+        # Inline comments per file
+        if review_result.inline_comments:
+            self.console.print("\n[bold cyan]📝 File-Specific Comments:[/bold cyan]")
+
+            for file_path, comments in review_result.inline_comments.items():
+                if comments:
+                    file_text = f"[bold]{file_path}[/bold]\n"
+                    file_text += "\n".join(f"  • {comment}" for comment in comments)
+
+                    self.console.print(
+                        Panel(file_text, title=f"📄 {file_path}", border_style="cyan")
+                    )
+
+        # Files reviewed list
+        if review_result.files_reviewed:
+            files_list = ", ".join(review_result.files_reviewed)
+            if len(files_list) > 100:  # Truncate if too long
+                files_list = files_list[:100] + "..."
+
+            self.console.print(f"\n[dim]Files analyzed: {files_list}[/dim]")
+
+        self.console.print()  # Add spacing
 
     def _get_action_style(self, action: str) -> str:
         """Get Rich style for action type"""

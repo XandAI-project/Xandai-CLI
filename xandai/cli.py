@@ -19,6 +19,7 @@ from xandai.core.command_processor import CommandProcessor
 from xandai.integrations.base_provider import LLMProvider
 from xandai.integrations.provider_factory import LLMProviderFactory
 from xandai.processors.chat_processor import ChatProcessor
+from xandai.processors.review_processor import ReviewProcessor
 from xandai.processors.task_processor import TaskProcessor
 from xandai.utils.display_utils import DisplayUtils
 
@@ -43,6 +44,7 @@ class XandAICLI:
 
         self.chat_processor = ChatProcessor(self.llm_provider, self.conversation_manager)
         self.task_processor = TaskProcessor(self.llm_provider, self.conversation_manager)
+        self.review_processor = ReviewProcessor(self.llm_provider, self.conversation_manager)
         self.display = DisplayUtils(self.console)
 
         # EditModeEnhancer state variables
@@ -64,6 +66,8 @@ class XandAICLI:
             "/auto": self._enable_auto_mode,
             # Task mode
             "/task": self._process_task_mode,
+            # Review mode
+            "/review": self._process_review_mode,
             # Provider management
             "/provider": self._show_provider_status,
             "/providers": self._list_providers,
@@ -237,6 +241,24 @@ class XandAICLI:
         finally:
             self.forced_mode = previous_mode
 
+    def _process_review_mode(self, args: str):
+        """Processes /review command"""
+        try:
+            self.console.print("[dim]🔍 Analyzing Git changes...[/dim]")
+
+            # Get current directory or use args as path
+            repo_path = args.strip() if args.strip() else "."
+
+            # Process code review
+            review_result = self.review_processor.process(self.app_state, repo_path)
+
+            # Display review results
+            self.display.show_review_result(review_result)
+
+        except Exception as e:
+            self.console.print(f"[red]Review error: {e}[/red]")
+            self.console.print("Check if you're in a Git repository with changes to review")
+
     # ===== Utility Commands =====
 
     def _show_help(self, args: str):
@@ -259,6 +281,9 @@ class XandAICLI:
 
 [cyan]Task Mode:[/cyan]
   /task <desc>   - Process task with structured output
+
+[cyan]Code Review:[/cyan]
+  /review [path] - Analyze Git changes and provide code review
 
 [cyan]Ollama Management:[/cyan]
   /ollama        - Show Ollama connection status
@@ -339,6 +364,9 @@ class XandAICLI:
                 # Update processors
                 self.chat_processor = ChatProcessor(self.llm_provider, self.conversation_manager)
                 self.task_processor = TaskProcessor(self.llm_provider, self.conversation_manager)
+                self.review_processor = ReviewProcessor(
+                    self.llm_provider, self.conversation_manager
+                )
 
                 self.console.print(f"[green]✓ Switched to {new_provider.title()}[/green]")
 
@@ -373,6 +401,7 @@ class XandAICLI:
             # Update processors
             self.chat_processor = ChatProcessor(self.llm_provider, self.conversation_manager)
             self.task_processor = TaskProcessor(self.llm_provider, self.conversation_manager)
+            self.review_processor = ReviewProcessor(self.llm_provider, self.conversation_manager)
 
             self.console.print(
                 f"[green]✓ Auto-detected and switched to {detected_provider.title()}[/green]"
@@ -426,6 +455,7 @@ class XandAICLI:
             # Update processors
             self.chat_processor = ChatProcessor(self.llm_provider, self.conversation_manager)
             self.task_processor = TaskProcessor(self.llm_provider, self.conversation_manager)
+            self.review_processor = ReviewProcessor(self.llm_provider, self.conversation_manager)
         except Exception as e:
             self.console.print(f"[red]Failed to update endpoint: {e}[/red]")
             return
