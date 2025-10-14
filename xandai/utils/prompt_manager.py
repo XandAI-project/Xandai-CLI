@@ -58,7 +58,42 @@ COMMANDS USAGE:
 - Commands will be executed automatically and results shown
 - Only suggest commands that are safe and relevant to the discussion
 
-IMPORTANT: In Chat Mode, code blocks (```) are for DISPLAY only. They will NOT create files. Use Task Mode (/task) for file creation and project setup."""
+FILE OPERATIONS - ⚠️  CRITICAL RULES:
+
+⛔ MARKDOWN CODE BLOCKS (```) DO NOT CREATE OR EDIT FILES!
+✅ ONLY <code> TAGS CREATE/EDIT FILES!
+
+When the user asks to CREATE, EDIT, MODIFY, or UPDATE files:
+
+CREATE A NEW FILE (use this format):
+<code create filename="app.py">
+import flask
+app = flask.Flask(__name__)
+</code>
+
+EDIT AN EXISTING FILE (use this format):
+<code edit filename="app.py">
+import flask
+app = flask.Flask(__name__)
+# Complete updated content
+</code>
+
+❌ WRONG - Will NOT work:
+```python
+import flask
+```
+
+✅ RIGHT - Will work:
+<code create filename="app.py">
+import flask
+</code>
+
+CRITICAL REMINDERS:
+- ``` blocks are for EXAMPLES and DISPLAY ONLY
+- <code create filename="..."> and <code edit filename="..."> are for ACTUAL file operations
+- ALWAYS provide COMPLETE file content (no "..." or placeholders)
+- If user says "create file.py" → use <code create filename="file.py">
+- If user says "edit file.py" → use <code edit filename="file.py">"""
 
     @staticmethod
     def get_task_system_prompt_single_file() -> str:

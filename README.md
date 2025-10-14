@@ -48,6 +48,52 @@ xandai --provider lm_studio --endpoint http://localhost:1234
 /status               # System status
 ```
 
+## File Operations
+
+XandAI can intelligently create and edit files with AI assistance:
+
+### Creating Files
+
+Simply ask to create a file with a specific name:
+
+```bash
+xandai> create tokens.py with authentication functions
+# AI generates complete code
+# System detects filename automatically
+💾 This looks like a complete python file. Save it? (y/N): y
+📝 Filename: tokens.py
+✅ File 'tokens.py' created successfully!
+```
+
+### Editing Files
+
+Edit existing files by name:
+
+```bash
+xandai> edit index.py adding a health endpoint
+# AI reads current file content
+# Generates complete updated version
+✏️  Edit file 'index.py'? (y/N): y
+✅ File 'index.py' updated successfully!
+```
+
+### Smart Detection
+
+The AI automatically:
+- ✅ Reads files when editing (preserves existing code)
+- ✅ Extracts filenames from your request
+- ✅ Provides complete file content (never placeholders)
+- ✅ Only prompts when you explicitly request file operations
+
+### Supported Formats
+
+Works with any programming language:
+```bash
+xandai> create app.js with Express server
+xandai> edit styles.css adding dark mode
+xandai> create config.json with API settings
+```
+
 ## Code Review
 
 AI-powered code review with Git integration. Analyzes your code changes and provides detailed feedback on security, quality, and best practices.
