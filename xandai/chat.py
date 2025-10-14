@@ -23,6 +23,7 @@ from xandai.core.app_state import AppState
 from xandai.history import HistoryManager
 from xandai.integrations.base_provider import LLMProvider, LLMResponse
 from xandai.integrations.provider_factory import LLMProviderFactory
+from xandai.processors.review_processor import ReviewProcessor
 from xandai.task import TaskProcessor, TaskStep
 from xandai.utils.os_utils import OSUtils
 from xandai.utils.prompt_manager import PromptManager
@@ -35,6 +36,7 @@ class IntelligentCompleter(Completer):
     def __init__(self):
         self.slash_commands = [
             "/task",
+            "/review",
             "/help",
             "/h",
             "/clear",
@@ -570,6 +572,9 @@ class ChatREPL:
         # Task processor (with shared verbose mode)
         self.task_processor = TaskProcessor(llm_provider, history_manager, verbose)
 
+        # Review processor
+        self.review_processor = ReviewProcessor(llm_provider, history_manager)
+
         # Web integration manager
         self.web_manager = WebManager(
             enabled=self.app_state.get_preference("web_integration_enabled", False),
@@ -889,6 +894,17 @@ class ChatREPL:
                 self._handle_task_mode(task_request)
             else:
                 self.console.print("[yellow]Usage: /task <description>[/yellow]")
+            return True
+
+        # Review mode
+        if command.startswith("/review"):
+            # Extract path if provided, otherwise use current directory
+            if command == "/review":
+                repo_path = "."
+            else:
+                repo_path = user_input[8:].strip() or "."
+
+            self._handle_review_mode(repo_path)
             return True
 
         # Help command
@@ -1668,6 +1684,79 @@ class ChatREPL:
             return OSUtils.get_directory_list_command(".")
 
         return None
+
+    def _handle_review_mode(self, repo_path: str = "."):
+        """Handle code review mode request"""
+        try:
+            self.console.print("[dim]🔍 Analyzing Git changes...[/dim]")
+
+            # Process code review
+            review_result = self.review_processor.process(self.app_state, repo_path)
+
+            # Display review results using console directly since we don't have display utils here
+            self._display_review_result(review_result)
+
+        except Exception as e:
+            self.console.print(f"[red]Review error: {e}[/red]")
+            self.console.print("Check if you're in a Git repository with changes to review")
+
+    def _display_review_result(self, review_result):
+        """Display review result in chat format"""
+        from rich.text import Text
+
+        # Header with score
+        header = Text()
+        header.append("🔍 CODE REVIEW RESULT", style="bold blue")
+
+        # Score color based on value
+        score = review_result.code_quality_score
+        if score >= 8:
+            score_style = "bold green"
+        elif score >= 6:
+            score_style = "bold yellow"
+        else:
+            score_style = "bold red"
+
+        header.append(f" - Score: {score}/10", style=score_style)
+
+        self.console.print(Panel(header, border_style="blue"))
+
+        # Summary
+        if review_result.summary:
+            self.console.print(
+                Panel(review_result.summary, title="📋 Executive Summary", border_style="cyan")
+            )
+
+        # Statistics
+        if review_result.files_reviewed:
+            stats_text = f"📁 Files: {len(review_result.files_reviewed)} | "
+            stats_text += f"📊 Lines: {review_result.total_lines_reviewed} | "
+            stats_text += f"⏱️  Est. time: {review_result.review_time_estimate}"
+            self.console.print(f"[dim]{stats_text}[/dim]")
+
+        # Key sections in compact format
+        sections = [
+            ("🚨 Critical Issues", review_result.key_issues, "red"),
+            ("💡 Suggestions", review_result.suggestions, "yellow"),
+            ("🏗️  Architecture", review_result.architecture_notes, "blue"),
+            ("🔒 Security", review_result.security_concerns, "red"),
+            ("⚡ Performance", review_result.performance_notes, "green"),
+        ]
+
+        for title, items, color in sections:
+            if items:
+                items_text = "\n".join(f"• {item}" for item in items)
+                self.console.print(Panel(items_text, title=title, border_style=color))
+
+        # Inline comments
+        if review_result.inline_comments:
+            self.console.print("\n[bold cyan]📝 File-Specific Comments:[/bold cyan]")
+            for file_path, comments in review_result.inline_comments.items():
+                if comments:
+                    comments_text = "\n".join(f"  • {comment}" for comment in comments)
+                    self.console.print(f"[bold]{file_path}[/bold]\n{comments_text}")
+
+        self.console.print()  # Add spacing
 
     def _handle_task_mode(self, task_request: str):
         """Handle task mode request with enhanced progress display and shared context"""
@@ -3933,6 +4022,7 @@ Remember: Your response will be written directly to the file! NO explanatory tex
                       /debug info/show - Show debug information
   • /interactive, /toggle - Toggle interactive mode for code execution
   • /scan, /structure - Show current directory structure
+  • /review [path]  - Analyze Git changes and provide code review
   • /exit, /quit, /bye - Exit XandAI
 
 [yellow]Provider Management:[/yellow]
@@ -3959,6 +4049,11 @@ Remember: Your response will be written directly to the file! NO explanatory tex
   • /task create a web app with Python Flask
   • /task add user authentication to my React app
   • /task optimize the database queries in my Django project
+
+[yellow]Code Review:[/yellow]
+  • /review          - Review changes in current Git repository
+  • /review /path/to/repo - Review changes in specific repository
+  • Analyzes modified files and provides comprehensive feedback
 
 [yellow]Terminal Commands:[/yellow]
   Cross-platform terminal commands work (Windows + Linux/macOS):

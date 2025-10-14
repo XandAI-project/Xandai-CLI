@@ -41,11 +41,23 @@ xandai --provider lm_studio --endpoint http://localhost:1234
 
 ```bash
 /task <description>    # Project planning
+/review               # AI-powered code review
 /web on               # Enable web content integration
 /help                 # Show all commands
 /clear                # Clear history
 /status               # System status
 ```
+
+## Code Review
+
+AI-powered code review with Git integration. Analyzes your code changes and provides detailed feedback on security, quality, and best practices.
+
+```bash
+xandai> /review
+# Automatically detects Git changes and provides comprehensive analysis
+```
+
+![Code Review Example](images/Review.png)
 
 ## Web Integration
 
