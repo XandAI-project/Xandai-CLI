@@ -26,7 +26,7 @@ class LinkDetector:
         # HTTP/HTTPS URLs
         r'https?://[^\s<>"\'`|()]+',
         # URLs without protocol but with common TLDs
-        r'(?:^|\s)(?:www\.)?[a-zA-Z0-9-]+\.(?:com|org|net|edu|gov|io|co|uk|de|fr|jp|cn|br|au|in|ca|ru|it|es|nl|se|no|dk|fi|pl|ch|at|be|cz|pt|gr|hu|ro|sk|bg|hr|si|ee|lv|lt|lu|mt|cy)\b[^\s<>"\'`|()]*',
+        r'(?:www\.)?[a-zA-Z0-9-]+\.(?:com|org|net|edu|gov|io|co|uk|de|fr|jp|cn|br|au|in|ca|ru|it|es|nl|se|no|dk|fi|pl|ch|at|be|cz|pt|gr|hu|ro|sk|bg|hr|si|ee|lv|lt|lu|mt|cy)\b[^\s<>"\'`|()]*',
     ]
 
     # Comandos que frequentemente contêm URLs que NÃO devem ser processados
@@ -115,17 +115,39 @@ class LinkDetector:
         for pattern in self.compiled_patterns:
             for match in pattern.finditer(text):
                 url = match.group().strip()
+                start = match.start()
+                end = match.end()
+
                 # Remove punctuation at the end
                 url = re.sub(r"[.,;:!?\])}]+$", "", url)
 
+                # Skip if this looks like part of an email address
+                if start > 0 and text[start - 1] == "@":
+                    continue
+
                 if self._is_valid_url(url):
-                    links.append((url, match.start(), match.end()))
+                    links.append((url, start, end))
 
-        # Remove duplicates and sort by position
-        links = list(set(links))
-        links.sort(key=lambda x: x[1])
+        # Remove duplicates: if a URL is part of a longer URL, keep only the longer one
+        filtered_links = []
+        for url, start, end in sorted(set(links), key=lambda x: x[1]):
+            # Check if this URL overlaps with or is contained in a URL with protocol
+            is_duplicate = False
+            for other_url, other_start, other_end in filtered_links:
+                # If this URL is within another URL's range, skip it
+                if start >= other_start and end <= other_end:
+                    is_duplicate = True
+                    break
+                # If this URL contains another URL, remove the other one
+                if other_start >= start and other_end <= end:
+                    filtered_links.remove((other_url, other_start, other_end))
 
-        return links
+            if not is_duplicate:
+                filtered_links.append((url, start, end))
+
+        # Sort by position
+        filtered_links.sort(key=lambda x: x[1])
+        return filtered_links
 
     def _is_valid_url(self, url: str) -> bool:
         """Valida se uma string é um URL válido"""

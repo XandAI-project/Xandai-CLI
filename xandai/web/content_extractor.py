@@ -124,13 +124,13 @@ class ContentExtractor:
 
     def _extract_title(self) -> str:
         """Extrai título da página"""
-        # Try multiple title sources
+        # Try multiple title sources (prioritize <title> tag over h1)
         title_sources = [
-            ("h1", lambda x: x.get_text().strip()),
             ("title", lambda x: x.get_text().strip()),
+            ('meta[property="og:title"]', lambda x: x.get("content", "")),
+            ("h1", lambda x: x.get_text().strip()),
             (".page-title", lambda x: x.get_text().strip()),
             (".post-title", lambda x: x.get_text().strip()),
-            ('meta[property="og:title"]', lambda x: x.get("content", "")),
         ]
 
         for selector, extractor in title_sources:
@@ -157,7 +157,7 @@ class ContentExtractor:
             elements = self.soup.select(selector)
             if elements:
                 desc = extractor(elements[0])
-                if desc and len(desc) > 20:
+                if desc and len(desc) > 10:
                     return desc[:500]  # Limit description length
 
         return ""
