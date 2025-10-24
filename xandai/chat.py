@@ -756,6 +756,7 @@ class ChatREPL:
             "emacs",
             "vi",
             "code",
+            "cursor",
             "notepad",
             # Container and deployment
             "docker",
@@ -1353,18 +1354,18 @@ class ChatREPL:
                     }
                 )
 
-                # If this is a file edit operation, add explicit instruction to use <code edit> tags
-                if self._is_file_edit_request(user_input):
-                    if self.verbose:
-                        OSUtils.debug_print(
-                            "Detected file edit operation - adding explicit <code edit> instruction",
-                            True,
-                        )
+            # If this is a file edit operation, add explicit instruction to use <code edit> tags
+            if self._is_file_edit_request(user_input):
+                if self.verbose:
+                    OSUtils.debug_print(
+                        "Detected file edit operation - adding explicit <code edit> instruction",
+                        True,
+                    )
 
-                    context_messages.append(
-                        {
-                            "role": "system",
-                            "content": """CRITICAL INSTRUCTION: The user is requesting to EDIT an existing file.
+                context_messages.append(
+                    {
+                        "role": "system",
+                        "content": """CRITICAL INSTRUCTION: The user is requesting to EDIT an existing file.
 
 YOU MUST USE THIS EXACT FORMAT (do NOT use markdown code blocks):
 
@@ -1382,21 +1383,21 @@ RIGHT (do this):
 from flask import Flask
 app = Flask(__name__)
 </code>""",
-                        }
+                    }
+                )
+
+            # If this is a file create operation, add explicit instruction to use <code filename> tags
+            elif self._is_file_create_request(user_input):
+                if self.verbose:
+                    OSUtils.debug_print(
+                        "Detected file create operation - adding explicit <code filename> instruction",
+                        True,
                     )
 
-                # If this is a file create operation, add explicit instruction to use <code filename> tags
-                elif self._is_file_create_request(user_input):
-                    if self.verbose:
-                        OSUtils.debug_print(
-                            "Detected file create operation - adding explicit <code filename> instruction",
-                            True,
-                        )
-
-                    context_messages.append(
-                        {
-                            "role": "system",
-                            "content": """CRITICAL INSTRUCTION: The user is requesting to CREATE a new file.
+                context_messages.append(
+                    {
+                        "role": "system",
+                        "content": """CRITICAL INSTRUCTION: The user is requesting to CREATE a new file.
 
 YOU MUST USE THIS EXACT FORMAT (do NOT use markdown code blocks):
 
@@ -1416,8 +1417,8 @@ app = Flask(__name__)
 </code>
 
 Remember: ALWAYS include the filename in the tag!""",
-                        }
-                    )
+                    }
+                )
 
             if self.verbose:
                 OSUtils.debug_print(f"Sending {len(context_messages)} total messages to LLM", True)
@@ -1428,8 +1429,13 @@ Remember: ALWAYS include the filename in the tag!""",
             if self.verbose:
                 OSUtils.debug_print(f"Received response: {len(response.content)} characters", True)
 
+            # Check for truncated code tags and request completion if needed
+            final_content = self._check_and_complete_truncated_code(
+                response.content, context_messages
+            )
+
             # Display response with syntax highlighting for code and execution confirmation
-            self._display_response(response.content, allow_execution=True)
+            self._display_response(final_content, allow_execution=True)
 
             # Display context usage
             self.console.print(f"[dim]{response.context_usage}[/dim]")
@@ -1437,7 +1443,7 @@ Remember: ALWAYS include the filename in the tag!""",
             # Add response to history
             self.history_manager.add_conversation(
                 role="assistant",
-                content=response.content,
+                content=final_content,
                 context_usage=str(response.context_usage),
                 metadata={"type": "chat"},
             )
@@ -1448,6 +1454,176 @@ Remember: ALWAYS include the filename in the tag!""",
                 import traceback
 
                 self.console.print(traceback.format_exc())
+
+    def _check_and_complete_truncated_code(
+        self, content: str, context_messages: list, max_attempts: int = 3
+    ) -> str:
+        """
+        Check if response contains truncated code tags and request completion from LLM
+
+        Args:
+            content: LLM response content to check
+            context_messages: Current conversation context
+            max_attempts: Maximum number of completion attempts
+
+        Returns:
+            Complete content (original or with continuation)
+        """
+        import re
+
+        # Check for incomplete code tags
+        opening_pattern = r'<code\s+(edit|create)\s+filename=["\']([^"\']+)["\']>'
+
+        for match in re.finditer(opening_pattern, content):
+            tag_end = match.end()
+            operation = match.group(1)
+            filename = match.group(2)
+
+            # Check if there's a closing </code> tag after this opening tag
+            remaining_content = content[tag_end:]
+            closing_tag_pos = remaining_content.find("</code>")
+
+            # If no closing tag found, request completion
+            if closing_tag_pos == -1:
+                if self.verbose:
+                    OSUtils.debug_print(
+                        f"Detected truncated code for {filename} - requesting completion",
+                        True,
+                    )
+
+                self.console.print(
+                    f"[yellow]⚠️  Detected incomplete code for '{filename}'. Requesting completion...[/yellow]"
+                )
+
+                # Request completion from LLM
+                completed_content = self._request_code_completion(
+                    content, operation, filename, context_messages, max_attempts
+                )
+                return completed_content
+
+        # No truncation detected, return original content
+        return content
+
+    def _request_code_completion(
+        self,
+        partial_content: str,
+        operation: str,
+        filename: str,
+        context_messages: list,
+        max_attempts: int = 3,
+    ) -> str:
+        """
+        Request LLM to complete truncated code
+
+        Args:
+            partial_content: The truncated response
+            operation: 'create' or 'edit'
+            filename: Name of the file being created/edited
+            context_messages: Original conversation context
+            max_attempts: Maximum completion attempts
+
+        Returns:
+            Complete content with closing tag
+        """
+        accumulated_content = partial_content
+        attempts = 0
+
+        while attempts < max_attempts:
+            attempts += 1
+
+            # Check if we now have a closing tag
+            if "</code>" in accumulated_content:
+                if self.verbose:
+                    OSUtils.debug_print(
+                        f"Code completion successful after {attempts} attempt(s)",
+                        True,
+                    )
+                self.console.print(
+                    f"[green]✅ Code completion successful! File is now complete.[/green]"
+                )
+                return accumulated_content
+
+            if self.verbose:
+                OSUtils.debug_print(
+                    f"Requesting continuation (attempt {attempts}/{max_attempts})",
+                    True,
+                )
+
+            # Create simplified continuation request
+            # Use only the essential context to avoid JSON parsing issues
+            continuation_messages = [
+                {
+                    "role": "system",
+                    "content": f"""You are completing a truncated code response for {operation}ing '{filename}'.
+
+CRITICAL RULES:
+1. Continue the code from where it was cut off (do NOT repeat previous content)
+2. Complete the file content
+3. END with the closing tag: </code>
+
+DO NOT start a new <code> tag. Just continue and close.""",
+                },
+                {
+                    "role": "user",
+                    "content": f"The previous response was cut off. Here's what we have so far:\n\n{partial_content[-500:]}\n\nPlease continue from where it stopped and complete the code. You MUST end with </code> tag!",
+                },
+            ]
+
+            try:
+                # Request continuation with progress indicator
+                with self.console.status(
+                    f"[bold cyan]Requesting continuation (attempt {attempts}/{max_attempts})...[/bold cyan]"
+                ) as status:
+                    # Use non-streaming mode for continuation to avoid JSON parsing issues
+                    continuation_response = self.llm_provider.chat(
+                        messages=continuation_messages,
+                        stream=False,  # Use non-streaming for more reliable parsing
+                        temperature=0.7,
+                    )
+
+                continuation_text = continuation_response.content.strip()
+
+                if self.verbose:
+                    OSUtils.debug_print(
+                        f"Received continuation: {len(continuation_text)} characters",
+                        True,
+                    )
+
+                # If continuation is empty or too short, skip
+                if not continuation_text or len(continuation_text) < 5:
+                    if self.verbose:
+                        OSUtils.debug_print("Continuation too short, skipping", True)
+                    break
+
+                # Concatenate the continuation
+                accumulated_content = partial_content + "\n" + continuation_text
+
+                # Update partial_content for next iteration
+                partial_content = accumulated_content
+
+            except Exception as e:
+                self.console.print(f"[red]⚠️  Error requesting continuation: {e}[/red]")
+                if self.verbose:
+                    import traceback
+
+                    self.console.print(traceback.format_exc())
+
+                # On error, try to use the partial content we have
+                self.console.print(
+                    "[yellow]   Continuing with available content despite error...[/yellow]"
+                )
+                break
+
+        # If we exhausted attempts and still no closing tag
+        if "</code>" not in accumulated_content:
+            self.console.print(
+                f"[yellow]⚠️  Could not complete code after {max_attempts} attempts.[/yellow]"
+            )
+            self.console.print(
+                "[yellow]   The code may be incomplete. Proceeding with available content.[/yellow]"
+            )
+
+        return accumulated_content
 
     def _is_file_edit_request(self, user_input: str) -> bool:
         """
@@ -1492,7 +1668,42 @@ Remember: ALWAYS include the filename in the tag!""",
         file_indicators = [".py", ".js", ".ts", ".html", ".css", ".json", "file", "script"]
         has_file_ref = any(indicator in user_lower for indicator in file_indicators)
 
-        return has_create_intent and has_file_ref
+        # Check for code/program indicators (api, app, etc.)
+        code_indicators = [
+            "api",
+            "app",
+            "application",
+            "server",
+            "program",
+            "function",
+            "class",
+            "module",
+            "package",
+            "library",
+            "service",
+            "endpoint",
+            "route",
+            "controller",
+            "model",
+            "view",
+            "component",
+            # Frameworks and tools
+            "flask",
+            "django",
+            "fastapi",
+            "express",
+            "react",
+            "vue",
+            "angular",
+            "nextjs",
+            "nest",
+            "spring",
+            "laravel",
+        ]
+        has_code_ref = any(indicator in user_lower for indicator in code_indicators)
+
+        # Return true if has create intent AND (has file reference OR has code reference)
+        return has_create_intent and (has_file_ref or has_code_ref)
 
     def _should_generate_commands(self, user_input: str) -> bool:
         """
@@ -2324,13 +2535,23 @@ Remember: Your response will be written directly to the file! NO explanatory tex
         if not response:
             return ""
 
-        # Remove any markdown code blocks if present
+        # PRIORITY 1: Try to extract from <code> tags first (our preferred format)
+        # Match <code create filename="..."> or <code edit filename="..."> or <code filename="...">
+        code_tag_pattern = (
+            r'<code\s+(?:(?:create|edit)\s+)?filename=["\']([^"\']+)["\']>(.*?)</code>'
+        )
+        code_tag_match = re.search(code_tag_pattern, response, re.DOTALL)
+        if code_tag_match:
+            # Extract content from between the tags (group 2)
+            return code_tag_match.group(2).strip()
+
+        # PRIORITY 2: Try to extract from markdown code blocks
         code_block_pattern = r"```(?:\w+)?\n(.*?)\n```"
         code_match = re.search(code_block_pattern, response, re.DOTALL)
         if code_match:
             return code_match.group(1).strip()
 
-        # Remove any explanatory text before/after code
+        # PRIORITY 3: Fallback - remove any explanatory text before/after code
         lines = response.strip().split("\\n")
 
         # Find the start of actual content (skip explanatory lines)
@@ -2920,6 +3141,52 @@ Remember: Your response will be written directly to the file! NO explanatory tex
                 }
             )
 
+        # FALLBACK: Detect incomplete/truncated <code> tags without closing </code>
+        # This handles cases where LLM response is truncated mid-generation
+        # Find all opening tags and check if they have corresponding closing tags
+        opening_pattern = r'<code\s+(edit|create)\s+filename=["\']([^"\']+)["\']>'
+        for match in re.finditer(opening_pattern, content):
+            start_pos = match.start()
+            tag_end = match.end()
+            operation = match.group(1)
+            filename = match.group(2)
+
+            # Skip if already detected at this position
+            if start_pos in [pos[0] for pos in detected_positions]:
+                continue
+
+            # Check if there's a closing </code> tag after this opening tag
+            remaining_content = content[tag_end:]
+            closing_tag_pos = remaining_content.find("</code>")
+
+            # If no closing tag found, this is an incomplete tag
+            if closing_tag_pos == -1:
+                # Extract all content from opening tag to end of content
+                code_content = remaining_content.strip()
+
+                # Only process if there's actual content (not just whitespace)
+                if not code_content or len(code_content) < 10:
+                    continue
+
+                # Calculate end position
+                end_pos = len(content)
+                pos_key = (start_pos, end_pos)
+                detected_positions.add(pos_key)
+
+                all_code_blocks.append(
+                    {
+                        "lang": "file_operation",  # Special type for file operations
+                        "code": code_content,
+                        "type": f"code_{operation}_file_incomplete",
+                        "filename": filename,
+                        "operation": operation,
+                        "full_match": content[start_pos:end_pos],
+                        "start": start_pos,
+                        "end": end_pos,
+                        "truncated": True,  # Flag for truncated content
+                    }
+                )
+
         if all_code_blocks:
             # Sort blocks by position in content
             all_code_blocks.sort(key=lambda x: x["start"])
@@ -2977,18 +3244,53 @@ Remember: Your response will be written directly to the file! NO explanatory tex
                             block_title = f"{operation.title()} File: {filename}"
                             if self.verbose:
                                 block_title += f" - {block['type']}"
+
+                            # Check if truncated and add warning to title
+                            is_truncated = block.get("truncated", False)
+                            if is_truncated:
+                                block_title += " ⚠️ TRUNCATED"
+                                border_style = "yellow"
+                            else:
+                                border_style = "green"
+
                             self.console.print(
-                                Panel(syntax, title=block_title, border_style="green")
+                                Panel(syntax, title=block_title, border_style=border_style)
                             )
+
+                            # Display truncation warning
+                            if is_truncated:
+                                self.console.print(
+                                    "[yellow]⚠️  Warning: This code appears to be truncated (missing closing tag).[/yellow]"
+                                )
+                                self.console.print(
+                                    "[yellow]   The file will be created with the available content.[/yellow]"
+                                )
                         except:
                             # Fallback to plain text
+                            is_truncated = block.get("truncated", False)
+                            fallback_title = f"{operation.title()} File: {filename}"
+                            if is_truncated:
+                                fallback_title += " ⚠️ TRUNCATED"
+                                fallback_border = "yellow"
+                            else:
+                                fallback_border = "green"
+
                             self.console.print(
                                 Panel(
                                     block["code"],
-                                    title=f"{operation.title()} File: {filename}",
-                                    border_style="green",
+                                    title=fallback_title,
+                                    border_style=fallback_border,
                                 )
                             )
+
+                            # Display truncation warning
+                            if is_truncated:
+                                self.console.print(
+                                    "[yellow]⚠️  Warning: This code appears to be truncated (missing closing tag).[/yellow]"
+                                )
+                                self.console.print(
+                                    "[yellow]   The file will be created with the available content.[/yellow]"
+                                )
 
                         # Always prompt for file operations
                         if allow_execution:
@@ -3014,16 +3316,9 @@ Remember: Your response will be written directly to the file! NO explanatory tex
                                 Panel(block["code"], title="Code", border_style="blue")
                             )
 
-                        # Check if this is an executable block and we're in chat mode
-                        if (
-                            allow_execution
-                            and block["lang"]
-                            and block["lang"].lower() in executable_types
-                        ):
-                            self._prompt_code_execution(block["code"], block["lang"], block["type"])
-
-                        # Smart file detection: only when user explicitly requested file operation
-                        # Check context to see if user wanted to create/edit a file
+                        # PRIORITY 1: Smart file detection - check if user explicitly requested file operation
+                        # This should happen BEFORE asking to execute, so files are created first
+                        file_operation_handled = False
                         if allow_execution and hasattr(self, "_last_user_input"):
                             is_create = self._is_file_create_request(self._last_user_input)
                             is_edit = self._is_file_edit_request(self._last_user_input)
@@ -3033,6 +3328,17 @@ Remember: Your response will be written directly to the file! NO explanatory tex
                             ):
                                 # User wanted file operation but AI used markdown - help them out
                                 self._prompt_file_save(block["code"], block["lang"])
+                                file_operation_handled = True
+
+                        # PRIORITY 2: Check if this is an executable block and we're in chat mode
+                        # Only prompt for execution if we didn't already handle it as a file operation
+                        if (
+                            allow_execution
+                            and block["lang"]
+                            and block["lang"].lower() in executable_types
+                            and not file_operation_handled
+                        ):
+                            self._prompt_code_execution(block["code"], block["lang"], block["type"])
 
                 last_pos = block["end"]
 
