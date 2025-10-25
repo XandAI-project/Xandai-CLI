@@ -422,22 +422,18 @@ def main():
         print()
 
         # Provider and Model info with better formatting
-        print(
-            "\033[1;35m" + "  ╔═══════════════════════════════════════════════════════╗" + "\033[0m"
-        )
-        print(
-            "\033[1;35m"
-            + f"  ║  \033[1;37mProvider:\033[0m \033[1;32m{provider_name:<42}\033[1;35m║"
-            + "\033[0m"
-        )
-        print(
-            "\033[1;35m"
-            + f"  ║  \033[1;37mModel:\033[0m    \033[1;33m{current_model:<42}\033[1;35m║"
-            + "\033[0m"
-        )
-        print(
-            "\033[1;35m" + "  ╚═══════════════════════════════════════════════════════╝" + "\033[0m"
-        )
+        box_width = max(len(f"Provider: {provider_name}"), len(f"Model: {current_model}")) + 6
+        border_line = "═" * box_width
+
+        print("\033[1;35m╔" + border_line + "╗\033[0m")
+        provider_line = f"Provider: \033[1;32m{provider_name}\033[1;35m"
+        provider_padding = box_width - len(f"Provider: {provider_name}")
+        print("\033[1;35m║ " + provider_line + " " * provider_padding + " ║\033[0m")
+
+        model_line = f"Model:    \033[1;33m{current_model}\033[1;35m"
+        model_padding = box_width - len(f"Model:    {current_model}")
+        print("\033[1;35m║ " + model_line + " " * model_padding + " ║\033[0m")
+        print("\033[1;35m╚" + border_line + "╝\033[0m")
         print()
 
         print("\033[1;32m🚀 Starting XandAI REPL...\033[0m")
