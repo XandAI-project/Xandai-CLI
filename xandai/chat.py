@@ -28,6 +28,7 @@ from xandai.task import TaskProcessor, TaskStep
 from xandai.utils.enhanced_file_handler import EnhancedFileHandler
 from xandai.utils.os_utils import OSUtils
 from xandai.utils.prompt_manager import PromptManager
+from xandai.utils.tool_manager import ToolManager
 from xandai.web.web_manager import WebManager
 
 
@@ -58,6 +59,7 @@ class IntelligentCompleter(Completer):
             "/detect",
             "/server",
             "/models",
+            "/tools",
             "/exit",
             "/quit",
             "/bye",
@@ -591,6 +593,9 @@ class ChatREPL:
             max_links=self.app_state.get_preference("max_links_per_request", 3),
         )
 
+        # Tool manager for custom tools
+        self.tool_manager = ToolManager(tools_dir="tools", llm_provider=llm_provider)
+
         # Prompt session with history and completion
         self.session = PromptSession(
             history=InMemoryHistory(),
@@ -866,6 +871,26 @@ class ChatREPL:
             self._handle_terminal_command(user_input)
             return
 
+        # Check if input matches a custom tool
+        if self.tool_manager and self.tool_manager.tools:
+            if self.verbose:
+                OSUtils.debug_print("Checking for tool match", True)
+
+            was_tool_used, tool_response = self.tool_manager.handle_user_input(user_input)
+
+            if was_tool_used:
+                # Tool was executed - display the interpreted response
+                if self.verbose:
+                    OSUtils.debug_print("Tool execution completed", True)
+
+                # Display the response
+                self.console.print(Panel(tool_response, title="🤖 XandAI", border_style="cyan"))
+
+                # Add to history
+                self.history_manager.add_message("user", user_input)
+                self.history_manager.add_message("assistant", tool_response)
+                return
+
         # Handle as LLM chat
         if self.verbose:
             context_count = len(self.history_manager.get_conversation_context(limit=20))
@@ -940,6 +965,11 @@ class ChatREPL:
         # Status command
         if command in ["/status", "/stat"]:
             self._show_status()
+            return True
+
+        # Tools command
+        if command == "/tools":
+            self._show_available_tools()
             return True
 
         # Debug command - show OS and platform debug information or toggle debug mode
@@ -4498,6 +4528,11 @@ Remember: Your response will be written directly to the file! NO explanatory tex
   • /web stats        - Show statistics and cache information
   • /web clear        - Clear web content cache
 
+[yellow]Custom Tools:[/yellow]
+  • /tools            - List available custom tools
+  • Tools are auto-detected from the /tools directory
+  • Use natural language to invoke tools (e.g., "what is the weather in Los Angeles?")
+
 [yellow]Alternative Commands (no prefix):[/yellow]
   • help, clear, history, context, status
   • exit, quit, bye
@@ -4853,6 +4888,32 @@ Tracked Files: {len(self.history_manager.get_project_files())}
         """
 
         self.console.print(Panel(status_text.strip(), title="System Status", border_style="green"))
+
+    def _show_available_tools(self):
+        """Show available custom tools"""
+        if not self.tool_manager or not self.tool_manager.tools:
+            self.console.print(
+                "[yellow]No custom tools available.[/yellow]\n"
+                "[dim]Add tool modules to the /tools directory to enable them.[/dim]"
+            )
+            return
+
+        tools_info = self.tool_manager.get_available_tools()
+
+        tools_text = "[bold]Available Custom Tools:[/bold]\n\n"
+        for tool in tools_info:
+            tools_text += f"[cyan]🔧 {tool['name']}[/cyan]\n"
+            tools_text += f"   {tool['description']}\n"
+            tools_text += f"   [dim]Parameters:[/dim]\n"
+            for param_name, param_desc in tool["parameters"].items():
+                tools_text += f"   • {param_name}: {param_desc}\n"
+            tools_text += "\n"
+
+        tools_text += "[yellow]Usage:[/yellow]\n"
+        tools_text += "Just type your question naturally, and the AI will call the appropriate tool if available.\n"
+        tools_text += '[dim]Example: "what is the weather in Los Angeles now?"[/dim]'
+
+        self.console.print(Panel(tools_text, title="Custom Tools", border_style="magenta"))
 
     def _handle_debug_command(self, user_input: str):
         """Handle debug command with optional parameters"""
