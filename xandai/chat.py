@@ -796,7 +796,7 @@ class ChatREPL:
         """Run the interactive REPL loop"""
         try:
             while True:
-                # Simple prompt without highlighting
+                # Simple prompt
                 prompt_text = "xandai> "
 
                 # Get user input
