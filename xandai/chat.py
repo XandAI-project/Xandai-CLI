@@ -594,7 +594,9 @@ class ChatREPL:
         )
 
         # Tool manager for custom tools
-        self.tool_manager = ToolManager(tools_dir="tools", llm_provider=llm_provider)
+        self.tool_manager = ToolManager(
+            tools_dir="tools", llm_provider=llm_provider, verbose=verbose
+        )
 
         # Prompt session with history and completion
         self.session = PromptSession(
@@ -874,22 +876,32 @@ class ChatREPL:
         # Check if input matches a custom tool
         if self.tool_manager and self.tool_manager.tools:
             if self.verbose:
-                OSUtils.debug_print("Checking for tool match", True)
+                OSUtils.debug_print(
+                    f"Checking for tool match (found {len(self.tool_manager.tools)} tools)", True
+                )
 
-            was_tool_used, tool_response = self.tool_manager.handle_user_input(user_input)
+            try:
+                was_tool_used, tool_response = self.tool_manager.handle_user_input(user_input)
 
-            if was_tool_used:
-                # Tool was executed - display the interpreted response
+                if was_tool_used:
+                    # Tool was executed - display the interpreted response
+                    if self.verbose:
+                        OSUtils.debug_print("Tool execution completed", True)
+
+                    # Display the response
+                    self.console.print(Panel(tool_response, title="🤖 XandAI", border_style="cyan"))
+
+                    # Add to history
+                    self.history_manager.add_message("user", user_input)
+                    self.history_manager.add_message("assistant", tool_response)
+                    return
+                else:
+                    if self.verbose:
+                        OSUtils.debug_print("No tool match found, falling back to LLM chat", True)
+            except Exception as e:
                 if self.verbose:
-                    OSUtils.debug_print("Tool execution completed", True)
-
-                # Display the response
-                self.console.print(Panel(tool_response, title="🤖 XandAI", border_style="cyan"))
-
-                # Add to history
-                self.history_manager.add_message("user", user_input)
-                self.history_manager.add_message("assistant", tool_response)
-                return
+                    OSUtils.debug_print(f"Tool handling error: {e}", True)
+                # Fall back to normal chat on error
 
         # Handle as LLM chat
         if self.verbose:

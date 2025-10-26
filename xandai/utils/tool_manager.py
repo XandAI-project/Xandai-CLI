@@ -17,16 +17,18 @@ from typing import Any, Dict, List, Optional
 class ToolManager:
     """Manages tools and converts natural language to tool calls."""
 
-    def __init__(self, tools_dir: str = "tools", llm_provider=None):
+    def __init__(self, tools_dir: str = "tools", llm_provider=None, verbose: bool = False):
         """
         Initialize the ToolManager.
 
         Args:
             tools_dir: Directory containing tool modules
             llm_provider: LLM provider instance for NL to tool call conversion
+            verbose: Enable verbose logging for debugging
         """
         self.tools_dir = Path(tools_dir)
         self.llm_provider = llm_provider
+        self.verbose = verbose
         self.tools: Dict[str, Any] = {}
         self._load_tools()
 
@@ -104,52 +106,113 @@ class ToolManager:
             ]
         )
 
-        prompt = f"""You are a tool dispatcher. Given user input, determine if it matches any available tool.
+        prompt = f"""<|system|>
+You are a function dispatcher AI. Your ONLY job is to return a JSON object. Do NOT add any explanations, greetings, or extra text.
+</|system|>
 
-Available Tools:
+<|user|>
+AVAILABLE TOOLS:
 {tools_desc}
 
-User Input: "{user_input}"
+USER REQUEST: "{user_input}"
 
-If the input matches a tool, respond ONLY with a JSON object in this format:
-{{
-  "tool": "tool_name",
-  "args": {{
-    "param1": "value1",
-    "param2": "value2"
-  }}
-}}
+RULES:
+- If the request matches a tool, return: {{"tool": "tool_name", "args": {{"param": "value"}}}}
+- If no tool matches, return: {{"tool": null}}
+- Return ONLY the JSON object, nothing else
+- Do NOT include markdown code blocks
+- Do NOT add explanations
 
-If NO tool matches, respond with:
-{{"tool": null}}
+EXAMPLES:
+Request: "what's the weather in Paris?"
+Output: {{"tool": "weather_tool", "args": {{"location": "Paris", "date": "now"}}}}
 
-Respond only with valid JSON, no other text."""
+Request: "tell me a joke"
+Output: {{"tool": null}}
+
+Now analyze this request and return ONLY the JSON:
+</|user|>
+
+<|assistant|>"""
 
         try:
             # Ask LLM to convert
+            if self.verbose:
+                print(f"🔍 [Tool Manager] Checking if input matches any tool...")
+
             response = self.llm_provider.generate(prompt, max_tokens=500)
 
-            # Parse JSON response
+            if self.verbose:
+                print(f"🔍 [Tool Manager] LLM response: {response[:200]}...")
+
+            # Parse JSON response - be aggressive about finding JSON
             response_text = response.strip()
+
+            if self.verbose:
+                print(f"🔍 [Tool Manager] Raw response length: {len(response_text)} chars")
+
+            # Remove common prefixes/suffixes that LLMs add
+            response_text = response_text.replace("Here's the JSON:", "")
+            response_text = response_text.replace("Here is the JSON:", "")
+            response_text = response_text.replace("Output:", "")
+            response_text = response_text.replace("Response:", "")
 
             # Extract JSON from code blocks if present
             if "```json" in response_text:
                 start = response_text.find("```json") + 7
                 end = response_text.find("```", start)
                 response_text = response_text[start:end].strip()
+                if self.verbose:
+                    print(f"🔍 [Tool Manager] Extracted from ```json block")
             elif "```" in response_text:
                 start = response_text.find("```") + 3
                 end = response_text.find("```", start)
                 response_text = response_text[start:end].strip()
+                if self.verbose:
+                    print(f"🔍 [Tool Manager] Extracted from ``` block")
+
+            # Try to find JSON object if mixed with other text
+            if "{" in response_text and "}" in response_text:
+                # Find the first { and last }
+                start = response_text.find("{")
+                end = response_text.rfind("}") + 1
+                json_candidate = response_text[start:end]
+
+                # Try to parse this candidate
+                try:
+                    test_parse = json.loads(json_candidate)
+                    response_text = json_candidate
+                    if self.verbose:
+                        print(f"🔍 [Tool Manager] Extracted JSON from position {start}:{end}")
+                except:
+                    # If that doesn't work, try to find complete JSON objects
+                    import re
+
+                    json_pattern = r'\{[^{}]*"tool"[^{}]*\}'
+                    matches = re.findall(json_pattern, response_text)
+                    if matches:
+                        response_text = matches[0]
+                        if self.verbose:
+                            print(f"🔍 [Tool Manager] Found JSON via regex")
+
+            if self.verbose:
+                print(f"🔍 [Tool Manager] Final JSON text: {response_text}")
 
             tool_call = json.loads(response_text)
 
             # Validate tool exists
             if tool_call.get("tool") and tool_call["tool"] in self.tools:
+                if self.verbose:
+                    print(f"✅ [Tool Manager] Matched tool: {tool_call['tool']}")
                 return tool_call
+            else:
+                if self.verbose:
+                    print(f"ℹ️  [Tool Manager] No tool match or tool not found")
 
         except Exception as e:
             # If conversion fails, return None (pass to LLM normally)
+            if self.verbose:
+                print(f"⚠️  [Tool Manager] Error during tool detection: {e}")
             pass
 
         return None
@@ -208,11 +271,17 @@ Please interpret this data and provide a natural, helpful response to the user's
         Returns:
             Tuple of (was_tool_used, response)
         """
+        if self.verbose:
+            print(f"\n[Tool Manager] Starting tool detection for: '{user_input[:50]}...'")
+            print(f"[Tool Manager] Available tools: {list(self.tools.keys())}")
+
         # Try to convert to tool call
         tool_call = self.convert_to_tool_call(user_input)
 
         if not tool_call:
             # No tool match - let normal LLM flow handle it
+            if self.verbose:
+                print(f"[Tool Manager] No tool call returned, passing to normal LLM")
             return (False, "")
 
         try:
@@ -226,6 +295,8 @@ Please interpret this data and provide a natural, helpful response to the user's
             tool_result = self.execute_tool(tool_name, args)
 
             print(f"✓ Tool executed successfully")
+            if self.verbose:
+                print(f"[Tool Manager] Tool result: {str(tool_result)[:200]}...")
 
             # Get LLM interpretation
             interpreted_response = self.process_with_llm_interpretation(user_input, tool_result)
@@ -235,4 +306,8 @@ Please interpret this data and provide a natural, helpful response to the user's
         except Exception as e:
             error_msg = f"❌ Tool execution failed: {e}"
             print(error_msg)
+            if self.verbose:
+                import traceback
+
+                print(f"[Tool Manager] Full error: {traceback.format_exc()}")
             return (True, error_msg)
