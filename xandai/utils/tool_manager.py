@@ -142,11 +142,14 @@ Now analyze this request and return ONLY the JSON:
 
             response = self.llm_provider.generate(prompt, max_tokens=500)
 
+            # Extract content from LLMResponse object
+            response_text = response.content if hasattr(response, "content") else str(response)
+
             if self.verbose:
-                print(f"🔍 [Tool Manager] LLM response: {response[:200]}...")
+                print(f"🔍 [Tool Manager] LLM response: {response_text[:200]}...")
 
             # Parse JSON response - be aggressive about finding JSON
-            response_text = response.strip()
+            response_text = response_text.strip()
 
             if self.verbose:
                 print(f"🔍 [Tool Manager] Raw response length: {len(response_text)} chars")
@@ -234,42 +237,23 @@ Now analyze this request and return ONLY the JSON:
         tool_instance = self.tools[tool_name]
         return tool_instance.execute(**args)
 
-    def process_with_llm_interpretation(self, user_input: str, tool_result: Any) -> str:
-        """
-        Send both user question and tool result to LLM for interpretation.
-
-        Args:
-            user_input: Original user question
-            tool_result: Result from tool execution
-
-        Returns:
-            LLM's interpreted response
-        """
-        if not self.llm_provider:
-            return str(tool_result)
-
-        prompt = f"""User asked: "{user_input}"
-
-Tool returned this data:
-{json.dumps(tool_result, indent=2)}
-
-Please interpret this data and provide a natural, helpful response to the user's question."""
-
-        try:
-            response = self.llm_provider.generate(prompt, max_tokens=1000)
-            return response
-        except Exception as e:
-            return f"Tool result: {tool_result}\n(Error interpreting: {e})"
-
     def handle_user_input(self, user_input: str) -> tuple[bool, str]:
         """
-        Main handler: detect tool, execute, and get LLM interpretation.
+        Main handler: detect tool, execute if needed, and prepare context for LLM.
+
+        Flow:
+        1. Detect if user input requires a tool
+        2. If yes: execute tool and combine result with original message
+        3. If no: return original message unchanged
+        4. Return (tool_was_used, prepared_context_for_llm)
 
         Args:
             user_input: User's natural language input
 
         Returns:
-            Tuple of (was_tool_used, response)
+            Tuple of (was_tool_used, context_for_llm)
+            - If tool was used: context includes original message + tool result
+            - If no tool: context is the original message
         """
         if self.verbose:
             print(f"\n[Tool Manager] Starting tool detection for: '{user_input[:50]}...'")
@@ -279,10 +263,10 @@ Please interpret this data and provide a natural, helpful response to the user's
         tool_call = self.convert_to_tool_call(user_input)
 
         if not tool_call:
-            # No tool match - let normal LLM flow handle it
+            # No tool match - return original message for direct LLM processing
             if self.verbose:
-                print(f"[Tool Manager] No tool call returned, passing to normal LLM")
-            return (False, "")
+                print(f"[Tool Manager] No tool detected, passing original message to LLM")
+            return (False, user_input)
 
         try:
             # Execute tool
@@ -298,10 +282,18 @@ Please interpret this data and provide a natural, helpful response to the user's
             if self.verbose:
                 print(f"[Tool Manager] Tool result: {str(tool_result)[:200]}...")
 
-            # Get LLM interpretation
-            interpreted_response = self.process_with_llm_interpretation(user_input, tool_result)
+            # Combine user input with tool result for LLM
+            combined_context = f"""User question: "{user_input}"
 
-            return (True, interpreted_response)
+Data obtained from tool:
+{json.dumps(tool_result, indent=2)}
+
+Please interpret this data and provide a natural, helpful response to the user's question."""
+
+            if self.verbose:
+                print(f"[Tool Manager] Prepared combined context for LLM")
+
+            return (True, combined_context)
 
         except Exception as e:
             error_msg = f"❌ Tool execution failed: {e}"
@@ -310,4 +302,12 @@ Please interpret this data and provide a natural, helpful response to the user's
                 import traceback
 
                 print(f"[Tool Manager] Full error: {traceback.format_exc()}")
-            return (True, error_msg)
+
+            # In case of error, return error context for LLM to handle
+            error_context = f"""User question: "{user_input}"
+
+Error executing tool: {str(e)}
+
+Please inform the user about the error in a friendly way."""
+
+            return (True, error_context)

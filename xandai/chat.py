@@ -874,6 +874,7 @@ class ChatREPL:
             return
 
         # Check if input matches a custom tool
+        tool_result_context = None
         if self.tool_manager and self.tool_manager.tools:
             if self.verbose:
                 OSUtils.debug_print(
@@ -881,23 +882,21 @@ class ChatREPL:
                 )
 
             try:
-                was_tool_used, tool_response = self.tool_manager.handle_user_input(user_input)
+                was_tool_used, context_for_llm = self.tool_manager.handle_user_input(user_input)
 
                 if was_tool_used:
-                    # Tool was executed - display the interpreted response
+                    # Tool was executed - store context to inject before LLM call
                     if self.verbose:
-                        OSUtils.debug_print("Tool execution completed", True)
+                        OSUtils.debug_print(
+                            "Tool execution completed, will inject result into chat context", True
+                        )
 
-                    # Display the response
-                    self.console.print(Panel(tool_response, title="🤖 XandAI", border_style="cyan"))
-
-                    # Add to history
-                    self.history_manager.add_message("user", user_input)
-                    self.history_manager.add_message("assistant", tool_response)
-                    return
+                    tool_result_context = context_for_llm
                 else:
                     if self.verbose:
-                        OSUtils.debug_print("No tool match found, falling back to LLM chat", True)
+                        OSUtils.debug_print(
+                            "No tool detected, continuing with normal chat flow", True
+                        )
             except Exception as e:
                 if self.verbose:
                     OSUtils.debug_print(f"Tool handling error: {e}", True)
@@ -910,7 +909,7 @@ class ChatREPL:
                 f"Sending to LLM for chat processing with {context_count} context messages (includes any recent task history)",
                 True,
             )
-        self._handle_chat(user_input)
+        self._handle_chat(user_input, tool_result_context=tool_result_context)
 
     def _handle_slash_command(self, user_input: str) -> bool:
         """
@@ -1323,8 +1322,13 @@ class ChatREPL:
                 metadata={"type": "command_error"},
             )
 
-    def _handle_chat(self, user_input: str):
-        """Handle LLM chat conversation with intelligent command generation"""
+    def _handle_chat(self, user_input: str, tool_result_context: str = None):
+        """Handle LLM chat conversation with intelligent command generation
+
+        Args:
+            user_input: The user's input message
+            tool_result_context: Optional context from tool execution to inject before LLM processing
+        """
         try:
             # Save user input for context checking
             self._last_user_input = user_input
@@ -1334,6 +1338,16 @@ class ChatREPL:
                     f"Starting chat processing for {len(user_input)} character input",
                     True,
                 )
+                if tool_result_context:
+                    OSUtils.debug_print(
+                        f"Tool result context received: {len(tool_result_context)} chars",
+                        True,
+                    )
+                else:
+                    OSUtils.debug_print(
+                        "No tool result context received",
+                        True,
+                    )
 
             # Process web integration if enabled
             web_result = self.web_manager.process_user_input(user_input)
@@ -1380,6 +1394,21 @@ class ChatREPL:
 
             # Add current user input (use processed input with web context if available)
             context_messages.append({"role": "user", "content": processed_input})
+
+            # If we have tool result context, add it BEFORE command output
+            if tool_result_context:
+                if self.verbose:
+                    OSUtils.debug_print(
+                        f"Adding tool result context: {len(tool_result_context)} characters",
+                        True,
+                    )
+
+                context_messages.append(
+                    {
+                        "role": "system",
+                        "content": tool_result_context,
+                    }
+                )
 
             # If we have command output, add it as additional context
             if command_output:
