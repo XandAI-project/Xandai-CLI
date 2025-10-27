@@ -963,6 +963,18 @@ class ChatREPL:
             self._clear_screen()
             return True
 
+        # Configure SearxNG endpoint
+        if command.startswith("/configure-search-endpoint"):
+            if command == "/configure-search-endpoint":
+                self._show_search_endpoint()
+            else:
+                new_url = user_input[27:].strip()  # Remove command prefix
+                if new_url:
+                    self._configure_search_endpoint(new_url)
+                else:
+                    self.console.print("[yellow]Usage: /configure-search-endpoint <url>[/yellow]")
+            return True
+
         # History command
         if command in ["/history", "/hist"]:
             self._show_conversation_history()
@@ -4573,6 +4585,8 @@ Remember: Your response will be written directly to the file! NO explanatory tex
   • /tools            - List available custom tools
   • Tools are auto-detected from the /tools directory
   • Use natural language to invoke tools (e.g., "what is the weather in Los Angeles?")
+  • /configure-search-endpoint [url] - Configure SearxNG endpoint for news search
+                      /configure-search-endpoint - Show current endpoint
 
 [yellow]Alternative Commands (no prefix):[/yellow]
   • help, clear, history, context, status
@@ -4602,6 +4616,103 @@ Remember: Your response will be written directly to the file! NO explanatory tex
         """
 
         self.console.print(Panel(help_text, title="Help", border_style="blue"))
+
+    def _show_search_endpoint(self):
+        """Display current SearxNG endpoint configuration"""
+        import os
+        from pathlib import Path
+
+        # Get current endpoint
+        env_url = os.environ.get("SEARXNG_URL", "").strip()
+        config_url = None
+
+        # Try reading from config file
+        try:
+            config_file = Path.home() / ".xandai" / "config.env"
+            if config_file.exists():
+                with open(config_file, "r") as f:
+                    for line in f:
+                        if line.startswith("SEARXNG_URL="):
+                            config_url = line.split("=", 1)[1].strip().strip('"').strip("'")
+                            break
+        except Exception:
+            pass
+
+        # Determine which is being used
+        if env_url:
+            current_url = env_url
+            source = "Environment Variable"
+        elif config_url:
+            current_url = config_url
+            source = "Config File (~/.xandai/config.env)"
+        else:
+            current_url = "http://192.168.3.46:4000"
+            source = "Default (hardcoded)"
+
+        info = f"""
+[bold]SearxNG Search Endpoint Configuration[/bold]
+
+[yellow]Current Endpoint:[/yellow] {current_url}
+[yellow]Source:[/yellow] {source}
+[yellow]Config File:[/yellow] ~/.xandai/config.env
+
+[dim]To change the endpoint:[/dim]
+  [cyan]/configure-search-endpoint http://your-searxng-url:port[/cyan]
+
+[dim]Or set environment variable:[/dim]
+  [cyan]export SEARXNG_URL="http://your-searxng-url:port"[/cyan]
+"""
+        self.console.print(Panel(info, title="Search Endpoint", border_style="blue"))
+
+    def _configure_search_endpoint(self, url: str):
+        """Configure SearxNG endpoint"""
+        from pathlib import Path
+
+        # Validate URL format
+        if not url.startswith("http://") and not url.startswith("https://"):
+            self.console.print("[red]Error: URL must start with http:// or https://[/red]")
+            return
+
+        # Remove /search suffix if present
+        url = url.rstrip("/")
+        if url.endswith("/search"):
+            url = url[:-7]
+
+        try:
+            # Ensure config directory exists
+            config_dir = Path.home() / ".xandai"
+            config_dir.mkdir(parents=True, exist_ok=True)
+
+            # Read existing config
+            config_file = config_dir / "config.env"
+            lines = []
+            found = False
+
+            if config_file.exists():
+                with open(config_file, "r") as f:
+                    for line in f:
+                        if line.startswith("SEARXNG_URL="):
+                            lines.append(f'SEARXNG_URL="{url}"\n')
+                            found = True
+                        else:
+                            lines.append(line)
+
+            # Add new entry if not found
+            if not found:
+                lines.append(f'SEARXNG_URL="{url}"\n')
+
+            # Write config
+            with open(config_file, "w") as f:
+                f.writelines(lines)
+
+            self.console.print(f"[green]✓ SearxNG endpoint configured: {url}[/green]")
+            self.console.print(f"[dim]Config saved to: {config_file}[/dim]")
+            self.console.print(
+                "[yellow]Note: Restart XandAI or set environment variable for changes to take effect immediately[/yellow]"
+            )
+
+        except Exception as e:
+            self.console.print(f"[red]Error saving configuration: {e}[/red]")
 
     def _toggle_interactive_mode(self):
         """Toggle interactive mode for code execution prompts"""
