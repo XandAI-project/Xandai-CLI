@@ -11,7 +11,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 
 class ToolManager:
@@ -272,7 +272,7 @@ Now analyze this request and return ONLY the JSON:
         tool_instance = self.tools[tool_name]
         return tool_instance.execute(**args)
 
-    def handle_user_input(self, user_input: str) -> tuple[bool, str]:
+    def handle_user_input(self, user_input: str) -> Tuple[bool, str]:
         """
         Main handler: detect tool, execute if needed, and prepare context for LLM.
 
