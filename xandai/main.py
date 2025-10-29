@@ -64,7 +64,7 @@ Examples:
   /help               - Show available commands
   /interactive        - Toggle code execution prompts
   /status             - Show provider and model status
-  /task <description> - Structured project planning mode
+  /task <description> - [DEPRECIADO] Structured project planning mode
   /debug              - Toggle debug information
   /exit               - Exit XandAI
 
@@ -365,29 +365,48 @@ def main():
                     OSUtils.debug_print(f"Auto-selected single model: {models[0]}", True)
             else:
                 # Always show interactive selection when multiple models available
+                print()
                 print(
-                    f"📦 Available models on {llm_provider.get_provider_type().value.title()} server:"
+                    f"\033[1;36m📦 Available models on {llm_provider.get_provider_type().value.title()} server:\033[0m"
                 )
+                print("\033[1;35m" + "╔" + "═" * 70 + "╗\033[0m")
+
                 for i, model in enumerate(models, 1):
-                    print(f"  {i}. {model}")
+                    # Extract model name parts for better formatting
+                    if "/" in model:
+                        parts = model.split("/")
+                        org = parts[0] if len(parts) > 0 else ""
+                        name = "/".join(parts[1:]) if len(parts) > 1 else model
+                        formatted = f"\033[90m{org}/\033[0m\033[1;33m{name}\033[0m"
+                    else:
+                        formatted = f"\033[1;33m{model}\033[0m"
+
+                    print(f"\033[1;35m║\033[0m \033[1;32m{i:2d}.\033[0m {formatted}")
+
+                print("\033[1;35m" + "╚" + "═" * 70 + "╝\033[0m")
+                print()
 
                 while True:
                     try:
-                        choice = input(f"Select model (1-{len(models)}): ").strip()
+                        choice = input(
+                            f"\033[1;36m→ Select model (1-{len(models)}):\033[0m "
+                        ).strip()
                         if choice.isdigit():
                             idx = int(choice) - 1
                             if 0 <= idx < len(models):
                                 selected_model = models[idx]
                                 llm_provider.set_model(selected_model)
-                                print(f"📦 Using model: {selected_model}")
+                                print(
+                                    f"\033[1;32m✓ Using model:\033[0m \033[1;33m{selected_model}\033[0m"
+                                )
                                 if args.debug:
                                     OSUtils.debug_print(
                                         f"User selected model: {selected_model}", True
                                     )
                                 break
-                        print("Invalid selection. Please try again.")
+                        print("\033[1;31m✗ Invalid selection. Please try again.\033[0m")
                     except (KeyboardInterrupt, EOFError):
-                        print("👋 Goodbye!")
+                        print("\n👋 Goodbye!")
                         sys.exit(0)
         else:
             # Model was auto-selected or already configured
@@ -422,27 +441,25 @@ def main():
         print()
 
         # Provider and Model info with better formatting
-        print(
-            "\033[1;35m" + "  ╔═══════════════════════════════════════════════════════╗" + "\033[0m"
-        )
-        print(
-            "\033[1;35m"
-            + f"  ║  \033[1;37mProvider:\033[0m \033[1;32m{provider_name:<42}\033[1;35m║"
-            + "\033[0m"
-        )
-        print(
-            "\033[1;35m"
-            + f"  ║  \033[1;37mModel:\033[0m    \033[1;33m{current_model:<42}\033[1;35m║"
-            + "\033[0m"
-        )
-        print(
-            "\033[1;35m" + "  ╚═══════════════════════════════════════════════════════╝" + "\033[0m"
-        )
+        box_width = max(len(f"Provider: {provider_name}"), len(f"Model: {current_model}")) + 6
+        border_line = "═" * box_width
+
+        print("\033[1;35m╔" + border_line + "╗\033[0m")
+        provider_line = f"Provider: \033[1;32m{provider_name}\033[1;35m"
+        provider_padding = box_width - len(f"Provider: {provider_name}")
+        print("\033[1;35m║ " + provider_line + " " * provider_padding + " ║\033[0m")
+
+        model_line = f"Model:    \033[1;33m{current_model}\033[1;35m"
+        model_padding = box_width - len(f"Model:    {current_model}")
+        print("\033[1;35m║ " + model_line + " " * model_padding + " ║\033[0m")
+        print("\033[1;35m╚" + border_line + "╝\033[0m")
         print()
 
         print("\033[1;32m🚀 Starting XandAI REPL...\033[0m")
         print("Type '\033[1;36mhelp\033[0m' for commands or start chatting!")
-        print("Use '\033[1;36m/task <description>\033[0m' for structured project planning.")
+        print(
+            "\033[1;33m⚠️  Note: /task command is deprecated. Use natural conversation instead.\033[0m"
+        )
 
         # OS-specific command hints
         if OSUtils.is_windows():

@@ -1,6 +1,10 @@
 """
 XandAI - Task Mode Processor
 Enhanced task processing with robust parsing and streaming progress
+
+⚠️  DEPRECATED: This module and the /task command are deprecated and will be removed
+in a future version. Users should use natural conversation mode instead for better results.
+The task mode has been superseded by improved natural language processing capabilities.
 """
 
 import re
@@ -26,6 +30,8 @@ class TaskStep:
 class TaskProcessor:
     """
     Enhanced task mode processor for structured project planning
+
+    ⚠️  DEPRECATED: Use natural conversation mode instead.
 
     Features:
     - Converts high-level requests into ordered steps

@@ -13,7 +13,7 @@ with open("requirements.txt", "r", encoding="utf-8") as fh:
 
 setup(
     name="xandai-cli",
-    version="2.1.9",
+    version="2.1.10",
     author="XandAI-project",
     description="CLI Assistant with Ollama Integration and Context-Aware Interactions",
     long_description=long_description,

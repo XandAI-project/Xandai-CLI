@@ -15,17 +15,15 @@ xandai
 xandai --endpoint http://192.168.3.70:11434 --model "hf.co/unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF:IQ4_XS"
 ```
 
-## 💬 Chat Mode vs Task Mode
+## 💬 Natural Conversation Mode
 
-### Chat Mode
-Interactive conversation for code assistance, debugging, and quick tasks.
-
-### Task Mode
-Structured project planning and generation with step-by-step execution.
+XandAI works best with natural conversation - just describe what you want to build or accomplish.
 
 ```bash
-xandai> /task create a REST API for video management
+xandai> create a REST API for video management with Express.js
 ```
+
+> **Note:** The `/task` command has been deprecated. Use natural conversation for all project planning and code generation.
 
 ## 📁 Real Examples from Our Projects
 
@@ -35,7 +33,7 @@ xandai> /task create a REST API for video management
 
 **Generated with:**
 ```bash
-xandai> /task create a video management API with Express.js, including validation and error handling
+xandai> create a video management API with Express.js, including validation and error handling
 ```
 
 **Result:** Complete project structure:
@@ -66,7 +64,7 @@ simple-api/
 
 **Generated with:**
 ```bash
-xandai> /task create a todo application with HTML frontend and Node.js backend
+xandai> create a todo application with HTML frontend and Node.js backend
 ```
 
 **Result:**
@@ -154,17 +152,17 @@ module.exports = { formatDate };
 
 **Python API:**
 ```bash
-xandai> /task create a FastAPI application for user management
+xandai> create a FastAPI application for user management
 ```
 
 **JavaScript Frontend:**
 ```bash
-xandai> /task create a React app that consumes my Python API
+xandai> create a React app that consumes my Python API
 ```
 
 **Go Microservice:**
 ```bash
-xandai> /task create a Go microservice for file processing
+xandai> create a Go microservice for file processing
 ```
 
 ## 🔧 Advanced Features
@@ -228,12 +226,11 @@ xandai> /debug true
 ### Starting a New Project
 
 ```bash
-# 1. Plan the project
-xandai> /task create a blog system with user authentication
+# 1. Describe what you want to build
+xandai> create a blog system with user authentication
 
 # 2. Review the generated structure
-# 3. Execute the planned steps
-# 4. Test and iterate in chat mode
+# 3. Test and iterate with natural conversation
 
 xandai> add JWT authentication to the login endpoint
 xandai> create unit tests for the user controller
