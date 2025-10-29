@@ -1,10 +1,14 @@
-# XandAI CLI
+<div align="center">
 
-[![Tests](https://github.com/XandAI-project/Xandai-CLI/actions/workflows/test.yml/badge.svg)](https://github.com/XandAI-project/Xandai-CLI/actions/workflows/test.yml)
-[![PyPI version](https://img.shields.io/pypi/v/xandai-cli.svg)](https://pypi.org/project/xandai-cli/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+  # XandAI CLI
 
-Terminal assistant that combines AI chat with command execution. Supports Ollama and LM Studio.
+  [![Tests](https://github.com/XandAI-project/Xandai-CLI/actions/workflows/test.yml/badge.svg)](https://github.com/XandAI-project/Xandai-CLI/actions/workflows/test.yml)
+  [![PyPI version](https://img.shields.io/pypi/v/xandai-cli.svg)](https://pypi.org/project/xandai-cli/)
+  [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+  Terminal assistant that combines AI chat with command execution. Supports Ollama and LM Studio.
+</div>
+<img src="images/logo.png" alt="XandAI CLI Logo"/>
 
 ## Installation
 
