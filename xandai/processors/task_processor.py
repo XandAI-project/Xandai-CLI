@@ -1,6 +1,9 @@
 """
 XandAI Processors - Task Processor
 Task Mode processor with structured output for automation
+
+⚠️  DEPRECATED: This processor and /task command are deprecated.
+Use natural conversation mode for better results.
 """
 
 import re

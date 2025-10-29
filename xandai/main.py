@@ -64,7 +64,7 @@ Examples:
   /help               - Show available commands
   /interactive        - Toggle code execution prompts
   /status             - Show provider and model status
-  /task <description> - Structured project planning mode
+  /task <description> - [DEPRECIADO] Structured project planning mode
   /debug              - Toggle debug information
   /exit               - Exit XandAI
 
@@ -457,7 +457,9 @@ def main():
 
         print("\033[1;32m🚀 Starting XandAI REPL...\033[0m")
         print("Type '\033[1;36mhelp\033[0m' for commands or start chatting!")
-        print("Use '\033[1;36m/task <description>\033[0m' for structured project planning.")
+        print(
+            "\033[1;33m⚠️  Note: /task command is deprecated. Use natural conversation instead.\033[0m"
+        )
 
         # OS-specific command hints
         if OSUtils.is_windows():

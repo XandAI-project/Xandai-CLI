@@ -23,8 +23,8 @@ xandai> git status
 # AI questions  
 xandai> How do I optimize this code?
 
-# Project planning
-xandai> /task create a REST API
+# Natural conversation for any task
+xandai> create a REST API with authentication
 ```
 
 ## Providers
@@ -40,13 +40,46 @@ xandai --provider lm_studio --endpoint http://localhost:1234
 ## Commands
 
 ```bash
-/task <description>    # Project planning
+/agent <instruction>  # Multi-step LLM orchestrator for complex tasks
+/set-agent-limit <n>  # Set max LLM calls (default: 20, max: 100)
 /review               # AI-powered code review
 /web on               # Enable web content integration
 /help                 # Show all commands
 /clear                # Clear history
 /status               # System status
 ```
+
+### Agent Mode 🤖
+
+The `/agent` command is a powerful multi-step LLM orchestrator that chains multiple AI calls to handle complex tasks:
+
+```bash
+# Fix code with systematic analysis
+/agent fix the bug in main.py where the loop never terminates
+
+# Complex refactoring
+/agent refactor this monolithic code into modular components
+
+# Detailed explanations
+/agent explain how the authentication system works
+```
+
+**Pipeline stages:**
+1. **Intent Analysis** - Classifies the task type
+2. **Context Gathering** - Identifies needed information
+3. **Task Execution** - Performs the main work
+4. **Validation** - Verifies output quality
+5. **Refinement** - Improves based on validation (if needed)
+
+**When to use /agent:**
+- Complex multi-step tasks
+- Code requiring analysis and validation
+- Tasks needing structured reasoning
+- When quality matters more than speed
+
+See [example/agent_demo.md](example/agent_demo.md) for detailed examples.
+
+> **Note:** The `/task` command has been deprecated. Use natural conversation instead for better results.
 
 ## File Operations
 

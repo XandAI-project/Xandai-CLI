@@ -146,7 +146,15 @@ Now analyze this request and return ONLY the JSON:
             response_text = response.content if hasattr(response, "content") else str(response)
 
             if self.verbose:
-                print(f"🔍 [Tool Manager] LLM response: {response_text[:200]}...")
+                print(
+                    f"🔍 [Tool Manager] LLM response: {response_text[:200] if response_text else '(empty)'}..."
+                )
+
+            # Check if response is empty
+            if not response_text or not response_text.strip():
+                if self.verbose:
+                    print(f"⚠️  [Tool Manager] Empty response from LLM")
+                return None
 
             # Parse JSON response - be aggressive about finding JSON
             response_text = response_text.strip()
@@ -164,15 +172,29 @@ Now analyze this request and return ONLY the JSON:
             if "```json" in response_text:
                 start = response_text.find("```json") + 7
                 end = response_text.find("```", start)
-                response_text = response_text[start:end].strip()
-                if self.verbose:
-                    print(f"🔍 [Tool Manager] Extracted from ```json block")
+                if end != -1:  # Found closing ```
+                    response_text = response_text[start:end].strip()
+                    if self.verbose:
+                        print(f"🔍 [Tool Manager] Extracted from ```json block")
+                else:
+                    # No closing ```, take everything after ```json
+                    response_text = response_text[start:].strip()
+                    if self.verbose:
+                        print(
+                            f"🔍 [Tool Manager] Extracted from ```json block (no closing backticks)"
+                        )
             elif "```" in response_text:
                 start = response_text.find("```") + 3
                 end = response_text.find("```", start)
-                response_text = response_text[start:end].strip()
-                if self.verbose:
-                    print(f"🔍 [Tool Manager] Extracted from ``` block")
+                if end != -1:  # Found closing ```
+                    response_text = response_text[start:end].strip()
+                    if self.verbose:
+                        print(f"🔍 [Tool Manager] Extracted from ``` block")
+                else:
+                    # No closing ```, take everything after ```
+                    response_text = response_text[start:].strip()
+                    if self.verbose:
+                        print(f"🔍 [Tool Manager] Extracted from ``` block (no closing backticks)")
 
             # Try to find JSON object if mixed with other text
             if "{" in response_text and "}" in response_text:
@@ -201,7 +223,20 @@ Now analyze this request and return ONLY the JSON:
             if self.verbose:
                 print(f"🔍 [Tool Manager] Final JSON text: {response_text}")
 
-            tool_call = json.loads(response_text)
+            # Check if we have valid JSON text
+            if not response_text or not response_text.strip():
+                if self.verbose:
+                    print(f"⚠️  [Tool Manager] Empty response from LLM")
+                return None
+
+            # Try to parse JSON
+            try:
+                tool_call = json.loads(response_text)
+            except json.JSONDecodeError as je:
+                if self.verbose:
+                    print(f"⚠️  [Tool Manager] Invalid JSON: {je}")
+                    print(f"⚠️  [Tool Manager] Response was: {response_text[:100]}")
+                return None
 
             # Validate tool exists
             if tool_call.get("tool") and tool_call["tool"] in self.tools:
@@ -215,7 +250,7 @@ Now analyze this request and return ONLY the JSON:
         except Exception as e:
             # If conversion fails, return None (pass to LLM normally)
             if self.verbose:
-                print(f"⚠️  [Tool Manager] Error during tool detection: {e}")
+                print(f"⚠️  [Tool Manager] Unexpected error during tool detection: {e}")
             pass
 
         return None

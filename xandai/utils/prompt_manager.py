@@ -37,7 +37,6 @@ CAPABILITIES:
 
 CONTEXT:
 - You are in conversation mode (Chat Mode)
-- User can switch to Task Mode using /task for structured project creation
 - Maintain consistency with previous history
 - Avoid repeating information already provided in the session
 

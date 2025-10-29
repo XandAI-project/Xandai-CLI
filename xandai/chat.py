@@ -23,6 +23,7 @@ from xandai.core.app_state import AppState
 from xandai.history import HistoryManager
 from xandai.integrations.base_provider import LLMProvider, LLMResponse
 from xandai.integrations.provider_factory import LLMProviderFactory
+from xandai.processors.agent_processor import AgentProcessor
 from xandai.processors.review_processor import ReviewProcessor
 from xandai.task import TaskProcessor, TaskStep
 from xandai.utils.enhanced_file_handler import EnhancedFileHandler
@@ -39,6 +40,8 @@ class IntelligentCompleter(Completer):
         self.slash_commands = [
             "/task",
             "/review",
+            "/agent",
+            "/set-agent-limit",
             "/help",
             "/h",
             "/clear",
@@ -572,11 +575,19 @@ class ChatREPL:
         # Initialize app state for configuration
         self.app_state = AppState()
 
+        # Tool manager for custom tools (initialize early for agent processor)
+        self.tool_manager = ToolManager(
+            tools_dir="tools", llm_provider=llm_provider, verbose=verbose
+        )
+
         # Task processor (with shared verbose mode)
         self.task_processor = TaskProcessor(llm_provider, history_manager, verbose)
 
         # Review processor
         self.review_processor = ReviewProcessor(llm_provider, history_manager)
+
+        # Agent processor (with tool manager for enhanced capabilities)
+        self.agent_processor = AgentProcessor(llm_provider, history_manager, self.tool_manager)
 
         # Enhanced file handler (replaces legacy file operations)
         self.enhanced_file_handler = EnhancedFileHandler(
@@ -591,11 +602,6 @@ class ChatREPL:
             enabled=self.app_state.get_preference("web_integration_enabled", False),
             timeout=self.app_state.get_preference("web_request_timeout", 10),
             max_links=self.app_state.get_preference("max_links_per_request", 3),
-        )
-
-        # Tool manager for custom tools
-        self.tool_manager = ToolManager(
-            tools_dir="tools", llm_provider=llm_provider, verbose=verbose
         )
 
         # Prompt session with history and completion
@@ -933,8 +939,14 @@ class ChatREPL:
             self._handle_web_command(user_input[5:].strip())
             return True
 
-        # Task mode
+        # Task mode (DEPRECATED)
         if command.startswith("/task "):
+            self.console.print(
+                "[yellow]⚠️  WARNING: The /task command is deprecated and will be removed in a future version.[/yellow]"
+            )
+            self.console.print(
+                "[dim]💡 Use natural conversation instead of /task for better experience.[/dim]\n"
+            )
             task_request = user_input[6:].strip()
             if task_request:
                 self._handle_task_mode(task_request)
@@ -951,6 +963,55 @@ class ChatREPL:
                 repo_path = user_input[8:].strip() or "."
 
             self._handle_review_mode(repo_path)
+            return True
+
+        # Agent mode
+        if command.startswith("/agent "):
+            agent_instruction = user_input[7:].strip()
+            if agent_instruction:
+                self._handle_agent_mode(agent_instruction)
+            else:
+                self.console.print("[yellow]Usage: /agent <instruction>[/yellow]")
+                self.console.print("[dim]Example: /agent fix the bug in main.py[/dim]")
+                self.console.print(
+                    f"[dim]Current limit: {self.agent_processor.max_calls} calls[/dim]"
+                )
+            return True
+
+        if command == "/agent":
+            self.console.print("[yellow]Usage: /agent <instruction>[/yellow]")
+            self.console.print("[dim]Example: /agent fix the bug in main.py[/dim]")
+            self.console.print(f"[dim]Current limit: {self.agent_processor.max_calls} calls[/dim]")
+            return True
+
+        # Set agent limit
+        if command.startswith("/set-agent-limit "):
+            limit_str = user_input[17:].strip()
+            if limit_str:
+                try:
+                    new_limit = int(limit_str)
+                    self.agent_processor.set_max_calls(new_limit)
+                    self.console.print(f"[green]✓ Agent limit set to {new_limit} calls[/green]")
+                except ValueError as e:
+                    if "at least 1" in str(e):
+                        self.console.print("[red]Error: Limit must be at least 1[/red]")
+                    elif "cannot exceed 100" in str(e):
+                        self.console.print("[red]Error: Limit cannot exceed 100[/red]")
+                    else:
+                        self.console.print("[red]Error: Please provide a valid number[/red]")
+                except Exception as e:
+                    self.console.print(f"[red]Error setting limit: {e}[/red]")
+            else:
+                self.console.print("[yellow]Usage: /set-agent-limit <number>[/yellow]")
+                self.console.print("[dim]Example: /set-agent-limit 30[/dim]")
+            return True
+
+        if command == "/set-agent-limit":
+            self.console.print(
+                f"[cyan]Current agent limit:[/cyan] {self.agent_processor.max_calls} calls"
+            )
+            self.console.print("[yellow]Usage: /set-agent-limit <number>[/yellow]")
+            self.console.print("[dim]Example: /set-agent-limit 30[/dim]")
             return True
 
         # Help command
@@ -1448,24 +1509,55 @@ class ChatREPL:
                 context_messages.append(
                     {
                         "role": "system",
-                        "content": """CRITICAL INSTRUCTION: The user is requesting to EDIT an existing file.
+                        "content": f"""CRITICAL INSTRUCTION: The user wants to EDIT an existing file.
 
-YOU MUST USE THIS EXACT FORMAT (do NOT use markdown code blocks):
+THEIR REQUEST: "{processed_input}"
+
+YOU MUST:
+1. READ AND UNDERSTAND their complete request above
+2. MAKE THE EXACT CHANGES they asked for
+3. INCLUDE THE COMPLETE FILE (all code, not just the changes)
+4. USE THIS FORMAT (not markdown ```):
 
 <code edit filename="path/to/file.ext">
-[COMPLETE updated file content - include ALL code, not just changes]
+[The COMPLETE updated file content - ONE FILE ONLY]
 </code>
 
-WRONG (do NOT do this):
+🚨 CRITICAL FORMAT RULES:
+- ONE <code> tag = ONE SINGLE FILE ONLY
+- Do NOT use markdown code blocks (```python, ```javascript, etc.) inside <code> tags
+- Do NOT put multiple files in one <code> tag
+- ALWAYS close with </code> tag when the file is complete
+- The opening <code> tag and closing </code> tag must wrap EXACTLY ONE complete file
+
+WRONG (do NOT use markdown inside):
 ```python
 code here
 ```
 
-RIGHT (do this):
-<code edit filename="index.py">
-from flask import Flask
-app = Flask(__name__)
-</code>""",
+WRONG (markdown blocks inside code tag):
+<code edit filename="app.py">
+```python
+import something
+```
+</code>
+
+RIGHT (ONE complete file, NO markdown):
+<code edit filename="app.py">
+import something
+import another_thing
+
+def my_function():
+    # complete implementation
+    pass
+</code>
+
+REMEMBER:
+- Implement EXACTLY what the user requested: "{processed_input}"
+- ONE <code> tag wraps ONE complete file
+- NO markdown blocks (```) inside <code> tags
+- Include the ENTIRE file content, not just the changes
+- MUST end with </code> when file is complete""",
                     }
                 )
 
@@ -1473,33 +1565,68 @@ app = Flask(__name__)
             elif self._is_file_create_request(user_input):
                 if self.verbose:
                     OSUtils.debug_print(
-                        "Detected file create operation - adding explicit <code filename> instruction",
+                        "Detected file create operation - adding explicit <code create> instruction",
                         True,
                     )
 
                 context_messages.append(
                     {
                         "role": "system",
-                        "content": """CRITICAL INSTRUCTION: The user is requesting to CREATE a new file.
+                        "content": f"""CRITICAL INSTRUCTION: The user wants to CREATE a file.
 
-YOU MUST USE THIS EXACT FORMAT (do NOT use markdown code blocks):
+THEIR REQUEST: "{processed_input}"
 
-<code create filename="path/to/file.ext">
-[COMPLETE file content]
+YOU MUST:
+1. READ AND UNDERSTAND their complete request above
+2. CREATE THE EXACT CODE/CONTENT they asked for (not a generic example)
+3. USE THIS FORMAT (not markdown ```):
+
+<code create filename="appropriate_name.ext">
+[The COMPLETE code/content that fulfills the user's request - ONE FILE ONLY]
 </code>
 
+🚨 CRITICAL FORMAT RULES:
+- ONE <code> tag = ONE SINGLE FILE ONLY
+- Do NOT use markdown code blocks (```html, ```python, etc.) inside <code> tags
+- Do NOT put multiple files in one <code> tag
+- ALWAYS close with </code> tag when the file is complete
+- The opening <code> tag and closing </code> tag must wrap EXACTLY ONE complete file
+
 WRONG (do NOT do this):
-```python
+<code create filename="index.html">
+```html
+<!DOCTYPE html>
+...
+```
+```html
+more code
+```
+</code>
+
+WRONG (multiple markdown blocks):
+```html
 code here
 ```
 
-RIGHT (do this):
-<code create filename="tokens.py">
-from flask import Flask
-app = Flask(__name__)
+RIGHT (ONE file, ONE code tag, NO markdown):
+<code create filename="index.html">
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Complete Code</title>
+</head>
+<body>
+    ... complete implementation ...
+</body>
+</html>
 </code>
 
-Remember: ALWAYS include the filename in the tag!""",
+REMEMBER:
+- Implement EXACTLY what the user requested: "{processed_input}"
+- ONE <code> tag wraps ONE complete file
+- NO markdown blocks (```) inside <code> tags
+- MUST end with </code> when file is complete
+- Include ALL necessary code to make it functional""",
                     }
                 )
 
@@ -1538,6 +1665,78 @@ Remember: ALWAYS include the filename in the tag!""",
 
                 self.console.print(traceback.format_exc())
 
+    def _is_file_content_complete(self, filename: str, content: str) -> bool:
+        """
+        Check if file content is semantically complete (even if missing </code> tag)
+
+        Args:
+            filename: Name of the file to check
+            content: File content to verify
+
+        Returns:
+            True if content appears complete, False otherwise
+        """
+        import re
+
+        # Get file extension
+        file_ext = filename.split(".")[-1].lower() if "." in filename else ""
+
+        # Remove any markdown blocks and extra tags from content
+        cleaned_content = content.strip()
+
+        # Remove trailing markdown blocks or incomplete tags that LLM might add
+        cleaned_content = re.sub(r"```\w*\s*$", "", cleaned_content).strip()
+        cleaned_content = re.sub(r"<code>\s*$", "", cleaned_content).strip()
+
+        # HTML/XML files - check for proper closing tags
+        if file_ext in ["html", "htm", "xml", "svg"]:
+            # Must have closing </html> or </svg> tag
+            if re.search(r"</html>\s*$", cleaned_content, re.IGNORECASE):
+                return True
+            if re.search(r"</svg>\s*$", cleaned_content, re.IGNORECASE):
+                return True
+
+        # JavaScript/TypeScript - check for complete structure
+        elif file_ext in ["js", "jsx", "ts", "tsx", "mjs"]:
+            # Count braces to see if balanced
+            open_braces = cleaned_content.count("{")
+            close_braces = cleaned_content.count("}")
+            if open_braces > 0 and open_braces == close_braces:
+                # Check if ends reasonably (semicolon, brace, or export)
+                if re.search(r"[;})\]]\s*$", cleaned_content):
+                    return True
+
+        # JSON files - check for balanced brackets
+        elif file_ext == "json":
+            open_braces = cleaned_content.count("{")
+            close_braces = cleaned_content.count("}")
+            open_brackets = cleaned_content.count("[")
+            close_brackets = cleaned_content.count("]")
+
+            if (
+                open_braces == close_braces
+                and open_brackets == close_brackets
+                and (cleaned_content.endswith("}") or cleaned_content.endswith("]"))
+            ):
+                return True
+
+        # Python files - check if ends reasonably
+        elif file_ext == "py":
+            # Python is harder to detect, but check for balanced indentation
+            lines = cleaned_content.split("\n")
+            if lines and lines[-1].strip() and not lines[-1].strip().endswith("\\"):
+                # Last line is not a continuation
+                return True
+
+        # CSS files - check for balanced braces
+        elif file_ext == "css":
+            open_braces = cleaned_content.count("{")
+            close_braces = cleaned_content.count("}")
+            if open_braces > 0 and open_braces == close_braces:
+                return True
+
+        return False
+
     def _check_and_complete_truncated_code(
         self, content: str, context_messages: list, max_attempts: int = 3
     ) -> str:
@@ -1566,8 +1765,24 @@ Remember: ALWAYS include the filename in the tag!""",
             remaining_content = content[tag_end:]
             closing_tag_pos = remaining_content.find("</code>")
 
-            # If no closing tag found, request completion
+            # If no closing tag found, check if content is semantically complete
             if closing_tag_pos == -1:
+                # Check if the file content is actually complete (just missing </code> tag)
+                code_content = remaining_content
+
+                if self._is_file_content_complete(filename, code_content):
+                    # File is complete, just add the closing tag
+                    if self.verbose:
+                        OSUtils.debug_print(
+                            f"File content for {filename} is complete, just adding </code> tag",
+                            True,
+                        )
+                    self.console.print(
+                        f"[green]✅ File '{filename}' is complete. Adding closing tag.[/green]"
+                    )
+                    return content + "\n</code>"
+
+                # Content is incomplete, request completion from LLM
                 if self.verbose:
                     OSUtils.debug_print(
                         f"Detected truncated code for {filename} - requesting completion",
@@ -1632,31 +1847,109 @@ Remember: ALWAYS include the filename in the tag!""",
                     True,
                 )
 
-            # Create simplified continuation request
-            # Use only the essential context to avoid JSON parsing issues
-            continuation_messages = [
-                {
-                    "role": "system",
-                    "content": f"""You are completing a truncated code response for {operation}ing '{filename}'.
+            # Create continuation request - use more assertive prompt on final attempt
+            is_final_attempt = attempts == max_attempts
+
+            if is_final_attempt:
+                # FINAL ATTEMPT - Be VERY assertive and demanding
+                continuation_messages = [
+                    {
+                        "role": "system",
+                        "content": f"""🚨 FINAL ATTEMPT TO COMPLETE '{filename}' 🚨
+
+THIS IS YOUR LAST CHANCE. YOU MUST COMPLETE THIS CODE NOW.
+
+ABSOLUTE REQUIREMENTS:
+1. Continue from where the code was cut off
+2. FINISH the entire implementation - NO EXCUSES
+3. MUST end with </code> tag
+4. DO NOT output incomplete code
+5. DO NOT stop until you've written the complete, functional code
+6. Do NOT add markdown code blocks (```html, ```python, etc.) - just raw code
+7. Do NOT start a new <code> tag - just continue directly
+
+YOU WILL BE PENALIZED IF:
+- The code is incomplete
+- You don't include the </code> tag
+- You output placeholder comments like "... rest of code ..."
+- You add markdown blocks (```) instead of raw code
+
+THIS IS NON-NEGOTIABLE. COMPLETE THE CODE NOW.""",
+                    },
+                    {
+                        "role": "user",
+                        "content": f"""URGENT: This is the FINAL attempt (3/{max_attempts}) to complete '{filename}'.
+
+Code so far (last 500 chars):
+{partial_content[-500:]}
+
+🚨 ABSOLUTE REQUIREMENTS:
+1. Continue from the exact point where it stopped
+2. Do NOT repeat any code already present
+3. Do NOT add markdown blocks (```)
+4. Do NOT add new <code> tags
+5. Write ONLY the remaining code needed to complete the file
+6. End with ONLY the closing tag: </code>
+
+WRONG (do NOT do this):
+```html
+<script>...
+```
+</code>
+
+RIGHT (just complete and close):
+    // remaining code here
+</script>
+</body>
+</html>
+</code>
+
+DO NOT OUTPUT ANYTHING WITHOUT FINISHING THE CODE COMPLETELY.
+This is your last chance. FINISH IT NOW!""",
+                    },
+                ]
+            else:
+                # Regular attempts - use normal prompt
+                continuation_messages = [
+                    {
+                        "role": "system",
+                        "content": f"""You are completing a truncated code response for {operation}ing '{filename}'.
 
 CRITICAL RULES:
 1. Continue the code from where it was cut off (do NOT repeat previous content)
 2. Complete the file content
 3. END with the closing tag: </code>
+4. Do NOT add markdown code blocks (```html, ```python, etc.)
+5. Just write the raw code continuation
 
-DO NOT start a new <code> tag. Just continue and close.""",
-                },
-                {
-                    "role": "user",
-                    "content": f"The previous response was cut off. Here's what we have so far:\n\n{partial_content[-500:]}\n\nPlease continue from where it stopped and complete the code. You MUST end with </code> tag!",
-                },
-            ]
+DO NOT start a new <code> tag. Just continue the code directly and close with </code>""",
+                    },
+                    {
+                        "role": "user",
+                        "content": f"""The previous response was cut off. Here's the last part:
+
+{partial_content[-500:]}
+
+CRITICAL:
+- Do NOT repeat any code that's already present above
+- Do NOT add markdown blocks (```)
+- Do NOT add new <code> tags
+- Just continue from where it stopped
+- End with </code> tag only
+
+Continue the code now:""",
+                    },
+                ]
 
             try:
                 # Request continuation with progress indicator
-                with self.console.status(
-                    f"[bold cyan]Requesting continuation (attempt {attempts}/{max_attempts})...[/bold cyan]"
-                ) as status:
+                # Use different styling for final attempt
+                if is_final_attempt:
+                    status_msg = f"[bold red]🚨 FINAL ATTEMPT ({attempts}/{max_attempts}) - Demanding completion...[/bold red]"
+                else:
+                    status_msg = f"[bold cyan]Requesting continuation (attempt {attempts}/{max_attempts})...[/bold cyan]"
+
+                with self.console.status(status_msg) as status:
                     # Use non-streaming mode for continuation to avoid JSON parsing issues
                     continuation_response = self.llm_provider.chat(
                         messages=continuation_messages,
@@ -1748,7 +2041,19 @@ DO NOT start a new <code> tag. Just continue and close.""",
         has_create_intent = any(keyword in user_lower for keyword in create_keywords)
 
         # Check for file extensions or file-related words
-        file_indicators = [".py", ".js", ".ts", ".html", ".css", ".json", "file", "script"]
+        file_indicators = [
+            ".py",
+            ".js",
+            ".ts",
+            ".html",
+            ".css",
+            ".json",
+            "file",
+            "script",
+            "html",
+            "webpage",
+            "page",
+        ]
         has_file_ref = any(indicator in user_lower for indicator in file_indicators)
 
         # Check for code/program indicators (api, app, etc.)
@@ -1770,6 +2075,9 @@ DO NOT start a new <code> tag. Just continue and close.""",
             "model",
             "view",
             "component",
+            "website",
+            "clone",
+            "interface",
             # Frameworks and tools
             "flask",
             "django",
@@ -1785,8 +2093,16 @@ DO NOT start a new <code> tag. Just continue and close.""",
         ]
         has_code_ref = any(indicator in user_lower for indicator in code_indicators)
 
+        result = has_create_intent and (has_file_ref or has_code_ref)
+
+        if self.verbose:
+            OSUtils.debug_print(
+                f"File create detection: intent={has_create_intent}, file_ref={has_file_ref}, code_ref={has_code_ref}, result={result}",
+                True,
+            )
+
         # Return true if has create intent AND (has file reference OR has code reference)
-        return has_create_intent and (has_file_ref or has_code_ref)
+        return result
 
     def _should_generate_commands(self, user_input: str) -> bool:
         """
@@ -2183,6 +2499,93 @@ DO NOT start a new <code> tag. Just continue and close.""",
                     self.console.print(f"[bold]{file_path}[/bold]\n{comments_text}")
 
         self.console.print()  # Add spacing
+
+    def _handle_agent_mode(self, agent_instruction: str):
+        """Handle agent mode request - multi-step LLM orchestrator"""
+        try:
+            self.console.print("[bold cyan]🤖 Agent Mode - Multi-Step Processing[/bold cyan]")
+            self.console.print(f"[dim]Max calls: {self.agent_processor.max_calls}[/dim]\n")
+
+            self.console.print("[dim]💭 Starting multi-step reasoning...[/dim]")
+
+            # Enable verbose temporarily to show progress
+            original_verbose = self.agent_processor.verbose
+            self.agent_processor.verbose = True
+
+            # Process through agent
+            result = self.agent_processor.process(agent_instruction, self.app_state)
+
+            # Restore verbose setting
+            self.agent_processor.verbose = original_verbose
+
+            # Display step-by-step progress
+            self.console.print("[bold]Agent Execution Steps:[/bold]\n")
+
+            for step in result.steps:
+                status_icon = "✅" if step.success else "❌"
+                self.console.print(f"{status_icon} [Step {step.step_number}] {step.step_name}")
+                if self.verbose and step.response:
+                    # Show summary in verbose mode
+                    summary = (
+                        step.response[:100] + "..." if len(step.response) > 100 else step.response
+                    )
+                    self.console.print(f"[dim]  → {summary}[/dim]")
+
+            self.console.print()
+
+            # Show final result
+            if result.success:
+                self.console.print("[bold green]✓ Agent Task Complete[/bold green]")
+                self.console.print(f"[dim]Reason: {result.stopped_reason}[/dim]")
+                self.console.print(
+                    f"[dim]Total calls: {result.total_calls}/{self.agent_processor.max_calls}[/dim]"
+                )
+                self.console.print(f"[dim]Total tokens: {result.total_tokens}[/dim]\n")
+
+                # Display final output
+                self.console.print(
+                    Panel(result.final_output, title="Agent Output", border_style="green")
+                )
+
+                # Display files created/edited
+                if result.files_created or result.files_edited:
+                    self.console.print()
+                    if result.files_created:
+                        self.console.print("[bold green]📝 Files Created:[/bold green]")
+                        for file in result.files_created:
+                            self.console.print(f"  ✓ {file}")
+
+                    if result.files_edited:
+                        self.console.print("[bold yellow]✏️  Files Edited:[/bold yellow]")
+                        for file in result.files_edited:
+                            self.console.print(f"  ✓ {file}")
+
+                # Display commands executed
+                if result.commands_executed:
+                    self.console.print()
+                    self.console.print("[bold blue]⚙️  Commands Executed:[/bold blue]")
+                    for cmd, output in result.commands_executed:
+                        status = (
+                            "✓"
+                            if output and "ERROR" not in output and "TIMEOUT" not in output
+                            else "✗"
+                        )
+                        self.console.print(f"  {status} {cmd}")
+                        if self.verbose and output:
+                            # Show command output in verbose mode
+                            output_preview = output[:100] + "..." if len(output) > 100 else output
+                            self.console.print(f"     [dim]{output_preview}[/dim]")
+            else:
+                self.console.print("[bold red]✗ Agent Task Failed[/bold red]")
+                if result.error_message:
+                    self.console.print(f"[red]Error: {result.error_message}[/red]")
+                self.console.print(f"[dim]Calls made: {result.total_calls}[/dim]\n")
+
+        except ConnectionError as e:
+            self.console.print(f"[red]Connection error: {e}[/red]")
+            self.console.print("Make sure your LLM provider (Ollama/LM Studio) is running")
+        except Exception as e:
+            self.console.print(f"[red]Agent error: {e}[/red]")
 
     def _handle_task_mode(self, task_request: str):
         """Handle task mode request with enhanced progress display and shared context"""
@@ -4548,7 +4951,7 @@ Remember: Your response will be written directly to the file! NO explanatory tex
 [yellow]Chat Commands:[/yellow]
   • Just type naturally to chat with the AI
   • Terminal commands (ls, cd, cat, etc.) are executed locally
-  • Use /task <description> for structured project planning
+  • Describe what you want to build and the AI will help you
 
 [yellow]Special Commands (/ prefix):[/yellow]
   • /help, /h       - Show this help
@@ -4592,15 +4995,24 @@ Remember: Your response will be written directly to the file! NO explanatory tex
   • help, clear, history, context, status
   • exit, quit, bye
 
-[yellow]Task Mode:[/yellow]
-  • /task create a web app with Python Flask
-  • /task add user authentication to my React app
-  • /task optimize the database queries in my Django project
+[yellow]Task Mode (DEPRECATED):[/yellow]
+  • ⚠️  /task command is deprecated - use natural conversation instead
+  • Instead of "/task create a web app", just say "create a web app with Python Flask"
+  • Natural conversation provides better, more flexible results
 
 [yellow]Code Review:[/yellow]
   • /review          - Review changes in current Git repository
   • /review /path/to/repo - Review changes in specific repository
   • Analyzes modified files and provides comprehensive feedback
+
+[yellow]Agent Mode:[/yellow]
+  • /agent <instruction>  - Multi-step LLM orchestrator for complex tasks
+                           Chains multiple AI calls with reasoning stages
+  • /set-agent-limit <n>  - Set max LLM calls (default: 20, max: 100)
+  Examples:
+    /agent fix the bug in main.py where the loop never terminates
+    /agent refactor this code into modular components
+    /agent analyze performance bottlenecks in the data processor
 
 [yellow]Terminal Commands:[/yellow]
   Cross-platform terminal commands work (Windows + Linux/macOS):
@@ -4610,7 +5022,7 @@ Remember: Your response will be written directly to the file! NO explanatory tex
   Results are wrapped in <commands_output> tags.
 
 [yellow]Tips:[/yellow]
-  • Be specific in /task requests for better results
+  • Be specific in your requests for better results
   • Use quotes for complex terminal commands: "ls -la | grep .py"
   • Context is maintained across the session
         """
@@ -4850,6 +5262,9 @@ Remember: Your response will be written directly to the file! NO explanatory tex
             old_provider = self.llm_provider.get_provider_type().value
             self.llm_provider = new_provider
             self.task_processor.llm_provider = new_provider  # Update task processor too
+            self.agent_processor.llm_provider = new_provider  # Update agent processor too
+            self.review_processor.llm_provider = new_provider  # Update review processor too
+            self.tool_manager.llm_provider = new_provider  # Update tool manager too
 
             # Get model info
             current_model = new_provider.get_current_model() or "None"
@@ -4886,6 +5301,9 @@ Remember: Your response will be written directly to the file! NO explanatory tex
                 if provider_type != old_provider:
                     self.llm_provider = detected_provider
                     self.task_processor.llm_provider = detected_provider
+                    self.agent_processor.llm_provider = detected_provider
+                    self.review_processor.llm_provider = detected_provider
+                    self.tool_manager.llm_provider = detected_provider
 
                     current_model = detected_provider.get_current_model() or "None"
                     available_models = health.get("available_models", [])
@@ -4920,6 +5338,9 @@ Remember: Your response will be written directly to the file! NO explanatory tex
             if health.get("connected", False):
                 self.llm_provider = new_provider
                 self.task_processor.llm_provider = new_provider
+                self.agent_processor.llm_provider = new_provider
+                self.review_processor.llm_provider = new_provider
+                self.tool_manager.llm_provider = new_provider
 
                 current_model = new_provider.get_current_model() or "None"
                 available_models = health.get("available_models", [])

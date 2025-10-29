@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 XandAI CLI - Main CLI
-Main coordination system with Chat Mode and Task Mode support
+Main coordination system with Chat Mode support
 """
 
 import os
@@ -18,10 +18,12 @@ from xandai.core.app_state import AppState
 from xandai.core.command_processor import CommandProcessor
 from xandai.integrations.base_provider import LLMProvider
 from xandai.integrations.provider_factory import LLMProviderFactory
+from xandai.processors.agent_processor import AgentProcessor
 from xandai.processors.chat_processor import ChatProcessor
 from xandai.processors.review_processor import ReviewProcessor
 from xandai.processors.task_processor import TaskProcessor
 from xandai.utils.display_utils import DisplayUtils
+from xandai.utils.tool_manager import ToolManager
 
 
 class XandAICLI:
@@ -42,9 +44,17 @@ class XandAICLI:
         except Exception:
             self.llm_provider = LLMProviderFactory.create_auto_detect()
 
+        # Tool manager for custom tools
+        self.tool_manager = ToolManager(
+            tools_dir="tools", llm_provider=self.llm_provider, verbose=False
+        )
+
         self.chat_processor = ChatProcessor(self.llm_provider, self.conversation_manager)
         self.task_processor = TaskProcessor(self.llm_provider, self.conversation_manager)
         self.review_processor = ReviewProcessor(self.llm_provider, self.conversation_manager)
+        self.agent_processor = AgentProcessor(
+            self.llm_provider, self.conversation_manager, self.tool_manager
+        )
         self.display = DisplayUtils(self.console)
 
         # EditModeEnhancer state variables
@@ -76,6 +86,9 @@ class XandAICLI:
             "/server": self._set_server_endpoint,
             "/list-models": self._list_and_select_models,
             "/models": self._list_and_select_models,
+            # Agent mode
+            "/agent": self._process_agent_mode,
+            "/set-agent-limit": self._set_agent_limit,
         }
 
     def run(self, initial_input: Optional[str] = None):
@@ -228,7 +241,14 @@ class XandAICLI:
     # ===== Task Mode Command =====
 
     def _process_task_mode(self, args: str):
-        """Processes /task command"""
+        """Processes /task command (DEPRECATED)"""
+        self.console.print(
+            "[yellow]⚠️  WARNING: The /task command is deprecated and will be removed in a future version.[/yellow]"
+        )
+        self.console.print(
+            "[dim]💡 Use natural conversation instead of /task for better experience.[/dim]\n"
+        )
+
         if not args.strip():
             self.console.print("[yellow]Usage: /task <task description>[/yellow]")
             return
@@ -259,6 +279,122 @@ class XandAICLI:
             self.console.print(f"[red]Review error: {e}[/red]")
             self.console.print("Check if you're in a Git repository with changes to review")
 
+    def _process_agent_mode(self, args: str):
+        """Processes /agent command - multi-step LLM orchestrator"""
+        if not args.strip():
+            self.console.print("[yellow]Usage: /agent <instruction>[/yellow]")
+            self.console.print("[dim]Example: /agent fix the bug in main.py[/dim]")
+            self.console.print(f"[dim]Current limit: {self.agent_processor.max_calls} calls[/dim]")
+            return
+
+        try:
+            self.console.print("[bold cyan]🤖 Agent Mode - Multi-Step Processing[/bold cyan]")
+            self.console.print(f"[dim]Max calls: {self.agent_processor.max_calls}[/dim]\n")
+
+            self.console.print("[dim]💭 Starting multi-step reasoning...[/dim]")
+
+            # Enable verbose temporarily to show progress
+            original_verbose = self.agent_processor.verbose
+            self.agent_processor.verbose = True
+
+            # Process through agent
+            result = self.agent_processor.process(args, self.app_state)
+
+            # Restore verbose setting
+            self.agent_processor.verbose = original_verbose
+
+            # Display step-by-step progress
+            self.console.print("[bold]Agent Execution Steps:[/bold]\n")
+
+            for step in result.steps:
+                status_icon = "✅" if step.success else "❌"
+                self.console.print(f"{status_icon} [Step {step.step_number}] {step.step_name}")
+                if self.app_state.verbose_mode and step.response:
+                    # Show summary in verbose mode
+                    summary = (
+                        step.response[:100] + "..." if len(step.response) > 100 else step.response
+                    )
+                    self.console.print(f"[dim]  → {summary}[/dim]")
+
+            self.console.print()
+
+            # Show final result
+            if result.success:
+                self.console.print("[bold green]✓ Agent Task Complete[/bold green]")
+                self.console.print(f"[dim]Reason: {result.stopped_reason}[/dim]")
+                self.console.print(
+                    f"[dim]Total calls: {result.total_calls}/{self.agent_processor.max_calls}[/dim]"
+                )
+                self.console.print(f"[dim]Total tokens: {result.total_tokens}[/dim]\n")
+
+                # Display final output
+                self.console.print(
+                    Panel(result.final_output, title="Agent Output", border_style="green")
+                )
+
+                # Display files created/edited
+                if result.files_created or result.files_edited:
+                    self.console.print()
+                    if result.files_created:
+                        self.console.print("[bold green]📝 Files Created:[/bold green]")
+                        for file in result.files_created:
+                            self.console.print(f"  ✓ {file}")
+
+                    if result.files_edited:
+                        self.console.print("[bold yellow]✏️  Files Edited:[/bold yellow]")
+                        for file in result.files_edited:
+                            self.console.print(f"  ✓ {file}")
+
+                # Display commands executed
+                if result.commands_executed:
+                    self.console.print()
+                    self.console.print("[bold blue]⚙️  Commands Executed:[/bold blue]")
+                    for cmd, output in result.commands_executed:
+                        status = (
+                            "✓"
+                            if output and "ERROR" not in output and "TIMEOUT" not in output
+                            else "✗"
+                        )
+                        self.console.print(f"  {status} {cmd}")
+                        if self.app_state.verbose_mode and output:
+                            # Show command output in verbose mode
+                            output_preview = output[:100] + "..." if len(output) > 100 else output
+                            self.console.print(f"     [dim]{output_preview}[/dim]")
+            else:
+                self.console.print("[bold red]✗ Agent Task Failed[/bold red]")
+                if result.error_message:
+                    self.console.print(f"[red]Error: {result.error_message}[/red]")
+                self.console.print(f"[dim]Calls made: {result.total_calls}[/dim]\n")
+
+        except ConnectionError as e:
+            self.display.show_error(str(e), "LLM Connection")
+        except Exception as e:
+            self.console.print(f"[red]Agent error: {e}[/red]")
+
+    def _set_agent_limit(self, args: str):
+        """Sets the maximum number of LLM calls for agent mode"""
+        if not args.strip():
+            self.console.print(
+                f"[cyan]Current agent limit:[/cyan] {self.agent_processor.max_calls} calls"
+            )
+            self.console.print("[dim]Usage: /set-agent-limit <number>[/dim]")
+            self.console.print("[dim]Example: /set-agent-limit 30[/dim]")
+            return
+
+        try:
+            new_limit = int(args.strip())
+            self.agent_processor.set_max_calls(new_limit)
+            self.console.print(f"[green]✓ Agent limit set to {new_limit} calls[/green]")
+        except ValueError as e:
+            if "at least 1" in str(e):
+                self.console.print("[red]Error: Limit must be at least 1[/red]")
+            elif "cannot exceed 100" in str(e):
+                self.console.print("[red]Error: Limit cannot exceed 100[/red]")
+            else:
+                self.console.print(f"[red]Error: Please provide a valid number[/red]")
+        except Exception as e:
+            self.console.print(f"[red]Error setting limit: {e}[/red]")
+
     # ===== Utility Commands =====
 
     def _show_help(self, args: str):
@@ -279,21 +415,30 @@ class XandAICLI:
   /mode          - Show current mode
   /auto          - Enable automatic detection
 
-[cyan]Task Mode:[/cyan]
-  /task <desc>   - Process task with structured output
+[cyan]Task Mode (DEPRECATED):[/cyan]
+  /task <desc>   - [DEPRECATED] Use natural conversation instead
+
+[cyan]Agent Mode:[/cyan]
+  /agent <instruction>  - Multi-step LLM orchestrator
+                          Chains multiple AI calls for complex tasks
+  /set-agent-limit <n>  - Set max LLM calls (default: 20, max: 100)
 
 [cyan]Code Review:[/cyan]
   /review [path] - Analyze Git changes and provide code review
 
-[cyan]Ollama Management:[/cyan]
-  /ollama        - Show Ollama connection status
-  /server <url>  - Set Ollama server URL
+[cyan]LLM Provider Management:[/cyan]
+  /provider      - Show provider connection status
+  /providers     - List all available providers
+  /switch <name> - Switch to another provider
+  /detect        - Auto-detect available provider
+  /server <url>  - Set server URL
   /list-models   - List available models and select one
   /models        - Alias for /list-models
 
 [cyan]Operation Modes:[/cyan]
   [bold]Chat Mode[/bold] (default): Context-aware conversation
-  [bold]Task Mode[/bold]: Structured output for automation
+  [bold]Agent Mode[/bold]: Multi-step reasoning and task execution
+  [bold]Task Mode[/bold]: [DEPRECATED] Use natural conversation
         """
         self.console.print(Panel(help_text, title="Help", border_style="blue"))
 
@@ -367,6 +512,10 @@ class XandAICLI:
                 self.review_processor = ReviewProcessor(
                     self.llm_provider, self.conversation_manager
                 )
+                self.agent_processor = AgentProcessor(
+                    self.llm_provider, self.conversation_manager, self.tool_manager
+                )
+                self.tool_manager.llm_provider = new_llm_provider
 
                 self.console.print(f"[green]✓ Switched to {new_provider.title()}[/green]")
 
@@ -402,6 +551,10 @@ class XandAICLI:
             self.chat_processor = ChatProcessor(self.llm_provider, self.conversation_manager)
             self.task_processor = TaskProcessor(self.llm_provider, self.conversation_manager)
             self.review_processor = ReviewProcessor(self.llm_provider, self.conversation_manager)
+            self.agent_processor = AgentProcessor(
+                self.llm_provider, self.conversation_manager, self.tool_manager
+            )
+            self.tool_manager.llm_provider = new_llm_provider
 
             self.console.print(
                 f"[green]✓ Auto-detected and switched to {detected_provider.title()}[/green]"
@@ -456,6 +609,10 @@ class XandAICLI:
             self.chat_processor = ChatProcessor(self.llm_provider, self.conversation_manager)
             self.task_processor = TaskProcessor(self.llm_provider, self.conversation_manager)
             self.review_processor = ReviewProcessor(self.llm_provider, self.conversation_manager)
+            self.agent_processor = AgentProcessor(
+                self.llm_provider, self.conversation_manager, self.tool_manager
+            )
+            self.tool_manager.llm_provider = self.llm_provider
         except Exception as e:
             self.console.print(f"[red]Failed to update endpoint: {e}[/red]")
             return
@@ -649,7 +806,7 @@ def main(model: str, verbose: bool, input_text: Optional[str]):
     Examples:
       xandai                           # Interactive mode
       xandai "explain clean code"      # Direct chat mode
-      xandai "/task create an API"     # Direct task mode
+      xandai "create an API"           # Natural conversation
     """
 
     # Global configuration
