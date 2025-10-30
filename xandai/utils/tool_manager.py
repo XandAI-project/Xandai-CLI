@@ -34,19 +34,39 @@ class ToolManager:
 
     def _load_tools(self):
         """Scan tools directory and load all available tools."""
+        # Clear existing tools before reloading
+        self.tools = {}
+
         if not self.tools_dir.exists():
+            if self.verbose:
+                print(f"[Tool Manager] Tools directory not found: {self.tools_dir}")
             return
+
+        if self.verbose:
+            print(f"[Tool Manager] Scanning for tools in: {self.tools_dir}")
 
         # Find all Python files in tools directory
         tool_files = list(self.tools_dir.glob("*.py"))
 
+        if self.verbose:
+            print(f"[Tool Manager] Found {len(tool_files)} Python files")
+
+        loaded_count = 0
+        failed_count = 0
+
         for tool_file in tool_files:
             if tool_file.name.startswith("_"):
+                if self.verbose:
+                    print(f"[Tool Manager] Skipping {tool_file.name}")
                 continue  # Skip __init__.py and private modules
 
             try:
                 # Load module dynamically
                 module_name = tool_file.stem
+
+                if self.verbose:
+                    print(f"[Tool Manager] Loading {module_name} from {tool_file}")
+
                 spec = importlib.util.spec_from_file_location(module_name, tool_file)
                 if spec and spec.loader:
                     module = importlib.util.module_from_spec(spec)
@@ -54,15 +74,33 @@ class ToolManager:
                     spec.loader.exec_module(module)
 
                     # Find tool class in module
+                    tool_found = False
                     for name, obj in inspect.getmembers(module, inspect.isclass):
                         if hasattr(obj, "get_name") and hasattr(obj, "execute"):
                             tool_instance = obj()
                             tool_name = tool_instance.get_name()
                             self.tools[tool_name] = tool_instance
-                            print(f"✓ Loaded tool: {tool_name}")
+                            loaded_count += 1
+                            tool_found = True
+                            if self.verbose:
+                                print(f"  ✓ Loaded: {tool_name}")
+
+                    if not tool_found and self.verbose:
+                        print(f"[Tool Manager] No tool class found in {module_name}")
 
             except Exception as e:
-                print(f"⚠️  Failed to load tool {tool_file.name}: {e}")
+                failed_count += 1
+                if self.verbose:
+                    print(f"⚠️  Failed to load tool {tool_file.name}: {e}")
+                    import traceback
+
+                    traceback.print_exc()
+
+        # Show summary
+        if loaded_count > 0:
+            print(f"✓ Loaded {loaded_count} tool(s)")
+        if failed_count > 0 and not self.verbose:
+            print(f"⚠️  {failed_count} tool(s) failed to load (use --verbose for details)")
 
     def get_available_tools(self) -> List[Dict[str, Any]]:
         """

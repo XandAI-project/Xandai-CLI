@@ -48,10 +48,31 @@ xandai --provider lm_studio --endpoint http://localhost:1234
 /set-agent-limit <n>  # Set max LLM calls (default: 20, max: 100)
 /review               # AI-powered code review
 /web on               # Enable web content integration
+/host [addr] -p 4800  # Start web shell server (real-time web interface)
 /help                 # Show all commands
 /clear                # Clear history
 /status               # System status
 ```
+
+### Web Shell 🌐
+
+Access XandAI through a web browser with real-time interaction:
+
+```bash
+# Start web shell server
+xandai> /host 0.0.0.0 -p 4800
+
+# Open browser at http://localhost:4800
+# Interact with XandAI through a modern web interface
+# Terminal and web interface work simultaneously
+```
+
+Features:
+- Real-time communication using WebSocket
+- Modern terminal-like interface
+- Execute all XandAI commands through browser
+- Accessible from any device on your network
+- Works alongside the terminal interface
 
 ### Agent Mode 🤖
 

@@ -164,6 +164,56 @@ RESPONSE FORMAT:
         prompt_parts.append("ASSISTANT:")
         return "\n\n".join(prompt_parts)
 
+    def process_input(
+        self, user_input: str, conversation_manager: Optional[ConversationManager] = None
+    ) -> str:
+        """
+        Simple input processor for web shell and external integrations
+
+        Args:
+            user_input: User input text
+            conversation_manager: Optional conversation manager (uses default if not provided)
+
+        Returns:
+            AI response text
+        """
+        # Use provided conversation manager or default
+        conv_manager = conversation_manager or self.conversation_manager
+
+        # Add user message to history
+        conv_manager.add_message(role="user", content=user_input, mode="chat", metadata={})
+
+        try:
+            # Build simple context
+            context = [{"role": "system", "content": self.system_prompt}]
+
+            # Add recent history
+            history = conv_manager.get_context_for_ai(max_tokens=3000)
+            context.extend(history)
+
+            # Add current input
+            context.append({"role": "user", "content": user_input})
+
+            # Generate response
+            response = self.llm_provider.chat(messages=context, temperature=0.7, max_tokens=2048)
+
+            # Add response to history
+            conv_manager.add_message(
+                role="assistant",
+                content=response.content,
+                mode="chat",
+                metadata={"model": response.model, "tokens": response.total_tokens},
+            )
+
+            return response.content
+
+        except Exception as e:
+            error_msg = f"Error: {str(e)}"
+            conv_manager.add_message(
+                role="system", content=error_msg, mode="chat", metadata={"error": True}
+            )
+            return error_msg
+
     def get_conversation_summary(self) -> Dict[str, Any]:
         """
         Returns summary of current conversation
