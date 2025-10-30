@@ -346,13 +346,14 @@ Now analyze this request and return ONLY the JSON:
             tool_name = tool_call["tool"]
             args = tool_call.get("args", {})
 
-            print(f"\n🔧 Calling tool: {tool_name}")
-            print(f"📝 Arguments: {json.dumps(args, indent=2)}")
+            if self.verbose:
+                print(f"\n🔧 Calling tool: {tool_name}")
+                print(f"📝 Arguments: {json.dumps(args, indent=2)}")
 
             tool_result = self.execute_tool(tool_name, args)
 
-            print(f"✓ Tool executed successfully")
             if self.verbose:
+                print(f"✓ Tool executed successfully")
                 print(f"[Tool Manager] Tool result: {str(tool_result)[:200]}...")
 
             # Combine user input with tool result for LLM
