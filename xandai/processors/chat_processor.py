@@ -167,8 +167,28 @@ RESPONSE FORMAT:
         Generates response using Ollama
         """
         try:
-            response = self.llm_provider.chat(messages=context, temperature=0.7, max_tokens=2048)
-            return response
+            response = self.llm_provider.chat(
+                messages=context, temperature=0.7, max_tokens=2048, stream=False
+            )
+
+            # Handle potential generator response (if stream=False was ignored)
+            if hasattr(response, "content"):
+                return response
+            else:
+                # It's a generator, collect all chunks
+                full_content = ""
+                for chunk in response:
+                    full_content += chunk
+
+                # Create LLMResponse manually
+                return LLMResponse(
+                    content=full_content,
+                    model=self.llm_provider.current_model or "unknown",
+                    prompt_tokens=0,
+                    completion_tokens=len(full_content.split()),
+                    total_tokens=len(full_content.split()),
+                    provider=self.llm_provider.get_provider_type().value,
+                )
 
         except Exception as e:
             # Fallback to generate if chat fails
@@ -226,17 +246,33 @@ RESPONSE FORMAT:
             context.append({"role": "user", "content": user_input})
 
             # Generate response
-            response = self.llm_provider.chat(messages=context, temperature=0.7, max_tokens=2048)
+            response = self.llm_provider.chat(
+                messages=context, temperature=0.7, max_tokens=2048, stream=False
+            )
+
+            # Handle potential generator response (if stream=False was ignored)
+            if hasattr(response, "content"):
+                response_content = response.content
+                response_model = response.model
+                response_tokens = response.total_tokens
+            else:
+                # It's a generator, collect all chunks
+                full_content = ""
+                for chunk in response:
+                    full_content += chunk
+                response_content = full_content
+                response_model = self.llm_provider.current_model or "unknown"
+                response_tokens = len(full_content.split())
 
             # Add response to history
             conv_manager.add_message(
                 role="assistant",
-                content=response.content,
+                content=response_content,
                 mode="chat",
-                metadata={"model": response.model, "tokens": response.total_tokens},
+                metadata={"model": response_model, "tokens": response_tokens},
             )
 
-            return response.content
+            return response_content
 
         except Exception as e:
             error_msg = f"Error: {str(e)}"

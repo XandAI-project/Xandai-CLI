@@ -445,6 +445,7 @@ FINAL RECOMMENDATIONS:
                 messages=context,
                 temperature=0.1,  # Lower temperature for more consistent reviews
                 max_tokens=8192,  # Allow for detailed responses
+                stream=False,  # Non-streaming for review processing
             )
 
             # Check if response contains required sections
@@ -686,7 +687,10 @@ Code to analyze:
         try:
             # Send to LLM for analysis
             ai_response = self.llm_provider.chat(
-                messages=[{"role": "user", "content": ai_prompt}], temperature=0.1, max_tokens=2048
+                messages=[{"role": "user", "content": ai_prompt}],
+                temperature=0.1,
+                max_tokens=2048,
+                stream=False,  # Non-streaming for AI analysis
             )
 
             # Parse LLM response for structured issues
