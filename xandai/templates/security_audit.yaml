@@ -1,0 +1,45 @@
+name: security_audit
+description: Security audit and vulnerability assessment
+version: 1.0
+category: security
+
+parameters:
+  - name: code
+    type: string
+    required: true
+    description: Code to audit
+  - name: language
+    type: string
+    required: false
+    default: "auto-detect"
+    description: Programming language
+  - name: focus_areas
+    type: string
+    required: false
+    default: "all common vulnerabilities"
+    description: Specific areas to focus on
+
+template: |
+  Perform a security audit on the following {language} code.
+
+  Focus on: {focus_areas}
+
+  Code:
+  ```
+  {code}
+  ```
+
+  Check for:
+  - SQL injection
+  - XSS vulnerabilities
+  - Authentication/authorization issues
+  - Data exposure
+  - Insecure dependencies
+  - CSRF vulnerabilities
+  - Input validation problems
+
+  For each issue found, provide:
+  1. Severity (Critical/High/Medium/Low)
+  2. Location in code
+  3. Explanation of the risk
+  4. Remediation steps

@@ -1,0 +1,186 @@
+{
+  "info": {
+    "name": "Messages API",
+    "_postman_id": "426556a5-ce7f-4d59-97f6-f25651cd5c48",
+    "description": "Auto-generated API collection with 6 endpoints",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "GET /health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:5000/health",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "5000"
+              ],
+              "port": "5000",
+              "path": [
+                "health"
+              ]
+            },
+            "description": "Endpoint from main.py"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Messages",
+      "item": [
+        {
+          "name": "GET /messages",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:5000/messages",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "5000"
+              ],
+              "port": "5000",
+              "path": [
+                "messages"
+              ]
+            },
+            "description": "Endpoint from main.py"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /messages",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:5000/messages",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "5000"
+              ],
+              "port": "5000",
+              "path": [
+                "messages"
+              ]
+            },
+            "description": "Endpoint from main.py",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /messages/<int:message_id>",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:5000/messages/<int:message_id>",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "5000"
+              ],
+              "port": "5000",
+              "path": [
+                "messages",
+                "<int:message_id>"
+              ]
+            },
+            "description": "Endpoint from main.py"
+          },
+          "response": []
+        },
+        {
+          "name": "PUT /messages/<int:message_id>",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:5000/messages/<int:message_id>",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "5000"
+              ],
+              "port": "5000",
+              "path": [
+                "messages",
+                "<int:message_id>"
+              ]
+            },
+            "description": "Endpoint from main.py",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE /messages/<int:message_id>",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:5000/messages/<int:message_id>",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "5000"
+              ],
+              "port": "5000",
+              "path": [
+                "messages",
+                "<int:message_id>"
+              ]
+            },
+            "description": "Endpoint from main.py"
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:5000",
+      "type": "string"
+    }
+  ]
+}

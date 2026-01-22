@@ -24,6 +24,7 @@ from xandai.history import HistoryManager
 from xandai.integrations.base_provider import LLMProvider, LLMResponse
 from xandai.integrations.provider_factory import LLMProviderFactory
 from xandai.processors.agent_processor import AgentProcessor
+from xandai.processors.chat_processor import ChatProcessor
 from xandai.processors.review_processor import ReviewProcessor
 from xandai.task import TaskProcessor, TaskStep
 from xandai.utils.enhanced_file_handler import EnhancedFileHandler
@@ -285,6 +286,43 @@ class ChatREPL:
             max_links=self.app_state.get_preference("max_links_per_request", 3),
         )
 
+        # LSP Integration (Language Server Protocol for code intelligence)
+        self.lsp_manager = None
+        self.lsp_context_provider = None
+        self.lsp_enabled = self.app_state.get_preference("lsp_enabled", False)
+
+        if self.lsp_enabled:
+            try:
+                from xandai.conversation.conversation_manager import ConversationManager
+                from xandai.lsp import LSPContextProvider, LSPManager
+
+                self.lsp_manager = LSPManager(root_path=os.getcwd(), verbose=verbose)
+                self.lsp_context_provider = LSPContextProvider(self.lsp_manager, verbose=verbose)
+
+                # Initialize LSP servers in background
+                if verbose:
+                    OSUtils.debug_print("LSP integration enabled", True)
+            except Exception as e:
+                if verbose:
+                    OSUtils.debug_print(f"LSP initialization failed: {e}", True)
+                self.lsp_enabled = False
+
+        # Chat processor with optional LSP integration
+        try:
+            from xandai.conversation.conversation_manager import ConversationManager
+
+            self.conversation_manager = ConversationManager()
+            self.chat_processor = ChatProcessor(
+                llm_provider=llm_provider,
+                conversation_manager=self.conversation_manager,
+                lsp_context_provider=self.lsp_context_provider,
+            )
+        except Exception as e:
+            if verbose:
+                OSUtils.debug_print(f"Chat processor initialization failed: {e}", True)
+            self.conversation_manager = None
+            self.chat_processor = None
+
         # Prompt session with history and completion
         self.session = PromptSession(
             history=InMemoryHistory(),
@@ -480,6 +518,11 @@ class ChatREPL:
                 repo_path = user_input[8:].strip() or "."
 
             self._handle_review_mode(repo_path)
+            return True
+
+        # LSP (Language Server Protocol) commands
+        if command.startswith("/lsp"):
+            self._handle_lsp_command(user_input)
             return True
 
         # Agent mode
@@ -2278,6 +2321,125 @@ Continue the code now:""",
             self.console.print(f"[red]Review error: {e}[/red]")
             self.console.print("Check if you're in a Git repository with changes to review")
 
+    def _handle_lsp_command(self, user_input: str):
+        """Handle LSP (Language Server Protocol) commands"""
+        command = user_input.lower().strip()
+
+        # Check if LSP is available
+        if not self.lsp_manager or not self.lsp_context_provider:
+            self.console.print("[yellow]⚠️  LSP integration is not enabled[/yellow]")
+            self.console.print("[dim]Enable in preferences with: lsp_enabled = True[/dim]")
+            return
+
+        # Show LSP status
+        if command == "/lsp":
+            status_text = self.lsp_context_provider.format_lsp_status_for_user()
+            self.console.print(status_text)
+            return
+
+        # Enable LSP
+        if command == "/lsp on":
+            if not self.lsp_enabled:
+                try:
+                    import os
+
+                    from xandai.lsp import LSPContextProvider, LSPManager
+
+                    self.lsp_manager = LSPManager(root_path=os.getcwd(), verbose=self.verbose)
+                    self.lsp_context_provider = LSPContextProvider(
+                        self.lsp_manager, verbose=self.verbose
+                    )
+                    self.lsp_manager.initialize(auto_start=True)
+                    self.lsp_enabled = True
+                    self.app_state.set_preference("lsp_enabled", True)
+
+                    self.console.print("[green]✓ LSP integration enabled[/green]")
+
+                    # Show status
+                    status_text = self.lsp_context_provider.format_lsp_status_for_user()
+                    self.console.print(status_text)
+                except Exception as e:
+                    self.console.print(f"[red]Failed to enable LSP: {e}[/red]")
+            else:
+                self.console.print("[yellow]LSP is already enabled[/yellow]")
+            return
+
+        # Disable LSP
+        if command == "/lsp off":
+            if self.lsp_enabled:
+                if self.lsp_manager:
+                    self.lsp_manager.shutdown_all()
+                self.lsp_enabled = False
+                self.app_state.set_preference("lsp_enabled", False)
+                self.console.print("[yellow]LSP integration disabled[/yellow]")
+            else:
+                self.console.print("[yellow]LSP is already disabled[/yellow]")
+            return
+
+        # Start LSP server for language
+        if command.startswith("/lsp start "):
+            language = user_input[11:].strip()
+            if language:
+                self.console.print(f"[dim]Starting LSP server for {language}...[/dim]")
+                success = self.lsp_manager.start_server(language)
+                if success:
+                    self.console.print(f"[green]✓ LSP server started for {language}[/green]")
+                else:
+                    self.console.print(f"[red]Failed to start LSP server for {language}[/red]")
+                    self.console.print("[dim]Check if the server is installed[/dim]")
+            else:
+                self.console.print("[yellow]Usage: /lsp start <language>[/yellow]")
+                self.console.print("[dim]Example: /lsp start python[/dim]")
+            return
+
+        # Stop LSP server for language
+        if command.startswith("/lsp stop "):
+            language = user_input[10:].strip()
+            if language:
+                self.lsp_manager.stop_server(language)
+                self.console.print(f"[green]✓ LSP server stopped for {language}[/green]")
+            else:
+                self.console.print("[yellow]Usage: /lsp stop <language>[/yellow]")
+            return
+
+        # Analyze file with LSP
+        if command.startswith("/lsp analyze "):
+            file_path = user_input[13:].strip()
+            if file_path:
+                self.console.print(f"[dim]Analyzing {file_path}...[/dim]")
+                context = self.lsp_manager.get_file_context(file_path)
+
+                self.console.print(f"\n[bold]File Analysis:[/bold] {file_path}")
+                self.console.print(f"Language: {context['language']}")
+                self.console.print(f"LSP Available: {context['lsp_available']}")
+
+                if context["lsp_available"]:
+                    server_info = context.get("server_info", {})
+                    self.console.print(f"Server: {server_info.get('name', 'Unknown')}")
+
+                    diagnostics = context.get("diagnostics", [])
+                    if diagnostics:
+                        self.console.print(
+                            f"\n[yellow]⚠️  Found {len(diagnostics)} issue(s):[/yellow]"
+                        )
+                        for i, diag in enumerate(diagnostics[:10], 1):
+                            self.console.print(f"  {i}. {diag.get('message', 'Unknown issue')}")
+                        if len(diagnostics) > 10:
+                            self.console.print(f"  ... and {len(diagnostics) - 10} more")
+                    else:
+                        self.console.print("\n[green]✓ No issues found[/green]")
+                else:
+                    self.console.print("[yellow]LSP not available for this file[/yellow]")
+            else:
+                self.console.print("[yellow]Usage: /lsp analyze <file>[/yellow]")
+            return
+
+        # Unknown LSP subcommand
+        self.console.print(f"[red]Unknown LSP command: {command}[/red]")
+        self.console.print(
+            "[dim]Available: /lsp, /lsp on, /lsp off, /lsp start <lang>, /lsp stop <lang>, /lsp analyze <file>[/dim]"
+        )
+
     def _display_review_result(self, review_result):
         """Display review result in chat format"""
         from rich.text import Text
@@ -2339,33 +2501,78 @@ Continue the code now:""",
     def _handle_agent_mode(self, agent_instruction: str):
         """Handle agent mode request - multi-step LLM orchestrator"""
         try:
+            from rich.panel import Panel
+            from rich.syntax import Syntax
+
             self.console.print("[bold cyan]🤖 Agent Mode - Multi-Step Processing[/bold cyan]")
             self.console.print(f"[dim]Max calls: {self.agent_processor.max_calls}[/dim]\n")
 
-            self.console.print("[dim]💭 Starting multi-step reasoning...[/dim]")
+            # Setup streaming callback
+            current_step_reasoning = []
+
+            def streaming_callback(event_type, *args):
+                nonlocal current_step_reasoning
+
+                if event_type == "show_prompt":
+                    step_num, step_name, prompt = args
+                    self.console.print(
+                        f"\n[bold yellow]📋 Step {step_num}: {step_name}[/bold yellow]"
+                    )
+                    self.console.print("[dim]Prompt:[/dim]")
+
+                    # Show prompt in a panel with syntax highlighting
+                    prompt_panel = Panel(
+                        Syntax(
+                            prompt, "markdown", theme="monokai", line_numbers=False, word_wrap=True
+                        ),
+                        title=f"Prompt for Step {step_num}",
+                        border_style="yellow",
+                        expand=False,
+                    )
+                    self.console.print(prompt_panel)
+                    self.console.print()
+
+                elif event_type == "step_start":
+                    step_num, step_name = args
+                    self.console.print(
+                        f"[bold cyan]🔄 Executing Step {step_num}: {step_name}[/bold cyan]"
+                    )
+                    self.console.print("[dim]Reasoning:[/dim]")
+                    current_step_reasoning = []
+
+                elif event_type == "reasoning_chunk":
+                    chunk = args[0]
+                    current_step_reasoning.append(chunk)
+                    # Print chunk directly for real-time streaming
+                    self.console.print(chunk, end="", markup=False)
+
+                elif event_type == "step_complete":
+                    step_num, step_name, tokens = args
+                    self.console.print(
+                        f"\n[bold green]✅ Step {step_num} Complete[/bold green] [dim]({tokens} tokens)[/dim]\n"
+                    )
+
+                elif event_type == "step_error":
+                    step_num, step_name, error = args
+                    self.console.print(
+                        f"\n[bold red]❌ Step {step_num} Error: {error}[/bold red]\n"
+                    )
+
+            # Set streaming callback
+            self.agent_processor.set_streaming_callback(streaming_callback)
 
             # Enable verbose temporarily to show progress
             original_verbose = self.agent_processor.verbose
             self.agent_processor.verbose = True
+
+            self.console.print("[dim]💭 Starting multi-step reasoning...[/dim]\n")
 
             # Process through agent
             result = self.agent_processor.process(agent_instruction, self.app_state)
 
             # Restore verbose setting
             self.agent_processor.verbose = original_verbose
-
-            # Display step-by-step progress
-            self.console.print("[bold]Agent Execution Steps:[/bold]\n")
-
-            for step in result.steps:
-                status_icon = "" if step.success else ""
-                self.console.print(f"{status_icon} [Step {step.step_number}] {step.step_name}")
-                if self.verbose and step.response:
-                    # Show summary in verbose mode
-                    summary = (
-                        step.response[:100] + "..." if len(step.response) > 100 else step.response
-                    )
-                    self.console.print(f"[dim]  → {summary}[/dim]")
+            self.agent_processor.set_streaming_callback(None)
 
             self.console.print()
 
@@ -5038,6 +5245,15 @@ Remember: Your response will be written directly to the file! NO explanatory tex
   • /review          - Review changes in current Git repository
   • /review /path/to/repo - Review changes in specific repository
   • Analyzes modified files and provides comprehensive feedback
+
+[yellow]LSP (Language Server Protocol):[/yellow]
+  • /lsp              - Show LSP status and active servers
+  • /lsp on           - Enable LSP integration
+  • /lsp off          - Disable LSP integration
+  • /lsp start <lang> - Start LSP server for specific language
+  • /lsp stop <lang>  - Stop LSP server for language
+  • /lsp analyze <file> - Analyze file with LSP
+  • Provides real-time code intelligence and syntax validation
 
 [yellow]Web Shell:[/yellow]
   • /host [address] [port]     - Start web shell server

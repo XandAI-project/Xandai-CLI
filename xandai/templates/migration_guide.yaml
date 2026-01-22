@@ -1,0 +1,41 @@
+name: migration_guide
+description: Create migration guide between technologies
+version: 1.0
+category: migration
+
+parameters:
+  - name: from_tech
+    type: string
+    required: true
+    description: Technology/framework to migrate from
+  - name: to_tech
+    type: string
+    required: true
+    description: Technology/framework to migrate to
+  - name: code
+    type: string
+    required: false
+    default: ""
+    description: Specific code to migrate
+  - name: scope
+    type: string
+    required: false
+    default: "general"
+    description: Migration scope (general, specific feature, etc.)
+
+template: |
+  Create a migration guide from {from_tech} to {to_tech}.
+
+  Scope: {scope}
+
+  {code}
+
+  Provide:
+  1. Key differences between {from_tech} and {to_tech}
+  2. Step-by-step migration approach
+  3. Code examples (before/after)
+  4. Common pitfalls and gotchas
+  5. Testing strategy
+  6. Estimated effort and risk level
+
+  Be practical and comprehensive.

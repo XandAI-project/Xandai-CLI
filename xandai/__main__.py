@@ -4,7 +4,7 @@ Entry point para execução como módulo Python
 python -m xandai
 """
 
-from xandai.cli import main
+from xandai.main import main
 
 if __name__ == "__main__":
     main()

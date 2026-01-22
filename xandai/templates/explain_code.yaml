@@ -1,0 +1,35 @@
+name: explain_code
+description: Explain how code works
+version: 1.0
+category: explanation
+
+parameters:
+  - name: code
+    type: string
+    required: true
+    description: Code to explain
+  - name: audience
+    type: string
+    required: false
+    default: "intermediate developer"
+    description: Target audience level
+  - name: detail_level
+    type: string
+    required: false
+    default: "moderate"
+    description: Level of detail (brief, moderate, detailed)
+
+template: |
+  Explain the following code for {audience} with {detail_level} detail:
+
+  ```
+  {code}
+  ```
+
+  Cover:
+  1. High-level purpose (what does it do?)
+  2. Step-by-step breakdown
+  3. Key concepts or algorithms used
+  4. Important details or gotchas
+
+  Use clear language and provide context where helpful.

@@ -6,10 +6,10 @@ Maintains full backward compatibility while enabling provider abstraction.
 """
 
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Generator, List, Optional, Union
 
-from ..ollama_client import OllamaClient, OllamaResponse
 from .base_provider import LLMConfig, LLMProvider, LLMResponse, ProviderType
+from .ollama_client import OllamaClient, OllamaResponse
 
 
 class OllamaProvider(LLMProvider):
@@ -76,10 +76,20 @@ class OllamaProvider(LLMProvider):
         stream: bool = False,
         progress_callback=None,
         **options,
-    ) -> LLMResponse:
-        """Send chat request to Ollama with full compatibility"""
+    ):
+        """Send chat request to Ollama with full compatibility
+
+        Returns:
+            Generator[str, None, None] if stream=True, otherwise LLMResponse
+        """
+
+        # Extract progress_callback from options if present (to avoid JSON serialization error)
+        if "progress_callback" in options:
+            progress_callback = options.pop("progress_callback")
 
         # Merge config options with provided options
+        # Note: progress_callback is intentionally NOT included here
+        # as OllamaClient.chat() doesn't support it and it would cause JSON serialization errors
         merged_options = {
             "temperature": self.config.temperature,
             "top_p": self.config.top_p,
@@ -88,16 +98,19 @@ class OllamaProvider(LLMProvider):
             **options,
         }
 
-        # Call existing Ollama client with full parameter compatibility
-        ollama_response: OllamaResponse = self._ollama_client.chat(
+        # Call existing Ollama client (without progress_callback to avoid serialization issues)
+        ollama_response = self._ollama_client.chat(
             messages=messages,
             model=model or self.current_model,
             stream=stream,
-            progress_callback=progress_callback,  # Preserve callback support
             **merged_options,
         )
 
-        # Convert to standardized format
+        # If streaming, return the generator directly
+        if stream:
+            return ollama_response  # This is a Generator[str, None, None]
+
+        # Convert to standardized format for non-streaming
         # Extract token information from ContextUsage
         context_usage = ollama_response.context_usage
         return LLMResponse(

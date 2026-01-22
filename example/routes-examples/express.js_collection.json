@@ -1,0 +1,1241 @@
+{
+  "info": {
+    "name": "Express.js API Collection",
+    "_postman_id": "fa38eb92-332d-4c25-bed4-190163d73d66",
+    "description": "Auto-generated API collection with 41 endpoints",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Api",
+      "item": [
+        {
+          "name": "GET /api/users",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:8000/api/users",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "8000"
+              ],
+              "port": "8000",
+              "path": [
+                "api",
+                "users"
+              ]
+            },
+            "description": "Endpoint from express.routes.js"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/users",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:8000/api/users",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "8000"
+              ],
+              "port": "8000",
+              "path": [
+                "api",
+                "users"
+              ]
+            },
+            "description": "Endpoint from express.routes.js",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/users/:id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:8000/api/users/:id",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "8000"
+              ],
+              "port": "8000",
+              "path": [
+                "api",
+                "users",
+                ":id"
+              ]
+            },
+            "description": "Endpoint from express.routes.js"
+          },
+          "response": []
+        },
+        {
+          "name": "PUT /api/users/:id",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:8000/api/users/:id",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "8000"
+              ],
+              "port": "8000",
+              "path": [
+                "api",
+                "users",
+                ":id"
+              ]
+            },
+            "description": "Endpoint from express.routes.js",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE /api/users/:id",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:8000/api/users/:id",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "8000"
+              ],
+              "port": "8000",
+              "path": [
+                "api",
+                "users",
+                ":id"
+              ]
+            },
+            "description": "Endpoint from express.routes.js"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/products",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:8000/api/products",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "8000"
+              ],
+              "port": "8000",
+              "path": [
+                "api",
+                "products"
+              ]
+            },
+            "description": "Endpoint from express.routes.js"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/products",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:8000/api/products",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "8000"
+              ],
+              "port": "8000",
+              "path": [
+                "api",
+                "products"
+              ]
+            },
+            "description": "Endpoint from express.routes.js",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/orders",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:8000/api/orders",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "8000"
+              ],
+              "port": "8000",
+              "path": [
+                "api",
+                "orders"
+              ]
+            },
+            "description": "Endpoint from express.routes.js"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/orders",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:8000/api/orders",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "8000"
+              ],
+              "port": "8000",
+              "path": [
+                "api",
+                "orders"
+              ]
+            },
+            "description": "Endpoint from express.routes.js",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/users",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:8000/api/v1/users",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "8000"
+              ],
+              "port": "8000",
+              "path": [
+                "api",
+                "v1",
+                "users"
+              ]
+            },
+            "description": "Endpoint from fastapi.routes.py"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/users",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:8000/api/v1/users",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "8000"
+              ],
+              "port": "8000",
+              "path": [
+                "api",
+                "v1",
+                "users"
+              ]
+            },
+            "description": "Endpoint from fastapi.routes.py",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/users/{user_id}",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:8000/api/v1/users/{user_id}",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "8000"
+              ],
+              "port": "8000",
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{user_id}"
+              ]
+            },
+            "description": "Endpoint from fastapi.routes.py"
+          },
+          "response": []
+        },
+        {
+          "name": "PUT /api/v1/users/{user_id}",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:8000/api/v1/users/{user_id}",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "8000"
+              ],
+              "port": "8000",
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{user_id}"
+              ]
+            },
+            "description": "Endpoint from fastapi.routes.py",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE /api/v1/users/{user_id}",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:8000/api/v1/users/{user_id}",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "8000"
+              ],
+              "port": "8000",
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{user_id}"
+              ]
+            },
+            "description": "Endpoint from fastapi.routes.py"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/products",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:8000/api/v1/products",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "8000"
+              ],
+              "port": "8000",
+              "path": [
+                "api",
+                "v1",
+                "products"
+              ]
+            },
+            "description": "Endpoint from fastapi.routes.py"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/products",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:8000/api/v1/products",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "8000"
+              ],
+              "port": "8000",
+              "path": [
+                "api",
+                "v1",
+                "products"
+              ]
+            },
+            "description": "Endpoint from fastapi.routes.py",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/categories",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:8000/api/v1/categories",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "8000"
+              ],
+              "port": "8000",
+              "path": [
+                "api",
+                "v1",
+                "categories"
+              ]
+            },
+            "description": "Endpoint from fastapi.routes.py"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/users",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:8000/api/users",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "8000"
+              ],
+              "port": "8000",
+              "path": [
+                "api",
+                "users"
+              ]
+            },
+            "description": "Endpoint from laravel.routes.php"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/users",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:8000/api/users",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "8000"
+              ],
+              "port": "8000",
+              "path": [
+                "api",
+                "users"
+              ]
+            },
+            "description": "Endpoint from laravel.routes.php",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/users/{id}",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:8000/api/users/{id}",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "8000"
+              ],
+              "port": "8000",
+              "path": [
+                "api",
+                "users",
+                "{id}"
+              ]
+            },
+            "description": "Endpoint from laravel.routes.php"
+          },
+          "response": []
+        },
+        {
+          "name": "PUT /api/users/{id}",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:8000/api/users/{id}",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "8000"
+              ],
+              "port": "8000",
+              "path": [
+                "api",
+                "users",
+                "{id}"
+              ]
+            },
+            "description": "Endpoint from laravel.routes.php",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE /api/users/{id}",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:8000/api/users/{id}",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "8000"
+              ],
+              "port": "8000",
+              "path": [
+                "api",
+                "users",
+                "{id}"
+              ]
+            },
+            "description": "Endpoint from laravel.routes.php"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/products",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:8000/api/products",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "8000"
+              ],
+              "port": "8000",
+              "path": [
+                "api",
+                "products"
+              ]
+            },
+            "description": "Endpoint from laravel.routes.php"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/products",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:8000/api/products",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "8000"
+              ],
+              "port": "8000",
+              "path": [
+                "api",
+                "products"
+              ]
+            },
+            "description": "Endpoint from laravel.routes.php",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/products/{id}",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:8000/api/products/{id}",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "8000"
+              ],
+              "port": "8000",
+              "path": [
+                "api",
+                "products",
+                "{id}"
+              ]
+            },
+            "description": "Endpoint from laravel.routes.php"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/orders",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:8000/api/orders",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "8000"
+              ],
+              "port": "8000",
+              "path": [
+                "api",
+                "orders"
+              ]
+            },
+            "description": "Endpoint from laravel.routes.php"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/orders",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:8000/api/orders",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "8000"
+              ],
+              "port": "8000",
+              "path": [
+                "api",
+                "orders"
+              ]
+            },
+            "description": "Endpoint from laravel.routes.php",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "PATCH /api/orders/{id}",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:8000/api/orders/{id}",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "8000"
+              ],
+              "port": "8000",
+              "path": [
+                "api",
+                "orders",
+                "{id}"
+              ]
+            },
+            "description": "Endpoint from laravel.routes.php",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE /api/orders/{id}",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:8000/api/orders/{id}",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "8000"
+              ],
+              "port": "8000",
+              "path": [
+                "api",
+                "orders",
+                "{id}"
+              ]
+            },
+            "description": "Endpoint from laravel.routes.php"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/auth/login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:8000/api/auth/login",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "8000"
+              ],
+              "port": "8000",
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Endpoint from laravel.routes.php",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/auth/register",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:8000/api/auth/register",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "8000"
+              ],
+              "port": "8000",
+              "path": [
+                "api",
+                "auth",
+                "register"
+              ]
+            },
+            "description": "Endpoint from laravel.routes.php",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/auth/logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:8000/api/auth/logout",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "8000"
+              ],
+              "port": "8000",
+              "path": [
+                "api",
+                "auth",
+                "logout"
+              ]
+            },
+            "description": "Endpoint from laravel.routes.php",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "item": [
+        {
+          "name": "GET /users",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:8000/users",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "8000"
+              ],
+              "port": "8000",
+              "path": [
+                "users"
+              ]
+            },
+            "description": "Endpoint from spring.controller.java"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /users",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:8000/users",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "8000"
+              ],
+              "port": "8000",
+              "path": [
+                "users"
+              ]
+            },
+            "description": "Endpoint from spring.controller.java",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /users/{id}",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:8000/users/{id}",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "8000"
+              ],
+              "port": "8000",
+              "path": [
+                "users",
+                "{id}"
+              ]
+            },
+            "description": "Endpoint from spring.controller.java"
+          },
+          "response": []
+        },
+        {
+          "name": "PUT /users/{id}",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:8000/users/{id}",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "8000"
+              ],
+              "port": "8000",
+              "path": [
+                "users",
+                "{id}"
+              ]
+            },
+            "description": "Endpoint from spring.controller.java",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE /users/{id}",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:8000/users/{id}",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "8000"
+              ],
+              "port": "8000",
+              "path": [
+                "users",
+                "{id}"
+              ]
+            },
+            "description": "Endpoint from spring.controller.java"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Products",
+      "item": [
+        {
+          "name": "GET /products",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:8000/products",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "8000"
+              ],
+              "port": "8000",
+              "path": [
+                "products"
+              ]
+            },
+            "description": "Endpoint from spring.controller.java"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /products",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:8000/products",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "8000"
+              ],
+              "port": "8000",
+              "path": [
+                "products"
+              ]
+            },
+            "description": "Endpoint from spring.controller.java",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Orders",
+      "item": [
+        {
+          "name": "GET /orders",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:8000/orders",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "8000"
+              ],
+              "port": "8000",
+              "path": [
+                "orders"
+              ]
+            },
+            "description": "Endpoint from spring.controller.java"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /orders",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:8000/orders",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "8000"
+              ],
+              "port": "8000",
+              "path": [
+                "orders"
+              ]
+            },
+            "description": "Endpoint from spring.controller.java",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    }
+  ]
+}

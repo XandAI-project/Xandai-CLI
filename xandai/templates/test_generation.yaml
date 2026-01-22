@@ -1,0 +1,38 @@
+name: test_generation
+description: Generate unit tests for code
+version: 1.0
+category: testing
+
+parameters:
+  - name: code
+    type: string
+    required: true
+    description: Code to generate tests for
+  - name: framework
+    type: string
+    required: false
+    default: "pytest"
+    description: Test framework to use
+  - name: coverage_target
+    type: string
+    required: false
+    default: "comprehensive"
+    description: Coverage level (basic, comprehensive, edge-cases)
+
+template: |
+  Generate {coverage_target} unit tests for the following code using {framework}.
+
+  Code to test:
+  ```
+  {code}
+  ```
+
+  Requirements:
+  - Test all public methods/functions
+  - Include edge cases and error conditions
+  - Use descriptive test names
+  - Add assertions for expected behavior
+  - Include setup/teardown if needed
+  - Add docstrings explaining what each test validates
+
+  Generate complete, runnable test code.

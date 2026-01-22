@@ -1,347 +1,243 @@
 """
-Content Extraction Module
+Content Extractor
 
-Extrai informações relevantes de páginas web usando BeautifulSoup4.
-Foca em conteúdo útil para assistência de código e documentação.
+Advanced content extraction from HTML.
 """
 
 import re
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
-from bs4 import BeautifulSoup, NavigableString
+from bs4 import BeautifulSoup, Tag
 
 
 @dataclass
 class ExtractedContent:
-    """Conteúdo extraído de uma página web"""
+    """Container for extracted web content"""
 
+    url: str
     title: str
-    description: str
-    main_content: str
-    code_blocks: List[str]
-    links: List[Dict[str, str]]
-    metadata: Dict[str, Any]
-    word_count: int
-    language: Optional[str] = None
+    text_content: str
+    code_blocks: List[Dict[str, str]]
+    links: List[str]
+    images: List[str]
+    metadata: Dict[str, str]
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary"""
+        return {
+            "url": self.url,
+            "title": self.title,
+            "text_content": self.text_content,
+            "code_blocks": self.code_blocks,
+            "links": self.links,
+            "images": self.images,
+            "metadata": self.metadata,
+        }
 
 
 class ContentExtractor:
     """
-    Extrator inteligente de conteúdo web
+    Content Extractor
 
-    Foca em extrair informações úteis para assistência de código:
-    - Documentação técnica
-    - Tutoriais e guides
-    - Código de exemplo
-    - APIs e referências
+    Extracts structured content from HTML.
     """
 
-    # Tags que normalmente contêm conteúdo principal
-    MAIN_CONTENT_SELECTORS = [
-        "main",
-        "article",
-        ".content",
-        ".main-content",
-        ".post-content",
-        ".entry-content",
-        "#content",
-        "#main",
-        ".documentation",
-        ".readme",
-        ".wiki-content",
-    ]
-
-    # Tags a serem removidas (noise)
-    NOISE_SELECTORS = [
-        "nav",
-        "footer",
-        "header",
-        ".navigation",
-        ".sidebar",
-        ".ads",
-        ".advertisement",
-        ".popup",
-        ".modal",
-        ".cookie-banner",
-        "script",
-        "style",
-        "noscript",
-    ]
-
-    # Selectors for code content
-    CODE_SELECTORS = ["pre", "code", ".highlight", ".code-block", ".language-*", ".hljs"]
-
     def __init__(self):
-        self.soup = None
+        """Initialize content extractor"""
+        pass
 
-    def extract(self, html_content: str, url: str = "") -> ExtractedContent:
+    def extract_code_blocks(self, html: str) -> List[Dict[str, str]]:
         """
-        Extrai conteúdo estruturado de HTML
+        Extract code blocks from HTML
 
         Args:
-            html_content: Conteúdo HTML da página
-            url: URL original (para contexto)
+            html: HTML content
 
         Returns:
-            ExtractedContent com informações extraídas
+            List of code blocks with language and content
         """
-        self.soup = BeautifulSoup(html_content, "html.parser")
-
-        # Remove noise
-        self._remove_noise_elements()
-
-        # Extract components
-        title = self._extract_title()
-        description = self._extract_description()
-        main_content = self._extract_main_content()
-        code_blocks = self._extract_code_blocks()
-        links = self._extract_useful_links(url)
-        metadata = self._extract_metadata()
-
-        # Calculate word count of main content
-        word_count = len(main_content.split()) if main_content else 0
-
-        # Detect language/technology
-        language = self._detect_language()
-
-        return ExtractedContent(
-            title=title,
-            description=description,
-            main_content=main_content,
-            code_blocks=code_blocks,
-            links=links,
-            metadata=metadata,
-            word_count=word_count,
-            language=language,
-        )
-
-    def _remove_noise_elements(self):
-        """Remove elementos que são ruído (nav, ads, etc.)"""
-        for selector in self.NOISE_SELECTORS:
-            for element in self.soup.select(selector):
-                element.decompose()
-
-    def _extract_title(self) -> str:
-        """Extrai título da página"""
-        # Try multiple title sources (prioritize <title> tag over h1)
-        title_sources = [
-            ("title", lambda x: x.get_text().strip()),
-            ('meta[property="og:title"]', lambda x: x.get("content", "")),
-            ("h1", lambda x: x.get_text().strip()),
-            (".page-title", lambda x: x.get_text().strip()),
-            (".post-title", lambda x: x.get_text().strip()),
-        ]
-
-        for selector, extractor in title_sources:
-            elements = self.soup.select(selector)
-            if elements:
-                title = extractor(elements[0])
-                if title and len(title) > 3:
-                    return title[:200]  # Limit title length
-
-        return "Untitled"
-
-    def _extract_description(self) -> str:
-        """Extrai descrição/resumo da página"""
-        # Try multiple description sources
-        desc_sources = [
-            ('meta[name="description"]', lambda x: x.get("content", "")),
-            ('meta[property="og:description"]', lambda x: x.get("content", "")),
-            (".summary", lambda x: x.get_text().strip()),
-            (".intro", lambda x: x.get_text().strip()),
-            ("p", lambda x: x.get_text().strip()),
-        ]
-
-        for selector, extractor in desc_sources:
-            elements = self.soup.select(selector)
-            if elements:
-                desc = extractor(elements[0])
-                if desc and len(desc) > 10:
-                    return desc[:500]  # Limit description length
-
-        return ""
-
-    def _extract_main_content(self) -> str:
-        """Extrai conteúdo principal da página"""
-        main_text = ""
-
-        # Try to find main content container
-        for selector in self.MAIN_CONTENT_SELECTORS:
-            main_container = self.soup.select_one(selector)
-            if main_container:
-                main_text = self._extract_text_from_element(main_container)
-                if len(main_text) > 100:  # Must have substantial content
-                    break
-
-        # Fallback: extract from body if no main container found
-        if not main_text or len(main_text) < 100:
-            body = self.soup.find("body")
-            if body:
-                main_text = self._extract_text_from_element(body)
-
-        # Clean and limit text
-        main_text = self._clean_text(main_text)
-        return main_text[:5000]  # Limit content length
-
-    def _extract_text_from_element(self, element) -> str:
-        """Extrai texto limpo de um elemento, preservando estrutura básica"""
-        text_parts = []
-
-        for elem in element.descendants:
-            if isinstance(elem, NavigableString):
-                text = str(elem).strip()
-                if text:
-                    text_parts.append(text)
-            elif elem.name in ["br", "p", "div", "h1", "h2", "h3", "h4", "h5", "h6"]:
-                text_parts.append("\n")
-
-        return " ".join(text_parts)
-
-    def _extract_code_blocks(self) -> List[str]:
-        """Extrai blocos de código da página"""
+        soup = BeautifulSoup(html, "html.parser")
         code_blocks = []
 
-        # Find all code elements
-        for selector in ["pre", "code", ".highlight", ".code-block"]:
-            elements = self.soup.select(selector)
-            for element in elements:
-                code_text = element.get_text().strip()
-                if code_text and len(code_text) > 5:  # Must have meaningful code
-                    # Limit code block size
-                    if len(code_text) <= 2000:
-                        code_blocks.append(code_text)
+        # Find <pre><code> blocks
+        for pre in soup.find_all("pre"):
+            code = pre.find("code")
+            if code:
+                language = self._detect_language(code)
+                content = code.get_text()
 
-        # Remove duplicates while preserving order
-        seen = set()
-        unique_blocks = []
-        for block in code_blocks:
-            if block not in seen:
-                seen.add(block)
-                unique_blocks.append(block)
+                code_blocks.append({"language": language, "content": content})
 
-        return unique_blocks[:10]  # Limit number of code blocks
+        # Find standalone <code> blocks
+        for code in soup.find_all("code"):
+            if code.parent.name != "pre":
+                content = code.get_text()
+                if len(content) > 20:  # Only significant code blocks
+                    code_blocks.append({"language": "unknown", "content": content})
 
-    def _extract_useful_links(self, base_url: str) -> List[Dict[str, str]]:
-        """Extrai links úteis (documentação, exemplos, etc.)"""
-        useful_links = []
+        return code_blocks
 
-        # Keywords that indicate useful links
-        useful_keywords = [
-            "documentation",
-            "docs",
-            "guide",
-            "tutorial",
-            "example",
-            "api",
-            "reference",
-            "manual",
-            "readme",
-            "github",
-            "source",
-        ]
+    def extract_tables(self, html: str) -> List[List[List[str]]]:
+        """
+        Extract tables from HTML
 
-        links = self.soup.find_all("a", href=True)
-        for link in links:
-            href = link.get("href", "")
-            text = link.get_text().strip()
+        Args:
+            html: HTML content
 
-            if href and text:
-                # Check if link seems useful
-                link_useful = any(
-                    keyword in href.lower() or keyword in text.lower()
-                    for keyword in useful_keywords
-                )
+        Returns:
+            List of tables (each table is list of rows)
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        tables = []
 
-                if link_useful:
-                    useful_links.append(
-                        {
-                            "url": href,
-                            "text": text[:100],  # Limit text length
-                            "type": self._categorize_link(href, text),
-                        }
-                    )
+        for table in soup.find_all("table"):
+            rows = []
 
-        return useful_links[:10]  # Limit number of links
+            for tr in table.find_all("tr"):
+                cells = []
+                for td in tr.find_all(["td", "th"]):
+                    cells.append(td.get_text(strip=True))
+                if cells:
+                    rows.append(cells)
 
-    def _categorize_link(self, url: str, text: str) -> str:
-        """Categoriza tipo do link baseado na URL e texto"""
-        url_lower = url.lower()
-        text_lower = text.lower()
+            if rows:
+                tables.append(rows)
 
-        if "github.com" in url_lower or "gitlab.com" in url_lower:
-            return "source_code"
-        elif any(word in url_lower or word in text_lower for word in ["doc", "guide", "manual"]):
-            return "documentation"
-        elif any(word in url_lower or word in text_lower for word in ["example", "demo", "sample"]):
-            return "example"
-        elif any(word in url_lower or word in text_lower for word in ["api", "reference"]):
-            return "reference"
-        else:
-            return "general"
+        return tables
 
-    def _extract_metadata(self) -> Dict[str, Any]:
-        """Extrai metadados úteis da página"""
-        metadata = {}
+    def extract_lists(self, html: str) -> Dict[str, List[str]]:
+        """
+        Extract lists from HTML
 
-        # Meta tags
-        meta_tags = self.soup.find_all("meta")
-        for tag in meta_tags:
-            name = tag.get("name") or tag.get("property") or tag.get("itemprop")
-            content = tag.get("content")
-            if name and content:
-                metadata[name] = content
+        Args:
+            html: HTML content
 
-        # Specific useful metadata
-        useful_meta = [
-            "author",
-            "keywords",
-            "language",
-            "generator",
-            "og:type",
-            "og:site_name",
-            "article:author",
-            "article:published_time",
-            "article:modified_time",
-        ]
+        Returns:
+            Dict with 'ordered' and 'unordered' lists
+        """
+        soup = BeautifulSoup(html, "html.parser")
 
-        return {key: value for key, value in metadata.items() if key in useful_meta}
+        ordered = []
+        unordered = []
 
-    def _detect_language(self) -> Optional[str]:
-        """Detecta linguagem/tecnologia principal baseada no conteúdo"""
-        if not self.soup:
-            return None
+        for ol in soup.find_all("ol"):
+            items = [li.get_text(strip=True) for li in ol.find_all("li", recursive=False)]
+            if items:
+                ordered.append(items)
 
-        # Check for language indicators in code blocks
-        code_elements = self.soup.select("pre, code, .highlight")
+        for ul in soup.find_all("ul"):
+            items = [li.get_text(strip=True) for li in ul.find_all("li", recursive=False)]
+            if items:
+                unordered.append(items)
 
-        language_indicators = {
-            "python": ["python", "py", "django", "flask", "pandas"],
-            "javascript": ["javascript", "js", "node", "react", "vue", "angular"],
-            "java": ["java", "spring", "maven", "gradle"],
-            "csharp": ["c#", "csharp", ".net", "dotnet"],
-            "cpp": ["c++", "cpp", "cxx"],
-            "go": ["golang", "go"],
-            "rust": ["rust", "cargo"],
-            "php": ["php", "laravel", "symfony"],
-            "ruby": ["ruby", "rails"],
-            "sql": ["sql", "mysql", "postgresql", "sqlite"],
-        }
+        return {"ordered": ordered, "unordered": unordered}
 
-        text_content = self.soup.get_text().lower()
+    def extract_headings(self, html: str) -> Dict[str, List[str]]:
+        """
+        Extract headings from HTML
 
-        for lang, keywords in language_indicators.items():
-            if any(keyword in text_content for keyword in keywords):
-                return lang
+        Args:
+            html: HTML content
 
-        return None
+        Returns:
+            Dict with headings by level (h1, h2, etc.)
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        headings = {}
 
-    def _clean_text(self, text: str) -> str:
-        """Limpa texto removendo espaços em excesso e caracteres especiais"""
-        # Remove multiple whitespaces
-        text = re.sub(r"\s+", " ", text)
+        for i in range(1, 7):
+            tag = f"h{i}"
+            found = [h.get_text(strip=True) for h in soup.find_all(tag)]
+            if found:
+                headings[tag] = found
 
-        # Remove excessive newlines
-        text = re.sub(r"\n\s*\n\s*\n+", "\n\n", text)
+        return headings
 
-        return text.strip()
+    def extract_images_with_context(self, html: str, base_url: str = "") -> List[Dict[str, str]]:
+        """
+        Extract images with surrounding context
+
+        Args:
+            html: HTML content
+            base_url: Base URL for relative links
+
+        Returns:
+            List of image dicts with src, alt, and context
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        images = []
+
+        for img in soup.find_all("img"):
+            src = img.get("src", "")
+            alt = img.get("alt", "")
+
+            # Get surrounding text for context
+            parent = img.parent
+            context = ""
+            if parent:
+                context = parent.get_text(strip=True)[:200]  # First 200 chars
+
+            images.append({"src": src, "alt": alt, "context": context})
+
+        return images
+
+    def to_markdown(self, html: str) -> str:
+        """
+        Convert HTML to Markdown
+
+        Args:
+            html: HTML content
+
+        Returns:
+            Markdown text
+        """
+        soup = BeautifulSoup(html, "html.parser")
+
+        # This is a simple conversion
+        # For production, use a library like html2text
+
+        md_lines = []
+
+        # Convert headings
+        for i in range(1, 7):
+            for h in soup.find_all(f"h{i}"):
+                prefix = "#" * i
+                md_lines.append(f"{prefix} {h.get_text(strip=True)}\n")
+                h.decompose()
+
+        # Convert paragraphs
+        for p in soup.find_all("p"):
+            md_lines.append(f"{p.get_text(strip=True)}\n")
+
+        # Convert lists
+        for ul in soup.find_all("ul"):
+            for li in ul.find_all("li", recursive=False):
+                md_lines.append(f"- {li.get_text(strip=True)}")
+            md_lines.append("")
+
+        for ol in soup.find_all("ol"):
+            for i, li in enumerate(ol.find_all("li", recursive=False), 1):
+                md_lines.append(f"{i}. {li.get_text(strip=True)}")
+            md_lines.append("")
+
+        return "\n".join(md_lines)
+
+    def _detect_language(self, code_tag: Tag) -> str:
+        """Detect programming language from code tag"""
+        # Check class attribute
+        classes = code_tag.get("class", [])
+        for cls in classes:
+            if cls.startswith("language-"):
+                return cls.replace("language-", "")
+            elif cls.startswith("lang-"):
+                return cls.replace("lang-", "")
+
+        # Try parent's class
+        if code_tag.parent:
+            classes = code_tag.parent.get("class", [])
+            for cls in classes:
+                if cls.startswith("language-"):
+                    return cls.replace("language-", "")
+
+        return "unknown"

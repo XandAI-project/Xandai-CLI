@@ -8,3 +8,4 @@ flask>=3.0.0
 flask-socketio>=5.3.0
 flask-cors>=4.0.0
 libtorrent>=2.0.0
+pyyaml>=6.0.0

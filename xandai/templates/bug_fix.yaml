@@ -1,0 +1,39 @@
+name: bug_fix
+description: Analyze and fix bugs in code
+version: 1.0
+category: debugging
+
+parameters:
+  - name: code
+    type: string
+    required: true
+    description: Code containing the bug
+  - name: bug_description
+    type: string
+    required: true
+    description: Description of the bug
+  - name: error_message
+    type: string
+    required: false
+    default: ""
+    description: Error message or stack trace
+
+template: |
+  Analyze and fix the following bug:
+
+  Bug Description: {bug_description}
+
+  {error_message}
+
+  Code:
+  ```
+  {code}
+  ```
+
+  Provide:
+  1. Root cause analysis (what's causing the bug)
+  2. Fixed code with clear annotations showing changes
+  3. Explanation of the fix
+  4. Suggestions to prevent similar bugs
+
+  Be precise and thorough.

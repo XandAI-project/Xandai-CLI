@@ -1,0 +1,34 @@
+name: refactor
+description: Refactor code for better quality
+version: 1.0
+category: code
+
+parameters:
+  - name: code
+    type: string
+    required: true
+    description: Code to refactor
+  - name: goal
+    type: string
+    required: false
+    default: "improve readability and maintainability"
+    description: Refactoring goal
+  - name: preserve_behavior
+    type: boolean
+    required: false
+    default: true
+    description: Preserve existing behavior
+
+template: |
+  Refactor the following code to {goal}.
+
+  {code}
+
+  Requirements:
+  - {'Preserve all existing functionality' if preserve_behavior else 'May change behavior if needed'}
+  - Improve code structure and organization
+  - Follow SOLID principles
+  - Reduce complexity where possible
+  - Add meaningful names
+
+  Provide the refactored code and a brief summary of changes.
