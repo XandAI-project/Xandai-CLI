@@ -1,0 +1,34 @@
+name: api_design
+description: Design REST API endpoints
+version: 1.0
+category: architecture
+
+parameters:
+  - name: resource
+    type: string
+    required: true
+    description: Resource or entity to create API for
+  - name: operations
+    type: string
+    required: false
+    default: "CRUD"
+    description: Required operations
+  - name: style
+    type: string
+    required: false
+    default: "RESTful"
+    description: API style (RESTful, GraphQL, RPC)
+
+template: |
+  Design a {style} API for managing {resource} resources.
+
+  Operations needed: {operations}
+
+  Provide:
+  1. Endpoint definitions (method, path, purpose)
+  2. Request/response schemas
+  3. Status codes and error handling
+  4. Authentication/authorization approach
+  5. Example requests and responses
+
+  Follow {style} best practices and conventions.

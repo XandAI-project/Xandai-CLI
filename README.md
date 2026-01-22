@@ -29,6 +29,12 @@ xandai> How do I optimize this code?
 
 # Natural conversation for any task
 xandai> create a REST API with authentication
+
+# Git AI commands (run outside REPL)
+xandai commit              # Generate commit message from staged changes
+xandai pr                  # Summarize pull request
+xandai diff                # Explain diff in plain English
+xandai blame --file main.py --line 42  # Explain why a line exists
 ```
 
 ## Providers
@@ -41,19 +47,71 @@ xandai --provider ollama
 xandai --provider lm_studio --endpoint http://localhost:1234
 ```
 
+## New in Phase 2 🎉
+
+XandAI Phase 2 adds enterprise-grade features for professional development workflows:
+
+**Agent Workflows** - Multi-step task execution with planning and tracking
+**Session Management** - Persistent conversations with full history
+**Context Management** - Smart token management for any model
+**Memory System** - Long-term knowledge retention
+**Web Integration** - Enhanced web content fetching and extraction
+**File Watching** - Real-time project monitoring
+**CLI Enhancement** - OpenCode-style structured commands
+
+See [README_PHASE2.md](README_PHASE2.md) for detailed documentation.
+
 ## Commands
 
 ```bash
+# Core Commands
 /agent <instruction>  # Multi-step LLM orchestrator for complex tasks
 /set-agent-limit <n>  # Set max LLM calls (default: 20, max: 100)
 /review               # AI-powered code review
+/lsp                  # Language Server Protocol integration (code intelligence)
 /web on               # Enable web content integration
+/host [addr] -p 4800  # Start web shell server (real-time web interface)
 /help                 # Show all commands
 /clear                # Clear history
 /status               # System status
+
+# Session Commands (Phase 2)
+xandai session new               # Create new session
+xandai session list              # List all sessions
+xandai session load <id>         # Load session
+xandai session export <id> <file> # Export session
+
+# Agent Commands (Phase 2)
+xandai agent run <task>          # Run multi-step task
+xandai agent status              # Check task status
+xandai agent list                # List all tasks
+
+# Project Commands (Phase 2)
+xandai project watch start       # Start file watching
+xandai project watch stop        # Stop file watching
 ```
 
-### Agent Mode 🤖
+### Web Shell
+
+Access XandAI through a web browser with real-time interaction:
+
+```bash
+# Start web shell server
+xandai> /host 0.0.0.0 -p 4800
+
+# Open browser at http://localhost:4800
+# Interact with XandAI through a modern web interface
+# Terminal and web interface work simultaneously
+```
+
+Features:
+- Real-time communication using WebSocket
+- Modern terminal-like interface
+- Execute all XandAI commands through browser
+- Accessible from any device on your network
+- Works alongside the terminal interface
+
+### Agent Mode
 
 The `/agent` command is a powerful multi-step LLM orchestrator that chains multiple AI calls to handle complex tasks:
 
@@ -165,6 +223,33 @@ xandai> /review
 
 ![Code Review Example](images/Review.png)
 
+## Git AI Commands
+
+AI-powered Git operations that run outside the REPL:
+
+```bash
+# Generate commit message from staged changes
+git add .
+xandai commit
+
+# Summarize a pull request
+xandai pr --base main --head feature-branch
+
+# Explain diff in plain English
+xandai diff
+xandai diff --file src/app.py
+xandai diff --commit-hash abc123
+
+# Explain why a line exists (git blame)
+xandai blame --file src/main.py --line 42
+```
+
+These commands use AI to:
+- Generate descriptive commit messages from your staged changes
+- Summarize pull requests with changes, risks, and impact
+- Explain diffs in plain English instead of technical patch format
+- Explain the purpose and history of specific lines of code
+
 ## Web Integration
 
 Automatically fetches and analyzes web content when you paste links:
@@ -174,6 +259,38 @@ xandai> /web on
 xandai> How does this work? https://docs.python.org/tutorial
 # Content is automatically fetched and analyzed
 ```
+
+## LSP Integration
+
+Language Server Protocol integration provides real-time code intelligence and syntax validation:
+
+```bash
+xandai> /lsp on                # Enable LSP integration
+xandai> /lsp                   # Show status and active servers
+xandai> /lsp analyze main.py   # Analyze file for errors
+```
+
+Supports 15+ languages including Python, JavaScript, TypeScript, Rust, Go, Java, C/C++. Install LSP servers:
+
+```bash
+# Python-based servers
+pip install -r requirements-lsp.txt
+
+# All servers (interactive)
+./scripts/install_lsp_servers.sh        # Linux/Mac
+.\scripts\install_lsp_servers.ps1       # Windows
+
+# Specific language
+./scripts/install_lsp_servers.sh python
+.\scripts\install_lsp_servers.ps1 javascript
+```
+
+Features:
+- Automatic language detection
+- Real-time diagnostics and error detection
+- Type-aware code suggestions
+- Project-specific conventions
+- AI prompts enriched with LSP context
 
 ## Development
 

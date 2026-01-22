@@ -1,0 +1,40 @@
+name: codegen
+description: Generate code from natural language description
+version: 1.0
+category: code
+
+parameters:
+  - name: language
+    type: string
+    required: true
+    description: Programming language to generate code in
+  - name: description
+    type: string
+    required: true
+    description: Natural language description of what to create
+  - name: context
+    type: string
+    required: false
+    default: ""
+    description: Additional context about the project
+  - name: style
+    type: string
+    required: false
+    default: "clean and idiomatic"
+    description: Code style preferences
+
+template: |
+  You are an expert {language} developer. Generate clean, production-ready code based on the following specification.
+
+  Task: {description}
+
+  {context}
+
+  Requirements:
+  - Write {style} {language} code
+  - Include appropriate error handling
+  - Add clear, concise comments
+  - Follow best practices and conventions for {language}
+  - Make the code maintainable and testable
+
+  Generate ONLY the code without explanations. Start immediately with the code.

@@ -1,6 +1,7 @@
 """
 XandAI Processors - Chat Processor
 Chat Mode processor with context-aware conversation
+Enhanced with LSP integration for code intelligence
 """
 
 from typing import Any, Dict, List, Optional
@@ -18,9 +19,15 @@ class ChatProcessor:
     and applies optimized prompts for conversational experience.
     """
 
-    def __init__(self, llm_provider: LLMProvider, conversation_manager: ConversationManager):
+    def __init__(
+        self,
+        llm_provider: LLMProvider,
+        conversation_manager: ConversationManager,
+        lsp_context_provider=None,
+    ):
         self.llm_provider = llm_provider
         self.conversation_manager = conversation_manager
+        self.lsp_context_provider = lsp_context_provider  # Optional LSP integration
 
         # System prompt for chat mode
         self.system_prompt = """You are XandAI, an intelligent CLI assistant focused on software development.
@@ -93,9 +100,12 @@ RESPONSE FORMAT:
     def _prepare_context(self, user_input: str, app_state: AppState) -> List[Dict[str, str]]:
         """
         Prepares context for sending to AI
+        Now includes LSP-enhanced context when available
         """
-        # Basic context with system prompt
-        context = [{"role": "system", "content": self._get_enhanced_system_prompt(app_state)}]
+        # Basic context with system prompt (now includes LSP intelligence)
+        context = [
+            {"role": "system", "content": self._get_enhanced_system_prompt(app_state, user_input)}
+        ]
 
         # Add relevant history
         history = self.conversation_manager.get_context_for_ai(max_tokens=3000)
@@ -106,9 +116,10 @@ RESPONSE FORMAT:
 
         return context
 
-    def _get_enhanced_system_prompt(self, app_state: AppState) -> str:
+    def _get_enhanced_system_prompt(self, app_state: AppState, user_input: str = None) -> str:
         """
         Builds enhanced system prompt with current context
+        Includes LSP intelligence when available
         """
         context_info = app_state.get_context_summary()
 
@@ -120,6 +131,26 @@ RESPONSE FORMAT:
             enhanced_prompt += f"- Type: {context_info.get('project_type')}\n"
             enhanced_prompt += f"- Directory: {context_info.get('root_path')}\n"
             enhanced_prompt += f"- Tracked files: {context_info.get('tracked_files')}\n"
+
+        # Add LSP context if available
+        if self.lsp_context_provider and user_input:
+            try:
+                # Extract file references from user input
+                files = self.lsp_context_provider.extract_file_references(user_input)
+
+                if files:
+                    # Add LSP-enhanced context for referenced files
+                    lsp_context = self.lsp_context_provider.get_code_intelligence_prompt(
+                        user_input, files
+                    )
+                    enhanced_prompt += f"\n\n{lsp_context}"
+                else:
+                    # Add general project context from LSP
+                    project_context = self.lsp_context_provider.get_project_context()
+                    enhanced_prompt += f"\n\n{project_context}"
+            except Exception as e:
+                # LSP errors shouldn't break the chat
+                pass
 
         # Add session information
         session_info = context_info.get("interactions", {})
@@ -163,6 +194,56 @@ RESPONSE FORMAT:
 
         prompt_parts.append("ASSISTANT:")
         return "\n\n".join(prompt_parts)
+
+    def process_input(
+        self, user_input: str, conversation_manager: Optional[ConversationManager] = None
+    ) -> str:
+        """
+        Simple input processor for web shell and external integrations
+
+        Args:
+            user_input: User input text
+            conversation_manager: Optional conversation manager (uses default if not provided)
+
+        Returns:
+            AI response text
+        """
+        # Use provided conversation manager or default
+        conv_manager = conversation_manager or self.conversation_manager
+
+        # Add user message to history
+        conv_manager.add_message(role="user", content=user_input, mode="chat", metadata={})
+
+        try:
+            # Build simple context
+            context = [{"role": "system", "content": self.system_prompt}]
+
+            # Add recent history
+            history = conv_manager.get_context_for_ai(max_tokens=3000)
+            context.extend(history)
+
+            # Add current input
+            context.append({"role": "user", "content": user_input})
+
+            # Generate response
+            response = self.llm_provider.chat(messages=context, temperature=0.7, max_tokens=2048)
+
+            # Add response to history
+            conv_manager.add_message(
+                role="assistant",
+                content=response.content,
+                mode="chat",
+                metadata={"model": response.model, "tokens": response.total_tokens},
+            )
+
+            return response.content
+
+        except Exception as e:
+            error_msg = f"Error: {str(e)}"
+            conv_manager.add_message(
+                role="system", content=error_msg, mode="chat", metadata={"error": True}
+            )
+            return error_msg
 
     def get_conversation_summary(self) -> Dict[str, Any]:
         """

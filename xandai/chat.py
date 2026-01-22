@@ -24,363 +24,35 @@ from xandai.history import HistoryManager
 from xandai.integrations.base_provider import LLMProvider, LLMResponse
 from xandai.integrations.provider_factory import LLMProviderFactory
 from xandai.processors.agent_processor import AgentProcessor
+from xandai.processors.chat_processor import ChatProcessor
 from xandai.processors.review_processor import ReviewProcessor
 from xandai.task import TaskProcessor, TaskStep
 from xandai.utils.enhanced_file_handler import EnhancedFileHandler
 from xandai.utils.os_utils import OSUtils
 from xandai.utils.prompt_manager import PromptManager
+from xandai.utils.shell_utils import (
+    DIR_COMMANDS,
+    FILE_COMMANDS,
+    INTERCEPTED_COMMANDS,
+    PATH_COMMANDS,
+    SLASH_COMMANDS,
+    TERMINAL_COMMANDS,
+)
 from xandai.utils.tool_manager import ToolManager
 from xandai.web.web_manager import WebManager
+from xandai.web_shell import WebShellServer
 
 
 class IntelligentCompleter(Completer):
     """Smart completer that provides context-aware suggestions"""
 
     def __init__(self):
-        self.slash_commands = [
-            "/task",
-            "/review",
-            "/agent",
-            "/set-agent-limit",
-            "/help",
-            "/h",
-            "/clear",
-            "/cls",
-            "/history",
-            "/hist",
-            "/context",
-            "/ctx",
-            "/status",
-            "/stat",
-            "/scan",
-            "/structure",
-            "/interactive",
-            "/toggle",
-            "/provider",
-            "/providers",
-            "/switch",
-            "/detect",
-            "/server",
-            "/models",
-            "/tools",
-            "/exit",
-            "/quit",
-            "/bye",
-        ]
-
-        # Commands that need directory suggestions
-        self.dir_commands = ["cd", "mkdir", "rmdir", "pushd", "popd"]
-
-        # Commands that need file suggestions
-        self.file_commands = [
-            "cat",
-            "type",
-            "nano",
-            "vim",
-            "edit",
-            "open",
-            "head",
-            "tail",
-            "less",
-            "more",
-        ]
-
-        # Commands that need both files and directories
-        self.path_commands = [
-            "ls",
-            "dir",
-            "cp",
-            "copy",
-            "mv",
-            "move",
-            "rm",
-            "del",
-            "find",
-            "grep",
-            "findstr",
-            "tree",
-            "du",
-            "chmod",
-            "chown",
-            "stat",
-        ]
-
-        # All terminal commands
-        self.terminal_commands = [
-            # Sistema operacional básico
-            "ls",
-            "dir",
-            "cd",
-            "pwd",
-            "cat",
-            "type",
-            "mkdir",
-            "rmdir",
-            "rm",
-            "del",
-            "cp",
-            "copy",
-            "mv",
-            "move",
-            "ren",
-            "rename",
-            "find",
-            "findstr",
-            "grep",
-            "ps",
-            "tasklist",
-            "kill",
-            "taskkill",
-            "ping",
-            "tracert",
-            "netstat",
-            "ipconfig",
-            "ifconfig",
-            "echo",
-            "tree",
-            "which",
-            "where",
-            "date",
-            "time",
-            "cls",
-            "clear",
-            "help",
-            "man",
-            "history",
-            "alias",
-            # Python
-            "python",
-            "python3",
-            "py",
-            "pip",
-            "pip3",
-            "pipenv",
-            "poetry",
-            "conda",
-            "mamba",
-            "pyenv",
-            "virtualenv",
-            "venv",
-            "activate",
-            "deactivate",
-            # JavaScript/Node.js
-            "node",
-            "npm",
-            "yarn",
-            "pnpm",
-            "bun",
-            "deno",
-            "npx",
-            "nvm",
-            "fnm",
-            # Java
-            "java",
-            "javac",
-            "jar",
-            "maven",
-            "mvn",
-            "gradle",
-            "gradlew",
-            "ant",
-            # C/C++
-            "gcc",
-            "g++",
-            "clang",
-            "clang++",
-            "make",
-            "cmake",
-            "ninja",
-            # C#/.NET
-            "dotnet",
-            "csc",
-            "msbuild",
-            "nuget",
-            # Go
-            "go",
-            "gofmt",
-            "goimports",
-            "mod",
-            # Rust
-            "rustc",
-            "cargo",
-            "rustup",
-            "rustfmt",
-            # Ruby
-            "ruby",
-            "gem",
-            "bundle",
-            "rails",
-            "rake",
-            "rbenv",
-            "rvm",
-            # PHP
-            "php",
-            "composer",
-            "artisan",
-            "phpunit",
-            # Swift
-            "swift",
-            "swiftc",
-            "xcodebuild",
-            # Kotlin
-            "kotlin",
-            "kotlinc",
-            # Scala
-            "scala",
-            "scalac",
-            "sbt",
-            # Lua
-            "lua",
-            "luac",
-            # Perl
-            "perl",
-            "cpan",
-            "cpanm",
-            # R
-            "r",
-            "rscript",
-            # Julia
-            "julia",
-            # Haskell
-            "ghc",
-            "ghci",
-            "cabal",
-            "stack",
-            # Databases
-            "mysql",
-            "psql",
-            "sqlite3",
-            "mongo",
-            "redis-cli",
-            "sqlcmd",
-            # DevOps e Cloud
-            "docker",
-            "kubectl",
-            "helm",
-            "terraform",
-            "ansible",
-            "aws",
-            "az",
-            "gcloud",
-            "heroku",
-            "vercel",
-            "netlify",
-            # Version Control
-            "git",
-            "svn",
-            "hg",
-            "bzr",
-            # Build Tools
-            "webpack",
-            "vite",
-            "rollup",
-            "parcel",
-            "esbuild",
-            "tsc",
-            "babel",
-            "grunt",
-            "gulp",
-            "bower",
-            # Linting e Testing
-            "eslint",
-            "prettier",
-            "jest",
-            "mocha",
-            "karma",
-            "cypress",
-            "pytest",
-            "unittest",
-            "nose",
-            "tox",
-            # Editores de terminal
-            "vim",
-            "vi",
-            "nvim",
-            "nano",
-            "emacs",
-            "micro",
-            "joe",
-            # Monitoramento e Performance
-            "top",
-            "htop",
-            "iotop",
-            "vmstat",
-            "iostat",
-            "free",
-            "df",
-            "du",
-            "nproc",
-            "lscpu",
-            "lsblk",
-            "lsusb",
-            "lspci",
-            # Rede
-            "curl",
-            "wget",
-            "ssh",
-            "scp",
-            "rsync",
-            "ftp",
-            "sftp",
-            "nslookup",
-            "dig",
-            "host",
-            "whois",
-            # Compressão
-            "tar",
-            "zip",
-            "unzip",
-            "gzip",
-            "gunzip",
-            "7z",
-            "rar",
-            "unrar",
-            # Text processing
-            "sed",
-            "awk",
-            "sort",
-            "uniq",
-            "wc",
-            "head",
-            "tail",
-            "cut",
-            "tr",
-            # Process management
-            "nohup",
-            "screen",
-            "tmux",
-            "systemctl",
-            "service",
-            "crontab",
-            # Environment
-            "env",
-            "export",
-            "set",
-            "unset",
-            "printenv",
-            "source",
-            # Permissions
-            "chmod",
-            "chown",
-            "chgrp",
-            "su",
-            "sudo",
-            "whoami",
-            "id",
-            # Archives and packages
-            "apt",
-            "apt-get",
-            "yum",
-            "dnf",
-            "zypper",
-            "pacman",
-            "brew",
-            "choco",
-            "snap",
-            "flatpak",
-            "rpm",
-            "dpkg",
-        ]
+        # Import command definitions from shell_utils
+        self.slash_commands = SLASH_COMMANDS
+        self.dir_commands = DIR_COMMANDS
+        self.file_commands = FILE_COMMANDS
+        self.path_commands = PATH_COMMANDS
+        self.terminal_commands = TERMINAL_COMMANDS
 
     def get_completions(self, document, complete_event):
         """Provide intelligent completions based on context"""
@@ -576,9 +248,19 @@ class ChatREPL:
         self.app_state = AppState()
 
         # Tool manager for custom tools (initialize early for agent processor)
+        # Get absolute path to tools directory (relative to project root)
+        import os
+
+        project_root = Path(__file__).parent.parent
+        tools_dir = project_root / "tools"
+
         self.tool_manager = ToolManager(
-            tools_dir="tools", llm_provider=llm_provider, verbose=verbose
+            tools_dir=str(tools_dir), llm_provider=llm_provider, verbose=verbose
         )
+
+        if verbose:
+            OSUtils.debug_print(f"Tool Manager initialized with tools_dir: {tools_dir}", True)
+            OSUtils.debug_print(f"Tools loaded: {len(self.tool_manager.tools)}", True)
 
         # Task processor (with shared verbose mode)
         self.task_processor = TaskProcessor(llm_provider, history_manager, verbose)
@@ -604,6 +286,43 @@ class ChatREPL:
             max_links=self.app_state.get_preference("max_links_per_request", 3),
         )
 
+        # LSP Integration (Language Server Protocol for code intelligence)
+        self.lsp_manager = None
+        self.lsp_context_provider = None
+        self.lsp_enabled = self.app_state.get_preference("lsp_enabled", False)
+
+        if self.lsp_enabled:
+            try:
+                from xandai.conversation.conversation_manager import ConversationManager
+                from xandai.lsp import LSPContextProvider, LSPManager
+
+                self.lsp_manager = LSPManager(root_path=os.getcwd(), verbose=verbose)
+                self.lsp_context_provider = LSPContextProvider(self.lsp_manager, verbose=verbose)
+
+                # Initialize LSP servers in background
+                if verbose:
+                    OSUtils.debug_print("LSP integration enabled", True)
+            except Exception as e:
+                if verbose:
+                    OSUtils.debug_print(f"LSP initialization failed: {e}", True)
+                self.lsp_enabled = False
+
+        # Chat processor with optional LSP integration
+        try:
+            from xandai.conversation.conversation_manager import ConversationManager
+
+            self.conversation_manager = ConversationManager()
+            self.chat_processor = ChatProcessor(
+                llm_provider=llm_provider,
+                conversation_manager=self.conversation_manager,
+                lsp_context_provider=self.lsp_context_provider,
+            )
+        except Exception as e:
+            if verbose:
+                OSUtils.debug_print(f"Chat processor initialization failed: {e}", True)
+            self.conversation_manager = None
+            self.chat_processor = None
+
         # Prompt session with history and completion
         self.session = PromptSession(
             history=InMemoryHistory(),
@@ -612,191 +331,7 @@ class ChatREPL:
         )
 
         # Terminal commands we intercept and run locally (Windows + Linux/macOS)
-        self.terminal_commands = {
-            # Directory/File listing
-            "ls",
-            "dir",
-            # Navigation
-            "pwd",
-            "cd",
-            # File operations
-            "cat",
-            "type",
-            "head",
-            "tail",
-            "more",
-            "less",
-            "mkdir",
-            "rmdir",
-            "rm",
-            "del",
-            "erase",
-            "cp",
-            "copy",
-            "mv",
-            "move",
-            "ren",
-            "rename",
-            # Search and text processing
-            "find",
-            "findstr",
-            "grep",
-            "wc",
-            "sort",
-            "uniq",
-            # System info
-            "ps",
-            "tasklist",
-            "top",
-            "df",
-            "du",
-            "free",
-            "uname",
-            "whoami",
-            "date",
-            "time",
-            "systeminfo",
-            "ver",
-            "hostname",
-            # Network
-            "ping",
-            "tracert",
-            "traceroute",
-            "netstat",
-            "ipconfig",
-            "ifconfig",
-            # Process management
-            "kill",
-            "taskkill",
-            "killall",
-            # File attributes
-            "chmod",
-            "chown",
-            "attrib",
-            "icacls",
-            # Utilities
-            "echo",
-            "which",
-            "where",
-            "whereis",
-            "tree",
-            "file",
-            # Clear screen
-            "clear",
-            "cls",
-            # Help
-            "help",
-            "man",
-            # ===== COMANDOS DE DESENVOLVIMENTO ADICIONADOS =====
-            # Python
-            "python",
-            "python3",
-            "py",
-            "pip",
-            "pip3",
-            "pipenv",
-            "poetry",
-            "conda",
-            "mamba",
-            "pyenv",
-            "virtualenv",
-            "venv",
-            "activate",
-            "deactivate",
-            # JavaScript/Node.js
-            "node",
-            "npm",
-            "yarn",
-            "pnpm",
-            "bun",
-            "deno",
-            "npx",
-            "nvm",
-            "fnm",
-            # Java
-            "java",
-            "javac",
-            "jar",
-            "maven",
-            "mvn",
-            "gradle",
-            "gradlew",
-            "ant",
-            # C/C++
-            "gcc",
-            "g++",
-            "clang",
-            "clang++",
-            "make",
-            "cmake",
-            "ninja",
-            # C#/.NET
-            "dotnet",
-            "csc",
-            "msbuild",
-            "nuget",
-            # Go
-            "go",
-            "gofmt",
-            "goimports",
-            "mod",
-            # Rust
-            "rustc",
-            "cargo",
-            "rustup",
-            "rustfmt",
-            # Ruby
-            "ruby",
-            "gem",
-            "bundle",
-            "rails",
-            "rake",
-            "rbenv",
-            "rvm",
-            # PHP
-            "php",
-            "composer",
-            "artisan",
-            "phpunit",
-            # Git and version control
-            "git",
-            "hg",
-            "svn",
-            "bzr",
-            # Text editors
-            "nano",
-            "vim",
-            "emacs",
-            "vi",
-            "code",
-            "cursor",
-            "notepad",
-            # Container and deployment
-            "docker",
-            "podman",
-            "kubectl",
-            "helm",
-            "terraform",
-            "vagrant",
-            # Network tools
-            "curl",
-            "wget",
-            "ssh",
-            "scp",
-            "rsync",
-            "nc",
-            "telnet",
-            "nmap",
-            # Archive tools
-            "tar",
-            "gzip",
-            "gunzip",
-            "zip",
-            "unzip",
-            "rar",
-            "unrar",
-            "7z",
-        }
+        self.terminal_commands = INTERCEPTED_COMMANDS
 
         # System prompt for chat mode
         self.system_prompt = self._build_system_prompt()
@@ -804,6 +339,9 @@ class ChatREPL:
         # Track current task session files
         self.current_task_files = []
         self.current_project_structure = None
+
+        # Web Shell Server
+        self.web_shell_server: Optional[WebShellServer] = None
 
     def run(self):
         """Run the interactive REPL loop"""
@@ -872,6 +410,23 @@ class ChatREPL:
             if self.verbose:
                 OSUtils.debug_print(f"Shlex parsing error (treating as regular chat): {e}", True)
             command_parts = []
+
+        # Check if it's a script execution (./ or .\ prefix, or .bat/.sh/.ps1 extension)
+        is_script_execution = False
+        if command_parts:
+            first_part = command_parts[0]
+            # Check for ./ or .\ prefix (Unix/Windows script execution)
+            if first_part.startswith("./") or first_part.startswith(".\\"):
+                is_script_execution = True
+            # Check for script extensions
+            elif any(first_part.lower().endswith(ext) for ext in [".bat", ".sh", ".ps1", ".cmd"]):
+                is_script_execution = True
+
+        if is_script_execution:
+            if self.verbose:
+                OSUtils.debug_print(f"Detected script execution: {command_parts[0]}", True)
+            self._handle_terminal_command(user_input)
+            return
 
         if command_parts and command_parts[0].lower() in self.terminal_commands:
             if self.verbose:
@@ -942,7 +497,7 @@ class ChatREPL:
         # Task mode (DEPRECATED)
         if command.startswith("/task "):
             self.console.print(
-                "[yellow]⚠️  WARNING: The /task command is deprecated and will be removed in a future version.[/yellow]"
+                "[yellow]  WARNING: The /task command is deprecated and will be removed in a future version.[/yellow]"
             )
             self.console.print(
                 "[dim]💡 Use natural conversation instead of /task for better experience.[/dim]\n"
@@ -963,6 +518,11 @@ class ChatREPL:
                 repo_path = user_input[8:].strip() or "."
 
             self._handle_review_mode(repo_path)
+            return True
+
+        # LSP (Language Server Protocol) commands
+        if command.startswith("/lsp"):
+            self._handle_lsp_command(user_input)
             return True
 
         # Agent mode
@@ -1056,6 +616,17 @@ class ChatREPL:
             self._show_available_tools()
             return True
 
+        # Reload tools command
+        if command == "/reload_tools":
+            self._reload_tools()
+            return True
+
+        # Web Shell command
+        if command.startswith("/host"):
+            args = user_input[5:].strip() if len(user_input) > 5 else ""
+            self._start_web_shell(args)
+            return True
+
         # Debug command - show OS and platform debug information or toggle debug mode
         if command.startswith("/debug") or command.startswith("/dbg"):
             self._handle_debug_command(user_input)
@@ -1118,6 +689,17 @@ class ChatREPL:
             self.history_manager.add_conversation(
                 role="user", content=command, metadata={"type": "terminal_command"}
             )
+
+            # Normalize script paths for Windows
+            # Windows doesn't recognize ./ prefix, need to convert to .\ or remove it
+            import platform
+
+            if platform.system().lower() == "windows":
+                if command.startswith("./"):
+                    # Replace ./ with .\ for Windows
+                    command = "." + "\\" + command[2:]
+                    if self.verbose:
+                        OSUtils.debug_print(f"Normalized command for Windows: {command}", True)
 
             # Execute command
             self.console.print(f"[dim]$ {command}[/dim]")
@@ -1196,7 +778,7 @@ class ChatREPL:
 
         except subprocess.TimeoutExpired:
             # Command might be interactive, offer to run in interactive mode
-            self.console.print(f"[yellow]⚠️  Command timed out - might need user input[/yellow]")
+            self.console.print(f"[yellow]  Command timed out - might need user input[/yellow]")
             self.console.print(
                 f"[cyan]💡 Tip: Use 'python -i script.py' for interactive scripts[/cyan]"
             )
@@ -1216,8 +798,35 @@ class ChatREPL:
                 metadata={"type": "command_error"},
             )
 
+    def _is_server_command(self, command: str) -> bool:
+        """Detect if command starts a long-running server"""
+        server_patterns = [
+            r"python\s+.*(?:app|server|main)\.py",
+            r"python3\s+.*(?:app|server|main)\.py",
+            r"flask\s+run",
+            r"uvicorn\s+",
+            r"gunicorn\s+",
+            r"node\s+.*(?:app|server|index)\.js",
+            r"npm\s+(?:run\s+)?(?:start|dev|serve)",
+            r"yarn\s+(?:run\s+)?(?:start|dev|serve)",
+            r"ng\s+serve",
+            r"vue-cli-service\s+serve",
+            r"next\s+(?:dev|start)",
+        ]
+        command_lower = command.lower()
+        import re
+
+        for pattern in server_patterns:
+            if re.search(pattern, command_lower):
+                return True
+        return False
+
     def _is_potentially_interactive_command(self, command: str) -> bool:
         """Detect if a command might require user input"""
+        # First check if it's a server command
+        if self._is_server_command(command):
+            return True
+
         interactive_patterns = [
             # Python scripts that might use input()
             r"python\s+\w+\.py",
@@ -1242,6 +851,24 @@ class ChatREPL:
 
     def _handle_interactive_command(self, command: str):
         """Handle potentially interactive commands with user confirmation"""
+        # Check if we're in web shell - if so, execute directly with auto-input
+        in_web_shell = getattr(self, "_in_web_shell", False)
+
+        if in_web_shell:
+            # Check if this is a server command
+            if self._is_server_command(command):
+                self.console.print(f"[green]🚀 Starting server in background...[/green]")
+                self._execute_server_command_background(command)
+                return
+            else:
+                # Regular interactive command: execute with auto-input
+                self.console.print(
+                    f"[green]🚀 Executing interactive command with auto-input...[/green]"
+                )
+                self._execute_command_with_output(command)
+                return
+
+        # Normal shell: show menu
         self.console.print(f"[yellow]🤖 This command might need user input[/yellow]")
         self.console.print(f"[cyan]Command: {command}[/cyan]")
         self.console.print()
@@ -1264,6 +891,99 @@ class ChatREPL:
         else:
             self.console.print("[yellow]Command cancelled[/yellow]")
 
+    def _execute_server_command_background(self, command: str):
+        """Execute server command in background and capture initial output"""
+        import subprocess
+        import threading
+        import time
+        from queue import Empty, Queue
+
+        self.console.print(f"[cyan]Command: {command}[/cyan]")
+        self.console.print("[dim]Capturing initial output (3s)...[/dim]")
+
+        try:
+            # Start process
+            process = subprocess.Popen(
+                command,
+                shell=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                stdin=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                bufsize=1,
+            )
+
+            # Store process reference in web shell server
+            # This allows it to be killed when next command runs
+            web_shell = getattr(self, "_web_shell_instance", None)
+            if web_shell:
+                web_shell.active_process = process
+
+            # Capture output for 3 seconds
+            output_lines = []
+            error_lines = []
+            start_time = time.time()
+
+            def read_output(pipe, lines_list):
+                try:
+                    for line in iter(pipe.readline, ""):
+                        if time.time() - start_time > 3:
+                            break
+                        lines_list.append(line.rstrip())
+                except:
+                    pass
+
+            # Start threads to read stdout and stderr
+            stdout_thread = threading.Thread(
+                target=read_output, args=(process.stdout, output_lines)
+            )
+            stderr_thread = threading.Thread(target=read_output, args=(process.stderr, error_lines))
+            stdout_thread.daemon = True
+            stderr_thread.daemon = True
+            stdout_thread.start()
+            stderr_thread.start()
+
+            # Wait for 3 seconds or until threads finish
+            stdout_thread.join(timeout=3)
+            stderr_thread.join(timeout=3)
+
+            # Show captured output
+            if output_lines:
+                from rich.panel import Panel
+
+                self.console.print(
+                    Panel(
+                        "\n".join(output_lines),
+                        title=f"🌐 Server Output (first 3s): {command}",
+                        border_style="cyan",
+                    )
+                )
+
+            if error_lines:
+                from rich.panel import Panel
+
+                self.console.print(
+                    Panel(
+                        "\n".join(error_lines),
+                        title=f"⚠️ Server Errors: {command}",
+                        border_style="yellow",
+                    )
+                )
+
+            # Check if process is still running
+            if process.poll() is None:
+                self.console.print("[green]✅ Server is running in background[/green]")
+                self.console.print("[dim]💡 Run another command to stop it automatically[/dim]")
+            else:
+                self.console.print(
+                    f"[yellow]⚠️ Server exited with code {process.returncode}[/yellow]"
+                )
+
+        except Exception as e:
+            self.console.print(f"[red]Error starting server: {e}[/red]")
+
     def _execute_interactive_command(self, command: str):
         """Execute command with full terminal access"""
         self.console.print(f"[green]🚀 Running interactively: {command}[/green]")
@@ -1275,11 +995,11 @@ class ChatREPL:
             result = subprocess.run(command, shell=True, encoding="utf-8", errors="replace")
 
             if result.returncode == 0:
-                self.console.print(f"[green]✅ Command completed successfully[/green]")
+                self.console.print(f"[green] Command completed successfully[/green]")
                 output_msg = "Command executed interactively - output shown above"
             else:
                 self.console.print(
-                    f"[yellow]⚠️  Command completed with exit code {result.returncode}[/yellow]"
+                    f"[yellow]  Command completed with exit code {result.returncode}[/yellow]"
                 )
                 output_msg = f"Interactive command completed with exit code {result.returncode}"
 
@@ -1325,7 +1045,7 @@ class ChatREPL:
                 self.console.print(Panel(f"[red]{error}[/red]", title="Error", border_style="red"))
 
         except subprocess.TimeoutExpired:
-            self.console.print("[red]❌ Command timed out waiting for input[/red]")
+            self.console.print("[red] Command timed out waiting for input[/red]")
             self.console.print(
                 "[cyan]💡 Try option 1 (interactive mode) for scripts that need input[/cyan]"
             )
@@ -1500,10 +1220,17 @@ class ChatREPL:
 
             # If this is a file edit operation, add explicit instruction to use <code edit> tags
             if self._is_file_edit_request(user_input):
+                in_web_shell = getattr(self, "_in_web_shell", False)
+
                 if self.verbose:
                     OSUtils.debug_print(
                         "Detected file edit operation - adding explicit <code edit> instruction",
                         True,
+                    )
+
+                if in_web_shell:
+                    self.console.print(
+                        "[yellow]💡 File edit detected - injecting <code edit> tag instruction to LLM[/yellow]"
                     )
 
                 context_messages.append(
@@ -1563,10 +1290,17 @@ REMEMBER:
 
             # If this is a file create operation, add explicit instruction to use <code filename> tags
             elif self._is_file_create_request(user_input):
+                in_web_shell = getattr(self, "_in_web_shell", False)
+
                 if self.verbose:
                     OSUtils.debug_print(
                         "Detected file create operation - adding explicit <code create> instruction",
                         True,
+                    )
+
+                if in_web_shell:
+                    self.console.print(
+                        "[yellow]💡 File create detected - injecting <code create> tag instruction to LLM[/yellow]"
                     )
 
                 context_messages.append(
@@ -1627,6 +1361,81 @@ REMEMBER:
 - NO markdown blocks (```) inside <code> tags
 - MUST end with </code> when file is complete
 - Include ALL necessary code to make it functional""",
+                    }
+                )
+
+            # If this is a command execution request, add explicit instruction to use <commands> tags
+            elif self._is_command_execution_request(user_input):
+                in_web_shell = getattr(self, "_in_web_shell", False)
+
+                if self.verbose:
+                    OSUtils.debug_print(
+                        "Detected command execution request - adding explicit <commands> instruction",
+                        True,
+                    )
+
+                if in_web_shell:
+                    self.console.print(
+                        "[yellow]💡 Command detected - injecting <commands> tag instruction to LLM[/yellow]"
+                    )
+
+                # Detect OS and provide appropriate commands
+                import platform
+
+                os_type = platform.system()
+
+                if os_type == "Windows":
+                    os_info = "WINDOWS (use: mkdir, dir, cd, copy, del, etc.)"
+                    mkdir_example = "mkdir src"
+                    ls_example = "dir"
+                elif os_type == "Darwin":
+                    os_info = "macOS (use: mkdir, ls, cd, cp, rm, etc.)"
+                    mkdir_example = "mkdir src"
+                    ls_example = "ls"
+                else:
+                    os_info = "Linux (use: mkdir, ls, cd, cp, rm, etc.)"
+                    mkdir_example = "mkdir src"
+                    ls_example = "ls"
+
+                context_messages.append(
+                    {
+                        "role": "system",
+                        "content": f""" CRITICAL OVERRIDE INSTRUCTION
+
+USER REQUEST: "{processed_input}"
+
+OPERATING SYSTEM: {os_info}
+
+🚨 YOU MUST RESPOND WITH ONLY THIS FORMAT 🚨
+
+<commands>THE_COMMAND_HERE</commands>
+
+DO NOT:
+ Use markdown code blocks (```bash or ``` or ```shell or ```cmd)
+ Use plain text code blocks
+ Explain before executing
+ Ask for confirmation
+ Use Linux/bash commands on Windows
+
+DO THIS:
+ Respond IMMEDIATELY with: <commands>THE_COMMAND_HERE</commands>
+ Commands execute automatically
+ Use NATIVE commands for the OS above
+ Brief explanation AFTER the command (optional)
+
+EXAMPLES FOR YOUR CURRENT OS ({os_type}):
+
+USER: "create a folder called src"
+YOU: <commands>{mkdir_example}</commands>
+
+USER: "list files"
+YOU: <commands>{ls_example}</commands>
+
+USER: "install express"
+YOU: <commands>npm install express</commands>
+
+NOW EXECUTE THE USER'S COMMAND: "{processed_input}"
+USE NATIVE {os_type} COMMANDS IN: <commands>YOUR_COMMAND_HERE</commands>""",
                     }
                 )
 
@@ -1778,7 +1587,7 @@ REMEMBER:
                             True,
                         )
                     self.console.print(
-                        f"[green]✅ File '{filename}' is complete. Adding closing tag.[/green]"
+                        f"[green] File '{filename}' is complete. Adding closing tag.[/green]"
                     )
                     return content + "\n</code>"
 
@@ -1790,7 +1599,7 @@ REMEMBER:
                     )
 
                 self.console.print(
-                    f"[yellow]⚠️  Detected incomplete code for '{filename}'. Requesting completion...[/yellow]"
+                    f"[yellow]  Detected incomplete code for '{filename}'. Requesting completion...[/yellow]"
                 )
 
                 # Request completion from LLM
@@ -1837,7 +1646,7 @@ REMEMBER:
                         True,
                     )
                 self.console.print(
-                    f"[green]✅ Code completion successful! File is now complete.[/green]"
+                    f"[green] Code completion successful! File is now complete.[/green]"
                 )
                 return accumulated_content
 
@@ -1978,7 +1787,7 @@ Continue the code now:""",
                 partial_content = accumulated_content
 
             except Exception as e:
-                self.console.print(f"[red]⚠️  Error requesting continuation: {e}[/red]")
+                self.console.print(f"[red]  Error requesting continuation: {e}[/red]")
                 if self.verbose:
                     import traceback
 
@@ -1993,7 +1802,7 @@ Continue the code now:""",
         # If we exhausted attempts and still no closing tag
         if "</code>" not in accumulated_content:
             self.console.print(
-                f"[yellow]⚠️  Could not complete code after {max_attempts} attempts.[/yellow]"
+                f"[yellow]  Could not complete code after {max_attempts} attempts.[/yellow]"
             )
             self.console.print(
                 "[yellow]   The code may be incomplete. Proceeding with available content.[/yellow]"
@@ -2104,6 +1913,73 @@ Continue the code now:""",
         # Return true if has create intent AND (has file reference OR has code reference)
         return result
 
+    def _is_command_execution_request(self, user_input: str) -> bool:
+        """
+        Detect if the user is requesting to execute terminal commands
+        Returns True if the user input suggests they want to run commands
+        """
+        command_keywords = [
+            "create a folder",
+            "create folder",
+            "make a folder",
+            "make folder",
+            "create a directory",
+            "create directory",
+            "make a directory",
+            "make directory",
+            "mkdir",
+            "install",
+            "run",
+            "execute",
+            "start",
+            "launch",
+            "build",
+            "compile",
+            "deploy",
+            "setup",
+            "initialize",
+            "init",
+            "clone",
+            "pull",
+            "push",
+            "commit",
+            "npm install",
+            "pip install",
+            "yarn add",
+            "pnpm install",
+            "npm run",
+            "yarn run",
+            "pnpm run",
+            "docker run",
+            "docker build",
+            "git clone",
+            "create structure",
+            "setup project",
+        ]
+
+        user_lower = user_input.lower()
+        has_command_intent = any(keyword in user_lower for keyword in command_keywords)
+
+        # Exclude if it's clearly a file creation request (avoid double detection)
+        file_indicators = [".py", ".js", ".ts", ".html", ".css", ".json", "file", "script"]
+        has_file_ref = any(indicator in user_lower for indicator in file_indicators)
+
+        # If user says "create folder" or "make directory", it's a command, not a file
+        folder_indicators = ["folder", "directory", "mkdir"]
+        has_folder_ref = any(indicator in user_lower for indicator in folder_indicators)
+
+        result = has_command_intent and (has_folder_ref or not has_file_ref)
+
+        in_web_shell = getattr(self, "_in_web_shell", False)
+
+        if self.verbose:
+            OSUtils.debug_print(
+                f"Command execution detection: input='{user_input}', intent={has_command_intent}, folder_ref={has_folder_ref}, file_ref={has_file_ref}, result={result}",
+                True,
+            )
+
+        return result
+
     def _should_generate_commands(self, user_input: str) -> bool:
         """
         Determine if we should use two-stage LLM processing (command generation + chat)
@@ -2111,6 +1987,9 @@ Continue the code now:""",
         """
         # Keywords that suggest file reading/examination
         read_keywords = [
+            "folder",
+            "directory",
+            "search",
             "read",
             "show",
             "display",
@@ -2442,6 +2321,125 @@ Continue the code now:""",
             self.console.print(f"[red]Review error: {e}[/red]")
             self.console.print("Check if you're in a Git repository with changes to review")
 
+    def _handle_lsp_command(self, user_input: str):
+        """Handle LSP (Language Server Protocol) commands"""
+        command = user_input.lower().strip()
+
+        # Check if LSP is available
+        if not self.lsp_manager or not self.lsp_context_provider:
+            self.console.print("[yellow]⚠️  LSP integration is not enabled[/yellow]")
+            self.console.print("[dim]Enable in preferences with: lsp_enabled = True[/dim]")
+            return
+
+        # Show LSP status
+        if command == "/lsp":
+            status_text = self.lsp_context_provider.format_lsp_status_for_user()
+            self.console.print(status_text)
+            return
+
+        # Enable LSP
+        if command == "/lsp on":
+            if not self.lsp_enabled:
+                try:
+                    import os
+
+                    from xandai.lsp import LSPContextProvider, LSPManager
+
+                    self.lsp_manager = LSPManager(root_path=os.getcwd(), verbose=self.verbose)
+                    self.lsp_context_provider = LSPContextProvider(
+                        self.lsp_manager, verbose=self.verbose
+                    )
+                    self.lsp_manager.initialize(auto_start=True)
+                    self.lsp_enabled = True
+                    self.app_state.set_preference("lsp_enabled", True)
+
+                    self.console.print("[green]✓ LSP integration enabled[/green]")
+
+                    # Show status
+                    status_text = self.lsp_context_provider.format_lsp_status_for_user()
+                    self.console.print(status_text)
+                except Exception as e:
+                    self.console.print(f"[red]Failed to enable LSP: {e}[/red]")
+            else:
+                self.console.print("[yellow]LSP is already enabled[/yellow]")
+            return
+
+        # Disable LSP
+        if command == "/lsp off":
+            if self.lsp_enabled:
+                if self.lsp_manager:
+                    self.lsp_manager.shutdown_all()
+                self.lsp_enabled = False
+                self.app_state.set_preference("lsp_enabled", False)
+                self.console.print("[yellow]LSP integration disabled[/yellow]")
+            else:
+                self.console.print("[yellow]LSP is already disabled[/yellow]")
+            return
+
+        # Start LSP server for language
+        if command.startswith("/lsp start "):
+            language = user_input[11:].strip()
+            if language:
+                self.console.print(f"[dim]Starting LSP server for {language}...[/dim]")
+                success = self.lsp_manager.start_server(language)
+                if success:
+                    self.console.print(f"[green]✓ LSP server started for {language}[/green]")
+                else:
+                    self.console.print(f"[red]Failed to start LSP server for {language}[/red]")
+                    self.console.print("[dim]Check if the server is installed[/dim]")
+            else:
+                self.console.print("[yellow]Usage: /lsp start <language>[/yellow]")
+                self.console.print("[dim]Example: /lsp start python[/dim]")
+            return
+
+        # Stop LSP server for language
+        if command.startswith("/lsp stop "):
+            language = user_input[10:].strip()
+            if language:
+                self.lsp_manager.stop_server(language)
+                self.console.print(f"[green]✓ LSP server stopped for {language}[/green]")
+            else:
+                self.console.print("[yellow]Usage: /lsp stop <language>[/yellow]")
+            return
+
+        # Analyze file with LSP
+        if command.startswith("/lsp analyze "):
+            file_path = user_input[13:].strip()
+            if file_path:
+                self.console.print(f"[dim]Analyzing {file_path}...[/dim]")
+                context = self.lsp_manager.get_file_context(file_path)
+
+                self.console.print(f"\n[bold]File Analysis:[/bold] {file_path}")
+                self.console.print(f"Language: {context['language']}")
+                self.console.print(f"LSP Available: {context['lsp_available']}")
+
+                if context["lsp_available"]:
+                    server_info = context.get("server_info", {})
+                    self.console.print(f"Server: {server_info.get('name', 'Unknown')}")
+
+                    diagnostics = context.get("diagnostics", [])
+                    if diagnostics:
+                        self.console.print(
+                            f"\n[yellow]⚠️  Found {len(diagnostics)} issue(s):[/yellow]"
+                        )
+                        for i, diag in enumerate(diagnostics[:10], 1):
+                            self.console.print(f"  {i}. {diag.get('message', 'Unknown issue')}")
+                        if len(diagnostics) > 10:
+                            self.console.print(f"  ... and {len(diagnostics) - 10} more")
+                    else:
+                        self.console.print("\n[green]✓ No issues found[/green]")
+                else:
+                    self.console.print("[yellow]LSP not available for this file[/yellow]")
+            else:
+                self.console.print("[yellow]Usage: /lsp analyze <file>[/yellow]")
+            return
+
+        # Unknown LSP subcommand
+        self.console.print(f"[red]Unknown LSP command: {command}[/red]")
+        self.console.print(
+            "[dim]Available: /lsp, /lsp on, /lsp off, /lsp start <lang>, /lsp stop <lang>, /lsp analyze <file>[/dim]"
+        )
+
     def _display_review_result(self, review_result):
         """Display review result in chat format"""
         from rich.text import Text
@@ -2503,33 +2501,78 @@ Continue the code now:""",
     def _handle_agent_mode(self, agent_instruction: str):
         """Handle agent mode request - multi-step LLM orchestrator"""
         try:
+            from rich.panel import Panel
+            from rich.syntax import Syntax
+
             self.console.print("[bold cyan]🤖 Agent Mode - Multi-Step Processing[/bold cyan]")
             self.console.print(f"[dim]Max calls: {self.agent_processor.max_calls}[/dim]\n")
 
-            self.console.print("[dim]💭 Starting multi-step reasoning...[/dim]")
+            # Setup streaming callback
+            current_step_reasoning = []
+
+            def streaming_callback(event_type, *args):
+                nonlocal current_step_reasoning
+
+                if event_type == "show_prompt":
+                    step_num, step_name, prompt = args
+                    self.console.print(
+                        f"\n[bold yellow]📋 Step {step_num}: {step_name}[/bold yellow]"
+                    )
+                    self.console.print("[dim]Prompt:[/dim]")
+
+                    # Show prompt in a panel with syntax highlighting
+                    prompt_panel = Panel(
+                        Syntax(
+                            prompt, "markdown", theme="monokai", line_numbers=False, word_wrap=True
+                        ),
+                        title=f"Prompt for Step {step_num}",
+                        border_style="yellow",
+                        expand=False,
+                    )
+                    self.console.print(prompt_panel)
+                    self.console.print()
+
+                elif event_type == "step_start":
+                    step_num, step_name = args
+                    self.console.print(
+                        f"[bold cyan]🔄 Executing Step {step_num}: {step_name}[/bold cyan]"
+                    )
+                    self.console.print("[dim]Reasoning:[/dim]")
+                    current_step_reasoning = []
+
+                elif event_type == "reasoning_chunk":
+                    chunk = args[0]
+                    current_step_reasoning.append(chunk)
+                    # Print chunk directly for real-time streaming
+                    self.console.print(chunk, end="", markup=False)
+
+                elif event_type == "step_complete":
+                    step_num, step_name, tokens = args
+                    self.console.print(
+                        f"\n[bold green]✅ Step {step_num} Complete[/bold green] [dim]({tokens} tokens)[/dim]\n"
+                    )
+
+                elif event_type == "step_error":
+                    step_num, step_name, error = args
+                    self.console.print(
+                        f"\n[bold red]❌ Step {step_num} Error: {error}[/bold red]\n"
+                    )
+
+            # Set streaming callback
+            self.agent_processor.set_streaming_callback(streaming_callback)
 
             # Enable verbose temporarily to show progress
             original_verbose = self.agent_processor.verbose
             self.agent_processor.verbose = True
+
+            self.console.print("[dim]💭 Starting multi-step reasoning...[/dim]\n")
 
             # Process through agent
             result = self.agent_processor.process(agent_instruction, self.app_state)
 
             # Restore verbose setting
             self.agent_processor.verbose = original_verbose
-
-            # Display step-by-step progress
-            self.console.print("[bold]Agent Execution Steps:[/bold]\n")
-
-            for step in result.steps:
-                status_icon = "✅" if step.success else "❌"
-                self.console.print(f"{status_icon} [Step {step.step_number}] {step.step_name}")
-                if self.verbose and step.response:
-                    # Show summary in verbose mode
-                    summary = (
-                        step.response[:100] + "..." if len(step.response) > 100 else step.response
-                    )
-                    self.console.print(f"[dim]  → {summary}[/dim]")
+            self.agent_processor.set_streaming_callback(None)
 
             self.console.print()
 
@@ -2648,7 +2691,7 @@ Continue the code now:""",
 
                 summary = self.task_processor.get_task_summary(steps)
                 mode_indicator = "🔧 Editing" if project_mode == "edit" else "🆕 Creating"
-                self.console.print(f"\\n[bold green]✅ {mode_indicator} - {summary}[/bold green]")
+                self.console.print(f"\\n[bold green] {mode_indicator} - {summary}[/bold green]")
 
                 # First, show simple step list (required format)
                 self.console.print("\\n[bold cyan]Steps:[/bold cyan]")
@@ -2663,7 +2706,7 @@ Continue the code now:""",
                 self._execute_task_steps(steps)
 
             else:
-                self.console.print("\\n[yellow]⚠️  No executable steps generated.[/yellow]")
+                self.console.print("\\n[yellow]  No executable steps generated.[/yellow]")
                 self.console.print(
                     "[dim]Try being more specific about what you want to build.[/dim]"
                 )
@@ -2674,7 +2717,7 @@ Continue the code now:""",
                 self.console.print(f"\\n[dim]Context usage:{context_line}[/dim]")
 
         except Exception as e:
-            self.console.print(f"[red]❌ Task processing error: {e}[/red]")
+            self.console.print(f"[red] Task processing error: {e}[/red]")
             self.console.print("[dim]Please try rephrasing your request.[/dim]")
             if self.verbose:
                 import traceback
@@ -2708,7 +2751,7 @@ Continue the code now:""",
 
                         # Show success with preview
                         action_text = "Created" if step.action == "create" else "Updated"
-                        self.console.print(f"[green]✅ {action_text} {step.target}[/green]")
+                        self.console.print(f"[green] {action_text} {step.target}[/green]")
 
                         # Show file preview (first few lines)
                         lines = file_content.split("\\n")[:3]
@@ -2722,7 +2765,7 @@ Continue the code now:""",
 
                     else:
                         self.console.print(
-                            f"[red]❌ Failed to generate content for {step.target}[/red]"
+                            f"[red] Failed to generate content for {step.target}[/red]"
                         )
 
                 elif step.action == "run":
@@ -2748,24 +2791,24 @@ Continue the code now:""",
 
                             if result.returncode == 0:
                                 self.console.print(
-                                    f"[green]✅ Command completed successfully[/green]"
+                                    f"[green] Command completed successfully[/green]"
                                 )
                                 if result.stdout.strip():
                                     self.console.print(f"[dim]{result.stdout.strip()}[/dim]")
                             else:
                                 self.console.print(
-                                    f"[yellow]⚠️  Command completed with warnings[/yellow]"
+                                    f"[yellow]  Command completed with warnings[/yellow]"
                                 )
                                 if result.stderr.strip():
                                     self.console.print(f"[dim]{result.stderr.strip()}[/dim]")
 
                         except subprocess.TimeoutExpired:
-                            self.console.print(f"[red]❌ Command timed out after 60s[/red]")
+                            self.console.print(f"[red] Command timed out after 60s[/red]")
                         except Exception as cmd_error:
-                            self.console.print(f"[red]❌ Command failed: {cmd_error}[/red]")
+                            self.console.print(f"[red] Command failed: {cmd_error}[/red]")
 
             except Exception as e:
-                self.console.print(f"[red]❌ Failed to execute step {step.step_number}: {e}[/red]")
+                self.console.print(f"[red] Failed to execute step {step.step_number}: {e}[/red]")
 
         self.console.print(f"\\n[bold green]🎉 Task execution completed![/bold green]")
 
@@ -3571,6 +3614,21 @@ Remember: Your response will be written directly to the file! NO explanatory tex
                 }
             )
 
+        # Find <command> tags (singular): <command>single command</command>
+        command_tag_pattern = r"<command>(.*?)</command>"
+        for match in re.finditer(command_tag_pattern, content, re.DOTALL):
+            command_content = match.group(1).strip()
+            all_code_blocks.append(
+                {
+                    "lang": "bash",  # Commands are shell commands
+                    "code": command_content,
+                    "type": "command_tag",
+                    "full_match": match.group(0),
+                    "start": match.start(),
+                    "end": match.end(),
+                }
+            )
+
         # Track positions to avoid duplicate detection
         detected_positions = set()
 
@@ -3604,7 +3662,10 @@ Remember: Your response will be written directly to the file! NO explanatory tex
 
         # Also find <code filename="..."> tags (shorthand for create)
         # This pattern should NOT match if 'edit' or 'create' keywords are present
-        simple_file_pattern = r'<code\s+filename=["\']([^"\']+)["\']>(.*?)</code>'
+        # Use negative lookahead to exclude patterns already matched above
+        simple_file_pattern = (
+            r'<code\s+(?!(?:edit|create)\s+)filename=["\']([^"\']+)["\']>(.*?)</code>'
+        )
         for match in re.finditer(simple_file_pattern, content, re.DOTALL):
             # Skip if already detected at this position
             pos_key = (match.start(), match.end())
@@ -3734,7 +3795,7 @@ Remember: Your response will be written directly to the file! NO explanatory tex
                             # Check if truncated and add warning to title
                             is_truncated = block.get("truncated", False)
                             if is_truncated:
-                                block_title += " ⚠️ TRUNCATED"
+                                block_title += "  TRUNCATED"
                                 border_style = "yellow"
                             else:
                                 border_style = "green"
@@ -3746,7 +3807,7 @@ Remember: Your response will be written directly to the file! NO explanatory tex
                             # Display truncation warning
                             if is_truncated:
                                 self.console.print(
-                                    "[yellow]⚠️  Warning: This code appears to be truncated (missing closing tag).[/yellow]"
+                                    "[yellow]  Warning: This code appears to be truncated (missing closing tag).[/yellow]"
                                 )
                                 self.console.print(
                                     "[yellow]   The file will be created with the available content.[/yellow]"
@@ -3756,7 +3817,7 @@ Remember: Your response will be written directly to the file! NO explanatory tex
                             is_truncated = block.get("truncated", False)
                             fallback_title = f"{operation.title()} File: {filename}"
                             if is_truncated:
-                                fallback_title += " ⚠️ TRUNCATED"
+                                fallback_title += "  TRUNCATED"
                                 fallback_border = "yellow"
                             else:
                                 fallback_border = "green"
@@ -3772,7 +3833,7 @@ Remember: Your response will be written directly to the file! NO explanatory tex
                             # Display truncation warning
                             if is_truncated:
                                 self.console.print(
-                                    "[yellow]⚠️  Warning: This code appears to be truncated (missing closing tag).[/yellow]"
+                                    "[yellow]  Warning: This code appears to be truncated (missing closing tag).[/yellow]"
                                 )
                                 self.console.print(
                                     "[yellow]   The file will be created with the available content.[/yellow]"
@@ -3840,12 +3901,12 @@ Remember: Your response will be written directly to the file! NO explanatory tex
         """Prompt user to execute detected code/command"""
         try:
             # Customize prompt based on block type
-            if block_type == "commands_tag":
-                prompt_msg = f"\\n[yellow]⚡ Detected <commands> block. Execute these commands? (y/N):[/yellow]"
+            if block_type == "commands_tag" or block_type == "command_tag":
+                prompt_msg = f"\\n[yellow]⚡ Detected command block. Execute? (Y/n):[/yellow]"
                 exec_msg = "[green]🚀 Executing commands...[/green]"
             elif block_type == "code_tag":
                 prompt_msg = (
-                    f"\\n[yellow]⚡ Detected <code> tag ({lang}). Execute it? (y/N):[/yellow]"
+                    f"\\n[yellow]⚡ Detected <code> tag ({lang}). Execute it? (Y/n):[/yellow]"
                 )
                 exec_msg = f"[green]🚀 Executing {lang} code...[/green]"
             else:
@@ -3861,6 +3922,15 @@ Remember: Your response will be written directly to the file! NO explanatory tex
             import sys
 
             sys.stdout.flush()
+
+            # Check if we should auto-approve (web shell mode)
+            auto_approve = getattr(self, "auto_approve_operations", False)
+
+            if auto_approve:
+                # Auto-approve mode (web shell) - execute without prompting
+                self.console.print(exec_msg)
+                self._execute_code_by_language(code, lang)
+                return
 
             # Check if interactive mode is disabled
             if not self.interactive_mode:
@@ -3878,7 +3948,17 @@ Remember: Your response will be written directly to the file! NO explanatory tex
                 self.console.print(f"[dim]Code execution skipped (input error: {e}).[/dim]")
                 return
 
-            if response in ["y", "yes", "sim", "s"]:
+            # For commands and code tags, default to "yes" if Enter is pressed
+            # For markdown blocks, default to "no"
+            should_execute = False
+            if block_type in ["commands_tag", "command_tag", "code_tag"]:
+                # Default is YES (Y/n) - execute if empty or yes
+                should_execute = response == "" or response in ["y", "yes", "sim", "s"]
+            else:
+                # Default is NO (y/N) - only execute if explicitly yes
+                should_execute = response in ["y", "yes", "sim", "s"]
+
+            if should_execute:
                 self.console.print(exec_msg)
 
                 # Execute based on language type using generalized system
@@ -4250,9 +4330,21 @@ Remember: Your response will be written directly to the file! NO explanatory tex
 
             # Customize prompt based on operation type
             if op_type == "create":
-                prompt_msg = f"\\n[yellow]📄 Create file '{filename}'? (y/N):[/yellow]"
+                prompt_msg = f"\\n[yellow]📄 Create file '{filename}'? (Y/n):[/yellow]"
             else:
-                prompt_msg = f"\\n[yellow]✏️  Edit file '{filename}'? (y/N):[/yellow]"
+                prompt_msg = f"\\n[yellow]✏️  Edit file '{filename}'? (Y/n):[/yellow]"
+
+            # Check if we should auto-approve (web shell mode)
+            auto_approve = getattr(self, "auto_approve_operations", False)
+
+            if auto_approve:
+                # Auto-approve mode (web shell) - execute without prompting
+                self.console.print(f"[green]🚀 Auto-executing file operation: {filename}[/green]")
+                if op_type == "create":
+                    self._execute_file_create(content, filename)
+                else:
+                    self._execute_file_edit(content, filename)
+                return
 
             # Show file operation prompt (only if interactive)
             if not self.interactive_mode:
@@ -4267,7 +4359,8 @@ Remember: Your response will be written directly to the file! NO explanatory tex
             sys.stdout.flush()
             response = input().strip().lower()
 
-            if response in ["y", "yes", "sim", "s"]:
+            # Default is YES (Y/n) - execute if empty or yes
+            if response == "" or response in ["y", "yes", "sim", "s"]:
                 # Execute using enhanced file handler
                 if op_type == "create":
                     self._execute_file_create(content, filename)
@@ -4333,6 +4426,63 @@ Remember: Your response will be written directly to the file! NO explanatory tex
         except Exception as e:
             self.console.print(f"[red]Error executing shell command: {e}[/red]")
 
+    def _get_command_timeout(self, command: str) -> int:
+        """
+        Determine timeout duration based on command type.
+        Install commands get longer timeout (120s), others get default (30s).
+
+        Args:
+            command: The command string to analyze
+
+        Returns:
+            Timeout in seconds (120 for install commands, 30 for others)
+        """
+        command_lower = command.lower().strip()
+
+        # List of install command patterns
+        # These are commands that typically take longer to complete
+        install_keywords = [
+            "npm install",
+            "npm i ",
+            "pip install",
+            "pip3 install",
+            "composer install",
+            "composer require",
+            "cargo install",
+            "gem install",
+            "apt install",
+            "apt-get install",
+            "brew install",
+            "yarn install",
+            "yarn add",
+            "pnpm install",
+            "pnpm add",
+            "poetry install",
+            "poetry add",
+            "bundle install",
+            "go get",
+            "go install",
+            "dotnet add",
+            "dotnet restore",
+            "mvn install",
+            "gradle install",
+            "mix deps.get",
+            "stack install",
+            "opam install",
+        ]
+
+        # Check if command starts with any install keyword
+        for keyword in install_keywords:
+            if command_lower.startswith(keyword) or f" {keyword}" in command_lower:
+                if self.verbose:
+                    OSUtils.debug_print(
+                        f"Detected install command - using extended timeout (120s)", True
+                    )
+                return 120  # 2 minutes for install commands
+
+        # Default timeout for regular commands
+        return 30
+
     def _execute_command_with_output(self, command: str):
         """Execute command and immediately display output - optimized for chat mode execution"""
         try:
@@ -4358,12 +4508,58 @@ Remember: Your response will be written directly to the file! NO explanatory tex
                 self._handle_clear_command(command)
                 return
 
-            # Execute command with immediate output
+            # Check if we're in web shell context
+            in_web_shell = getattr(self, "_in_web_shell", False)
+
+            # For normal shell with potentially interactive commands, run without capturing I/O
+            # This allows user to interact directly with the command
+            if not in_web_shell:
+                try:
+                    # Run command with inherited stdin/stdout/stderr for direct interaction
+                    result = subprocess.run(
+                        command,
+                        shell=True,
+                        text=True,
+                        encoding="utf-8",
+                        errors="replace",
+                    )
+
+                    if result.returncode == 0:
+                        self.console.print(f"[green] Command completed successfully[/green]")
+                        output_msg = "Command executed interactively - output shown above"
+                    else:
+                        self.console.print(
+                            f"[yellow]  Command completed with exit code {result.returncode}[/yellow]"
+                        )
+                        output_msg = (
+                            f"Interactive command completed with exit code {result.returncode}"
+                        )
+
+                    # Add to history
+                    self.history_manager.add_conversation(
+                        role="system",
+                        content=f"Executed command: {command}\n{output_msg}",
+                        metadata={"type": "command_output", "command": command},
+                    )
+                    return
+
+                except subprocess.TimeoutExpired:
+                    self.console.print("[red] Command timed out waiting for input[/red]")
+                    self.console.print(
+                        "[cyan]💡 Try option 1 (interactive mode) for scripts that need input[/cyan]"
+                    )
+                    return
+                except Exception as e:
+                    self.console.print(f"[red]Error executing command: {e}[/red]")
+                    return
+
+            # Web shell: Execute with captured I/O and auto-response
             process = subprocess.Popen(
                 command,
                 shell=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
+                stdin=subprocess.PIPE,
                 text=True,
                 encoding="utf-8",
                 errors="replace",
@@ -4372,17 +4568,53 @@ Remember: Your response will be written directly to the file! NO explanatory tex
             )
 
             try:
-                # Wait for completion with timeout
-                stdout, stderr = process.communicate(
-                    timeout=60
-                )  # Increased timeout for long operations
+                # Provide default responses for interactive scripts
+                # Priority: "1" first (most common for choice prompts), then S/Y for confirmations
+                # This ensures numbered choices (1-3) are answered first
+                auto_input = "1\n" * 10 + "S\n" * 5 + "Y\n" * 5  # 10x "1", 5x "S", 5x "Y"
+
+                # Determine timeout based on command type
+                # Install commands get 2 minutes (120s), others get 30s
+                timeout_duration = self._get_command_timeout(command)
+
+                try:
+                    stdout, stderr = process.communicate(input=auto_input, timeout=timeout_duration)
+                except subprocess.TimeoutExpired:
+                    self.console.print(
+                        f"[yellow]⚠️ Command timed out after {timeout_duration}s. Terminating...[/yellow]"
+                    )
+                    process.kill()
+                    stdout, stderr = process.communicate()
 
                 # Show output immediately
                 if stdout and stdout.strip():
+                    # Check if output suggests the script expected input and show appropriate message
+                    output_lower = stdout.lower()
+                    if (
+                        "choice" in output_lower
+                        or "your choice" in output_lower
+                        or "(1-" in output_lower
+                    ):
+                        self.console.print(
+                            "[yellow]💡 Note: Interactive prompts auto-responded with '1' (web shell default).[/yellow]"
+                        )
+                    elif "(s/n)" in output_lower or "tem certeza (s/n)" in output_lower:
+                        self.console.print(
+                            "[yellow]💡 Note: S/N prompts auto-responded with 'S' (web shell default).[/yellow]"
+                        )
+                    elif "(y/n)" in output_lower or "are you sure (y/n)" in output_lower:
+                        self.console.print(
+                            "[yellow]💡 Note: Y/N prompts auto-responded with 'Y' (web shell default).[/yellow]"
+                        )
+                    elif "input" in output_lower:
+                        self.console.print(
+                            "[yellow]💡 Note: Interactive input auto-responded (web shell default).[/yellow]"
+                        )
+
                     self.console.print(
                         Panel(
                             stdout.strip(),
-                            title=f"✅ Output: {command}",
+                            title=f" Output: {command}",
                             border_style="green",
                         )
                     )
@@ -4393,16 +4625,14 @@ Remember: Your response will be written directly to the file! NO explanatory tex
                         metadata={"type": "command_output", "command": command},
                     )
                 elif process.returncode == 0:
-                    self.console.print(
-                        f"[green]✅ Command completed successfully: {command}[/green]"
-                    )
+                    self.console.print(f"[green] Command completed successfully: {command}[/green]")
 
                 # Show errors if any
                 if stderr and stderr.strip():
                     self.console.print(
                         Panel(
                             f"[red]{stderr.strip()}[/red]",
-                            title=f"⚠️  Error: {command}",
+                            title=f"  Error: {command}",
                             border_style="red",
                         )
                     )
@@ -4414,15 +4644,18 @@ Remember: Your response will be written directly to the file! NO explanatory tex
                     )
                 elif process.returncode != 0:
                     self.console.print(
-                        f"[red]❌ Command failed with code {process.returncode}: {command}[/red]"
+                        f"[red] Command failed with code {process.returncode}: {command}[/red]"
                     )
 
-            except subprocess.TimeoutExpired:
-                process.kill()
-                self.console.print(f"[red]⏰ Command timed out (60s): {command}[/red]")
+            except subprocess.TimeoutExpired as e:
+                self.console.print(f"[red]⏰ Command timed out: {command}[/red]")
+                try:
+                    process.kill()
+                except:
+                    pass
 
         except Exception as e:
-            self.console.print(f"[red]❌ Error executing command '{command}': {e}[/red]")
+            self.console.print(f"[red] Error executing command '{command}': {e}[/red]")
             if self.verbose:
                 import traceback
 
@@ -4595,38 +4828,46 @@ Remember: Your response will be written directly to the file! NO explanatory tex
             },
             # Shell scripts
             "bash": {
-                "extensions": [".sh"],
-                "inline_command": "bash -c" if not is_windows else "bash -c",
-                "file_command": "bash",
-                "supports_inline": True,
-                "needs_compilation": False,
-                "complex_keywords": [
-                    "#!/bin/bash",
-                    "function ",
-                    "if ",
-                    "for ",
-                    "while ",
-                    "case ",
-                ],
-            },
-            "sh": {
-                "extensions": [".sh"],
-                "inline_command": "sh -c" if not is_windows else "sh -c",
-                "file_command": "sh",
-                "supports_inline": True,
-                "needs_compilation": False,
-                "complex_keywords": ["#!/bin/sh", "if ", "for ", "while ", "case "],
-            },
-            "shell": {
-                "extensions": [".sh"],
-                "inline_command": (
-                    "bash -c" if not is_windows else "cmd /c" if is_windows else "sh -c"
-                ),
+                "extensions": [".sh" if not is_windows else ".bat"],
+                "inline_command": "bash -c" if not is_windows else "cmd /c",
                 "file_command": "bash" if not is_windows else "cmd /c",
                 "supports_inline": True,
                 "needs_compilation": False,
                 "complex_keywords": (
-                    ["if ", "for ", "while ", "case "] if not is_windows else ["if ", "for "]
+                    [
+                        "#!/bin/bash",
+                        "function ",
+                        "if ",
+                        "for ",
+                        "while ",
+                        "case ",
+                    ]
+                    if not is_windows
+                    else ["if ", "for ", "echo "]
+                ),
+            },
+            "sh": {
+                "extensions": [".sh" if not is_windows else ".bat"],
+                "inline_command": "sh -c" if not is_windows else "cmd /c",
+                "file_command": "sh" if not is_windows else "cmd /c",
+                "supports_inline": True,
+                "needs_compilation": False,
+                "complex_keywords": (
+                    ["#!/bin/sh", "if ", "for ", "while ", "case "]
+                    if not is_windows
+                    else ["if ", "for ", "echo "]
+                ),
+            },
+            "shell": {
+                "extensions": [".sh" if not is_windows else ".bat"],
+                "inline_command": "sh -c" if not is_windows else "cmd /c",
+                "file_command": "sh" if not is_windows else "cmd /c",
+                "supports_inline": True,
+                "needs_compilation": False,
+                "complex_keywords": (
+                    ["if ", "for ", "while ", "case "]
+                    if not is_windows
+                    else ["if ", "for ", "echo "]
                 ),
             },
             # Windows specific
@@ -4996,7 +5237,7 @@ Remember: Your response will be written directly to the file! NO explanatory tex
   • exit, quit, bye
 
 [yellow]Task Mode (DEPRECATED):[/yellow]
-  • ⚠️  /task command is deprecated - use natural conversation instead
+  •   /task command is deprecated - use natural conversation instead
   • Instead of "/task create a web app", just say "create a web app with Python Flask"
   • Natural conversation provides better, more flexible results
 
@@ -5004,6 +5245,21 @@ Remember: Your response will be written directly to the file! NO explanatory tex
   • /review          - Review changes in current Git repository
   • /review /path/to/repo - Review changes in specific repository
   • Analyzes modified files and provides comprehensive feedback
+
+[yellow]LSP (Language Server Protocol):[/yellow]
+  • /lsp              - Show LSP status and active servers
+  • /lsp on           - Enable LSP integration
+  • /lsp off          - Disable LSP integration
+  • /lsp start <lang> - Start LSP server for specific language
+  • /lsp stop <lang>  - Stop LSP server for language
+  • /lsp analyze <file> - Analyze file with LSP
+  • Provides real-time code intelligence and syntax validation
+
+[yellow]Web Shell:[/yellow]
+  • /host [address] [port]     - Start web shell server
+                                 Default: 0.0.0.0:4800
+                                 Example: /host 0.0.0.0 3999
+                                 Or with flag: /host 0.0.0.0 -p 3999
 
 [yellow]Agent Mode:[/yellow]
   • /agent <instruction>  - Multi-step LLM orchestrator for complex tasks
@@ -5219,7 +5475,7 @@ Remember: Your response will be written directly to the file! NO explanatory tex
                 self.console.print()
 
             except Exception as e:
-                status_icon = "❌"
+                status_icon = ""
                 current_marker = (
                     " [bold yellow](current)[/bold yellow]"
                     if provider_name == current_provider
@@ -5271,7 +5527,7 @@ Remember: Your response will be written directly to the file! NO explanatory tex
             available_models = health.get("available_models", [])
 
             self.console.print(
-                f"[green]✅ Switched from {old_provider.upper()} to {provider_name.upper()}[/green]"
+                f"[green] Switched from {old_provider.upper()} to {provider_name.upper()}[/green]"
             )
             self.console.print(f"[blue]Endpoint: {health.get('endpoint')}[/blue]")
             self.console.print(f"[yellow]Current Model: {current_model}[/yellow]")
@@ -5309,7 +5565,7 @@ Remember: Your response will be written directly to the file! NO explanatory tex
                     available_models = health.get("available_models", [])
 
                     self.console.print(
-                        f"[green]✅ Auto-detected and switched to {provider_type.upper()}[/green]"
+                        f"[green] Auto-detected and switched to {provider_type.upper()}[/green]"
                     )
                     self.console.print(f"[blue]Endpoint: {health.get('endpoint')}[/blue]")
                     self.console.print(f"[yellow]Current Model: {current_model}[/yellow]")
@@ -5319,7 +5575,7 @@ Remember: Your response will be written directly to the file! NO explanatory tex
                         f"[yellow]Already using the best available provider: {provider_type.upper()}[/yellow]"
                     )
             else:
-                self.console.print("[red]❌ No providers available or connected[/red]")
+                self.console.print("[red] No providers available or connected[/red]")
                 self.console.print("[dim]Make sure Ollama or LM Studio is running[/dim]")
 
         except Exception as e:
@@ -5345,12 +5601,12 @@ Remember: Your response will be written directly to the file! NO explanatory tex
                 current_model = new_provider.get_current_model() or "None"
                 available_models = health.get("available_models", [])
 
-                self.console.print(f"[green]✅ Updated {provider_type.upper()} endpoint[/green]")
+                self.console.print(f"[green] Updated {provider_type.upper()} endpoint[/green]")
                 self.console.print(f"[blue]New Endpoint: {server_url}[/blue]")
                 self.console.print(f"[yellow]Current Model: {current_model}[/yellow]")
                 self.console.print(f"[dim]Available Models: {len(available_models)}[/dim]")
             else:
-                self.console.print(f"[red]❌ Cannot connect to {server_url}[/red]")
+                self.console.print(f"[red] Cannot connect to {server_url}[/red]")
                 self.console.print("[dim]Verify the URL and ensure the server is running[/dim]")
 
         except Exception as e:
@@ -5362,7 +5618,7 @@ Remember: Your response will be written directly to the file! NO explanatory tex
             health = self.llm_provider.health_check()
 
             if not health.get("connected", False):
-                self.console.print("[red]❌ Not connected to provider[/red]")
+                self.console.print("[red] Not connected to provider[/red]")
                 self.console.print(
                     "[dim]Use [bold]/provider[/bold] to check connection status[/dim]"
                 )
@@ -5450,7 +5706,7 @@ Remember: Your response will be written directly to the file! NO explanatory tex
         health = self.llm_provider.health_check()
 
         status_text = f"""
-Connected: {'✅ Yes' if health['connected'] else '❌ No'}
+Connected: {' Yes' if health['connected'] else ' No'}
 Endpoint: {health['endpoint']}
 Current Model: {health.get('current_model', 'None')}
 Available Models: {health.get('models_available', 0)}
@@ -5462,12 +5718,32 @@ Tracked Files: {len(self.history_manager.get_project_files())}
 
         self.console.print(Panel(status_text.strip(), title="System Status", border_style="green"))
 
+    def _reload_tools(self):
+        """Reload custom tools from tools directory"""
+        try:
+            self.console.print("[cyan]🔄 Reloading custom tools...[/cyan]")
+
+            # Reload tool manager
+            self.tool_manager._load_tools()
+
+            if self.tool_manager.tools:
+                self.console.print(
+                    f"[green]✓ Loaded {len(self.tool_manager.tools)} tool(s)[/green]"
+                )
+                self._show_available_tools()
+            else:
+                self.console.print("[yellow]No tools found in /tools directory[/yellow]")
+
+        except Exception as e:
+            self.console.print(f"[red]Error reloading tools: {e}[/red]")
+
     def _show_available_tools(self):
         """Show available custom tools"""
         if not self.tool_manager or not self.tool_manager.tools:
             self.console.print(
                 "[yellow]No custom tools available.[/yellow]\n"
-                "[dim]Add tool modules to the /tools directory to enable them.[/dim]"
+                "[dim]Add tool modules to the /tools directory to enable them.[/dim]\n"
+                "[dim]💡 Tip: Use /reload_tools to reload after adding new tools[/dim]"
             )
             return
 
@@ -5487,6 +5763,108 @@ Tracked Files: {len(self.history_manager.get_project_files())}
         tools_text += '[dim]Example: "what is the weather in Los Angeles now?"[/dim]'
 
         self.console.print(Panel(tools_text, title="Custom Tools", border_style="magenta"))
+
+    def _start_web_shell(self, args: str):
+        """Starts the web shell server"""
+        # Parse arguments
+        host = "0.0.0.0"
+        port = 4800
+
+        if args.strip():
+            parts = args.strip().split()
+
+            # Collect positional arguments (non-flag arguments)
+            positional_args = []
+            i = 0
+            while i < len(parts):
+                part = parts[i]
+
+                if part in ["-p", "--port", "--p"]:
+                    # Next part should be the port
+                    if i + 1 < len(parts):
+                        try:
+                            port = int(parts[i + 1])
+                            i += 2  # Skip the flag and its value
+                            continue
+                        except ValueError:
+                            self.console.print(f"[red]Invalid port number: {parts[i + 1]}[/red]")
+                            return
+                elif not part.startswith("-"):
+                    positional_args.append(part)
+
+                i += 1
+
+            # Process positional arguments: [host] or [host, port]
+            if len(positional_args) >= 1:
+                host = positional_args[0]
+            if len(positional_args) >= 2:
+                try:
+                    port = int(positional_args[1])
+                except ValueError:
+                    self.console.print(f"[red]Invalid port number: {positional_args[1]}[/red]")
+                    return
+
+        try:
+            # Check if server is already running
+            if self.web_shell_server and self.web_shell_server.is_running():
+                self.console.print("[yellow]  Web shell server is already running![/yellow]")
+                self.console.print(f"[dim]Access it at: http://{host}:{port}[/dim]")
+                return
+
+            # Create and start web shell server
+            self.console.print(f"[green]🌐 Starting web shell server on {host}:{port}...[/green]")
+
+            try:
+                self.web_shell_server = WebShellServer(self, verbose=self.verbose)
+                self.web_shell_server.start(host=host, port=port)
+
+                # Give the server a moment to start
+                import time
+
+                time.sleep(1.0)  # Increased delay to ensure server is fully started
+
+                # Check if server is actually running
+                if not self.web_shell_server.is_running():
+                    error_msg = self.web_shell_server.server_error or "Unknown error"
+                    self.console.print(f"[red] Web shell server failed to start: {error_msg}[/red]")
+                    self.console.print(
+                        "[yellow]💡 Try running with --verbose flag for more details[/yellow]"
+                    )
+                    return
+
+                self.console.print(
+                    f"[bold green] Web shell server started successfully![/bold green]"
+                )
+                self.console.print(f"[cyan]🔗 Access it at: http://{host}:{port}[/cyan]")
+                self.console.print(f"[dim]The server is running in the background.[/dim]")
+                self.console.print(f"[dim]You can continue using XandAI normally.[/dim]")
+                self.console.print()  # Add blank line for better readability
+
+                # Ensure output is flushed
+                import sys
+
+                sys.stdout.flush()
+                sys.stderr.flush()
+
+            except KeyboardInterrupt:
+                self.console.print("\n[yellow]Web shell server startup cancelled.[/yellow]")
+                return  # Don't re-raise, just return
+            except EOFError:
+                self.console.print("\n[yellow]Web shell server startup interrupted.[/yellow]")
+                return  # Don't re-raise, just return
+            except Exception as e:
+                self.console.print(f"[red] Failed to start web shell server: {e}[/red]")
+                if self.verbose:
+                    import traceback
+
+                    self.console.print(f"[dim]Traceback: {traceback.format_exc()}[/dim]")
+
+        except Exception as e:
+            self.console.print(f"[red] Error in web shell command handler: {e}[/red]")
+            if self.verbose:
+                import traceback
+
+                self.console.print(f"[dim]Traceback: {traceback.format_exc()}[/dim]")
 
     def _handle_debug_command(self, user_input: str):
         """Handle debug command with optional parameters"""
@@ -5553,7 +5931,7 @@ Windows: {OSUtils.is_windows()}
 Unix-like: {OSUtils.is_unix_like()}
 
 🔌 OLLAMA CONNECTION:
-Connected: {'✅ Yes' if health['connected'] else '❌ No'}
+Connected: {' Yes' if health['connected'] else ' No'}
 Endpoint: {health['endpoint']}
 Current Model: {health.get('current_model', 'None')}
 Available Models: {health.get('models_available', 0)}
@@ -5575,7 +5953,7 @@ Chat Prompt Length: {len(PromptManager.get_chat_system_prompt())} chars
 Task Prompt Length: {len(PromptManager.get_task_system_prompt_full_project())} chars
 Command Prompt Length: {len(PromptManager.get_command_generation_prompt())} chars
 
-⚡ DEBUG/VERBOSE MODE: {'✅ ENABLED' if self.verbose else '❌ DISABLED'}
+⚡ DEBUG/VERBOSE MODE: {' ENABLED' if self.verbose else ' DISABLED'}
 
 📝 DEBUG ACTIONS AVAILABLE:
 • OSUtils.debug_print() outputs when verbose=True
@@ -5629,34 +6007,7 @@ Command Prompt Length: {len(PromptManager.get_command_generation_prompt())} char
 
     def _build_system_prompt(self) -> str:
         """Build system prompt for chat mode"""
-        return """You are XandAI, an intelligent CLI assistant focused on software development and system administration.
-
-CHARACTERISTICS:
-- Provide clear, helpful responses to technical questions
-- When users show you command outputs (in <commands_output> tags), analyze and explain them
-- Offer practical solutions and best practices
-- Be concise but thorough in explanations
-- Suggest follow-up commands or actions when appropriate
-
-CONTEXT AWARENESS:
-- You can see terminal command outputs that users run locally
-- Use this context to provide more relevant advice
-- Reference specific files, directories, or system state when visible
-
-RESPONSE STYLE:
-- Use markdown formatting for code, commands, and structure
-- Provide working examples when explaining concepts
-- Include relevant terminal commands users can try
-- Explain the reasoning behind your suggestions
-
-CAPABILITIES:
-- Software development guidance (all languages/frameworks)
-- System administration help (Linux, macOS, Windows)
-- DevOps and deployment assistance
-- Debugging and troubleshooting
-- Best practices and code reviews
-
-Remember: Users can run terminal commands directly, and you'll see the results. Use this to provide contextual, actionable advice."""
+        return PromptManager.get_chat_system_prompt()
 
     def _display_web_integration_info(self, web_result):
         """Display information about web content that was processed"""

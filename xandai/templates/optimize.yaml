@@ -1,0 +1,38 @@
+name: optimize
+description: Optimize code for performance
+version: 1.0
+category: optimization
+
+parameters:
+  - name: code
+    type: string
+    required: true
+    description: Code to optimize
+  - name: metric
+    type: string
+    required: false
+    default: "overall performance"
+    description: What to optimize (speed, memory, both)
+  - name: constraints
+    type: string
+    required: false
+    default: ""
+    description: Any constraints or requirements
+
+template: |
+  Optimize the following code for {metric}.
+
+  {constraints}
+
+  Code:
+  ```
+  {code}
+  ```
+
+  Provide:
+  1. Performance analysis (what's slow/inefficient)
+  2. Optimized code with annotations
+  3. Expected performance improvements
+  4. Trade-offs or caveats
+
+  Focus on practical, impactful optimizations.

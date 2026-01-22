@@ -1,0 +1,38 @@
+name: code_review
+description: Comprehensive code review with suggestions
+version: 1.0
+category: code
+
+parameters:
+  - name: code
+    type: string
+    required: true
+    description: Code to review
+  - name: language
+    type: string
+    required: false
+    default: "auto-detect"
+    description: Programming language
+  - name: focus
+    type: string
+    required: false
+    default: "all aspects"
+    description: What to focus on (e.g., performance, security, style)
+
+template: |
+  Perform a thorough code review on the following {language} code.
+
+  Focus on: {focus}
+
+  ```
+  {code}
+  ```
+
+  Provide:
+  1. Overall assessment (1-2 sentences)
+  2. Strengths (what's done well)
+  3. Issues (bugs, anti-patterns, security concerns)
+  4. Suggestions for improvement
+  5. Refactoring opportunities
+
+  Be specific and actionable. Reference line numbers when possible.

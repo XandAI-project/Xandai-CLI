@@ -1,0 +1,9 @@
+# LSP (Language Server Protocol) Servers - Optional
+# Install with: pip install -r requirements-lsp.txt
+
+# Python Language Servers (choose one or both)
+pyright>=1.1.0
+jedi-language-server>=0.41.0
+
+# Python Language Server Protocol implementation
+python-lsp-server>=1.9.0

@@ -1,0 +1,379 @@
+{
+  "info": {
+    "name": "XandAI Project API Collection",
+    "_postman_id": "b44aaebd-4cf4-4022-aca3-1275eee62f67",
+    "description": "Auto-generated API collection with 13 endpoints",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "GET /health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:3000/health",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "3000"
+              ],
+              "port": "3000",
+              "path": [
+                "health"
+              ]
+            },
+            "description": "Endpoint from main.py"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:3000/health",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "3000"
+              ],
+              "port": "3000",
+              "path": [
+                "health"
+              ]
+            },
+            "description": "Endpoint from server.js"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:3000/health",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "3000"
+              ],
+              "port": "3000",
+              "path": [
+                "health"
+              ]
+            },
+            "description": "Endpoint from index.py"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Messages",
+      "item": [
+        {
+          "name": "GET /messages",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:3000/messages",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "3000"
+              ],
+              "port": "3000",
+              "path": [
+                "messages"
+              ]
+            },
+            "description": "Endpoint from main.py"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /messages",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:3000/messages",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "3000"
+              ],
+              "port": "3000",
+              "path": [
+                "messages"
+              ]
+            },
+            "description": "Endpoint from main.py",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /messages/<int:message_id>",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:3000/messages/<int:message_id>",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "3000"
+              ],
+              "port": "3000",
+              "path": [
+                "messages",
+                "<int:message_id>"
+              ]
+            },
+            "description": "Endpoint from main.py"
+          },
+          "response": []
+        },
+        {
+          "name": "PUT /messages/<int:message_id>",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:3000/messages/<int:message_id>",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "3000"
+              ],
+              "port": "3000",
+              "path": [
+                "messages",
+                "<int:message_id>"
+              ]
+            },
+            "description": "Endpoint from main.py",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE /messages/<int:message_id>",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:3000/messages/<int:message_id>",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "3000"
+              ],
+              "port": "3000",
+              "path": [
+                "messages",
+                "<int:message_id>"
+              ]
+            },
+            "description": "Endpoint from main.py"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Objects",
+      "item": [
+        {
+          "name": "POST /objects",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:3000/objects",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "3000"
+              ],
+              "port": "3000",
+              "path": [
+                "objects"
+              ]
+            },
+            "description": "Endpoint from index.py",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /objects",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:3000/objects",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "3000"
+              ],
+              "port": "3000",
+              "path": [
+                "objects"
+              ]
+            },
+            "description": "Endpoint from index.py"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Api-Keys",
+      "item": [
+        {
+          "name": "POST /api-keys",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:3000/api-keys",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "3000"
+              ],
+              "port": "3000",
+              "path": [
+                "api-keys"
+              ]
+            },
+            "description": "Endpoint from index.py",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE /api-keys/<string:api_key>",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:3000/api-keys/<string:api_key>",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "3000"
+              ],
+              "port": "3000",
+              "path": [
+                "api-keys",
+                "<string:api_key>"
+              ]
+            },
+            "description": "Endpoint from index.py"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "*",
+      "item": [
+        {
+          "name": "GET *",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:3000*",
+              "protocol": "http",
+              "host": [
+                "localhost",
+                "3000"
+              ],
+              "port": "3000",
+              "path": [
+                "*"
+              ]
+            },
+            "description": "Endpoint from server.js"
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3000",
+      "type": "string"
+    }
+  ]
+}

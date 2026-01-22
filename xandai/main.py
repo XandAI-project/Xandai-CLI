@@ -27,6 +27,7 @@ if os.name == "nt":  # Windows
     os.environ["PYTHONIOENCODING"] = "utf-8"
 
 from xandai.chat import ChatREPL
+from xandai.git.git_commands import GitCommands
 from xandai.history import HistoryManager
 from xandai.integrations.base_provider import LLMProvider
 from xandai.integrations.provider_factory import LLMProviderFactory
@@ -132,8 +133,35 @@ Platform: {OSUtils.get_platform().upper()} ({platform.system()} {platform.releas
         help="Show system prompt for specified mode and exit",
     )
 
+    # Git AI commands
     parser.add_argument(
-        "--version", action="version", version="XandAI 2.1.5 - Multi-Provider Edition"
+        "command",
+        nargs="?",
+        choices=["commit", "pr", "diff", "blame"],
+        help="Git AI commands: commit (generate commit message), pr (summarize PR), diff (explain diff), blame (explain line)",
+    )
+
+    parser.add_argument(
+        "--file", metavar="FILE", help="File path for git operations (used with diff, blame)"
+    )
+
+    parser.add_argument("--line", type=int, metavar="LINE", help="Line number for blame command")
+
+    parser.add_argument(
+        "--base",
+        metavar="BRANCH",
+        default="main",
+        help="Base branch for PR comparison (default: main)",
+    )
+
+    parser.add_argument(
+        "--head", metavar="BRANCH", help="Head branch for PR comparison (default: current branch)"
+    )
+
+    parser.add_argument("--commit-hash", metavar="HASH", help="Commit hash for diff command")
+
+    parser.add_argument(
+        "--version", action="version", version="XandAI 2.1.12 - Multi-Provider Edition"
     )
 
     return parser
@@ -233,6 +261,83 @@ def show_system_prompt(mode: str):
     print("=" * 50)
     print(f"Prompt length: {len(prompt)} characters")
     print()
+
+
+def handle_git_command(args, git_commands: GitCommands):
+    """Handle Git AI commands"""
+    try:
+        repo_path = os.getcwd()
+
+        if args.command == "commit":
+            print("🤖 Generating commit message from staged changes...")
+            message = git_commands.generate_commit_message(repo_path)
+            print("\n" + "=" * 60)
+            print("SUGGESTED COMMIT MESSAGE:")
+            print("=" * 60)
+            print(message)
+            print("=" * 60)
+            print("\nTo use this message:")
+            print(f'  git commit -m "{message.split(chr(10))[0]}"')
+            if "\n" in message:
+                print("  (or copy the full message above for a detailed commit)")
+
+        elif args.command == "pr":
+            print(f"🤖 Summarizing PR from '{args.base}' to '{args.head or 'current branch'}'...")
+            summary = git_commands.summarize_pr(repo_path, args.base, args.head)
+            print("\n" + "=" * 60)
+            print("PULL REQUEST SUMMARY:")
+            print("=" * 60)
+            if summary.get("summary"):
+                print(f"\n{summary['summary']}\n")
+            if summary.get("changes"):
+                print("CHANGES:")
+                print(summary["changes"])
+                print()
+            if summary.get("risks"):
+                print("RISKS:")
+                print(summary["risks"])
+            print("=" * 60)
+
+        elif args.command == "diff":
+            if args.file:
+                print(f"🤖 Explaining diff for {args.file}...")
+            else:
+                print("🤖 Explaining current diff...")
+            explanation = git_commands.explain_diff(repo_path, args.file, args.commit_hash)
+            print("\n" + "=" * 60)
+            print("DIFF EXPLANATION:")
+            print("=" * 60)
+            print(explanation)
+            print("=" * 60)
+
+        elif args.command == "blame":
+            if not args.file:
+                print("Error: --file is required for blame command")
+                print("Usage: xandai blame --file <path> [--line <number>]")
+                sys.exit(1)
+
+            if args.line:
+                print(f"🤖 Explaining line {args.line} in {args.file}...")
+            else:
+                print(f"🤖 Explaining first line of {args.file}...")
+
+            explanation = git_commands.explain_blame(repo_path, args.file, args.line)
+            print("\n" + "=" * 60)
+            print("BLAME EXPLANATION:")
+            print("=" * 60)
+            print(explanation)
+            print("=" * 60)
+
+    except ValueError as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+        if args.verbose or args.debug:
+            import traceback
+
+            traceback.print_exc()
+        sys.exit(1)
 
 
 def main():
@@ -418,6 +523,12 @@ def main():
         history_manager = HistoryManager()
         if args.debug:
             OSUtils.debug_print("History manager initialized", True)
+
+        # Handle Git AI commands (if specified)
+        if args.command:
+            git_commands = GitCommands(llm_provider, verbose=args.verbose or args.debug)
+            handle_git_command(args, git_commands)
+            sys.exit(0)
 
         # Show ASCII title and startup info
         provider_name = llm_provider.get_provider_type().value.title()

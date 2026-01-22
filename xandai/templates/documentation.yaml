@@ -1,0 +1,36 @@
+name: documentation
+description: Generate documentation for code
+version: 1.0
+category: docs
+
+parameters:
+  - name: code
+    type: string
+    required: true
+    description: Code to document
+  - name: style
+    type: string
+    required: false
+    default: "clear and comprehensive"
+    description: Documentation style
+  - name: format
+    type: string
+    required: false
+    default: "markdown"
+    description: Output format (markdown, rst, etc.)
+
+template: |
+  Generate {style} documentation in {format} format for the following code:
+
+  ```
+  {code}
+  ```
+
+  Include:
+  - Overview/Purpose
+  - API/Interface documentation
+  - Parameters and return values
+  - Usage examples
+  - Important notes or caveats
+
+  Make it clear and developer-friendly.

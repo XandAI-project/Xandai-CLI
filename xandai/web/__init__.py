@@ -1,19 +1,18 @@
 """
-XandAI Web Integration Module
+XandAI Web Integration
 
-Módulo para integração web com funcionalidade de busca,
-parsing e extração de conteúdo usando BeautifulSoup4.
-
-Características:
-- Detecção inteligente de links
-- Sistema de toggle configurável
-- Tratamento robusto de erros
-- Arquitetura modular e extensível
+Enhanced web content fetching and processing.
 """
 
-from .content_extractor import ContentExtractor
-from .link_detector import LinkDetector
-from .web_fetcher import WebFetcher
-from .web_manager import WebManager
+from xandai.web.content_extractor import ContentExtractor, ExtractedContent
+from xandai.web.web_fetcher import FetchResult, WebContent, WebFetcher
+from xandai.web.web_search import WebSearch
 
-__all__ = ["WebFetcher", "LinkDetector", "ContentExtractor", "WebManager"]
+__all__ = [
+    "WebFetcher",
+    "WebContent",
+    "FetchResult",
+    "ContentExtractor",
+    "ExtractedContent",
+    "WebSearch",
+]

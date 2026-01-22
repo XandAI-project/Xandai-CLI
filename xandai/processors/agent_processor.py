@@ -92,6 +92,9 @@ class AgentProcessor:
         self.tool_manager = tool_manager
         self.max_calls = self.DEFAULT_MAX_CALLS
         self.verbose = os.getenv("XANDAI_VERBOSE", "0") == "1"
+        self.streaming_callback = None  # Callback for streaming output
+        self.show_prompts = True  # Always show prompts in agent mode
+        self.show_reasoning = True  # Always show reasoning in agent mode
 
         # Detect if using HistoryManager or ConversationManager
         self._use_history_manager = hasattr(conversation_manager, "add_conversation")
@@ -103,6 +106,10 @@ class AgentProcessor:
         if max_calls > 100:
             raise ValueError("max_calls cannot exceed 100")
         self.max_calls = max_calls
+
+    def set_streaming_callback(self, callback):
+        """Sets callback for streaming reasoning output"""
+        self.streaming_callback = callback
 
     def process(self, user_instruction: str, app_state: AppState) -> AgentResult:
         """
@@ -175,8 +182,11 @@ class AgentProcessor:
             result.completed_task = is_complete
 
             # If task is not complete and we haven't reached limit, continue
+            # Limit refinement iterations to avoid infinite loops
             iteration = 0
-            max_iterations = self.max_calls - 4  # Already used 4 calls
+            max_iterations = min(
+                3, self.max_calls - 4
+            )  # Max 3 refinements, or less if call limit is low
 
             while not is_complete and iteration < max_iterations:
                 iteration += 1
@@ -254,24 +264,7 @@ class AgentProcessor:
             step_name="Analyze Intent",
             prompt=self._build_intent_prompt(user_instruction, app_state),
         )
-
-        if self.verbose:
-            print(f"[Step 1] Analyzing intent...")
-
-        try:
-            response = self.llm_provider.generate(
-                prompt=step.prompt,
-                temperature=0.3,  # Lower temperature for classification
-                max_tokens=500,
-            )
-            step.set_response(response)
-            if self.verbose:
-                print(f"[Step 1] ✓ Intent analyzed - {step.tokens_used} tokens")
-        except Exception as e:
-            if self.verbose:
-                print(f"[Step 1] ✗ Error: {e}")
-
-        return step
+        return self._execute_step_with_streaming(step, temperature=0.3, max_tokens=500)
 
     def _step_2_gather_context(
         self, user_instruction: str, intent_data: Dict[str, Any], app_state: AppState
@@ -282,22 +275,7 @@ class AgentProcessor:
             step_name="Gather Context",
             prompt=self._build_context_prompt(user_instruction, intent_data, app_state),
         )
-
-        if self.verbose:
-            print(f"[Step 2] Gathering context...")
-
-        try:
-            response = self.llm_provider.generate(
-                prompt=step.prompt, temperature=0.3, max_tokens=1000
-            )
-            step.set_response(response)
-            if self.verbose:
-                print(f"[Step 2] ✓ Context gathered - {step.tokens_used} tokens")
-        except Exception as e:
-            if self.verbose:
-                print(f"[Step 2] ✗ Error: {e}")
-
-        return step
+        return self._execute_step_with_streaming(step, temperature=0.3, max_tokens=1000)
 
     def _step_3_execute_task(
         self,
@@ -312,24 +290,7 @@ class AgentProcessor:
             step_name="Execute Task",
             prompt=self._build_task_prompt(user_instruction, intent_data, context_data, app_state),
         )
-
-        if self.verbose:
-            print(f"[Step 3] Executing main task...")
-
-        try:
-            response = self.llm_provider.generate(
-                prompt=step.prompt,
-                temperature=0.7,  # Higher temperature for creative tasks
-                max_tokens=2048,
-            )
-            step.set_response(response)
-            if self.verbose:
-                print(f"[Step 3] ✓ Task executed - {step.tokens_used} tokens")
-        except Exception as e:
-            if self.verbose:
-                print(f"[Step 3] ✗ Error: {e}")
-
-        return step
+        return self._execute_step_with_streaming(step, temperature=0.7, max_tokens=2048)
 
     def _step_4_validate_output(
         self, user_instruction: str, task_output: str, app_state: AppState
@@ -340,24 +301,7 @@ class AgentProcessor:
             step_name="Validate Output",
             prompt=self._build_validation_prompt(user_instruction, task_output),
         )
-
-        if self.verbose:
-            print(f"[Step 4] Validating output...")
-
-        try:
-            response = self.llm_provider.generate(
-                prompt=step.prompt,
-                temperature=0.2,  # Very low temperature for validation
-                max_tokens=500,
-            )
-            step.set_response(response)
-            if self.verbose:
-                print(f"[Step 4] ✓ Output validated - {step.tokens_used} tokens")
-        except Exception as e:
-            if self.verbose:
-                print(f"[Step 4] ✗ Error: {e}")
-
-        return step
+        return self._execute_step_with_streaming(step, temperature=0.2, max_tokens=500)
 
     def _step_n_refine_task(
         self,
@@ -375,22 +319,7 @@ class AgentProcessor:
                 user_instruction, current_output, validation_feedback
             ),
         )
-
-        if self.verbose:
-            print(f"[Step {4 + iteration}] Refining output (iteration {iteration})...")
-
-        try:
-            response = self.llm_provider.generate(
-                prompt=step.prompt, temperature=0.6, max_tokens=2048
-            )
-            step.set_response(response)
-            if self.verbose:
-                print(f"[Step {4 + iteration}] ✓ Refinement complete - {step.tokens_used} tokens")
-        except Exception as e:
-            if self.verbose:
-                print(f"[Step {4 + iteration}] ✗ Error: {e}")
-
-        return step
+        return self._execute_step_with_streaming(step, temperature=0.6, max_tokens=2048)
 
     # Prompt builders
 
@@ -528,12 +457,48 @@ Provide your response below:"""
 
     def _build_validation_prompt(self, user_instruction: str, task_output: str) -> str:
         """Builds prompt for output validation"""
+
+        # Check if output contains <code create> tags (file creation)
+        import re
+
+        code_tags = re.findall(r'<code create filename="([^"]+)">', task_output)
+
+        # Build a summary of what was created
+        if code_tags:
+            files_summary = f"Files created: {', '.join(code_tags)}"
+            # For file creation tasks, just verify tags are used correctly
+            validation_focus = f"""
+FILES CREATED: {len(code_tags)} file(s) - {', '.join(code_tags)}
+
+VALIDATION FOCUS:
+- Verify that <code create filename="..."> tags were used (NOT markdown blocks)
+- Check if all required files for the task are present
+- If files match the user's request, mark COMPLETE: yes
+"""
+        else:
+            files_summary = "No files created"
+            validation_focus = "Check if the response adequately addresses the user's request"
+
+        # Only include first 1500 chars + last 500 chars to show structure
+        if len(task_output) > 2000:
+            output_preview = (
+                task_output[:1500]
+                + "\n\n... (content truncated for validation) ...\n\n"
+                + task_output[-500:]
+            )
+        else:
+            output_preview = task_output
+
         return f"""Validate if the following output correctly addresses the user's instruction.
 
 USER INSTRUCTION: "{user_instruction}"
 
-GENERATED OUTPUT:
-{task_output[:2000]}  # Limit to avoid token overflow
+{files_summary}
+
+OUTPUT PREVIEW:
+{output_preview}
+
+{validation_focus}
 
 TASK:
 Evaluate the output and respond in this format:
@@ -544,11 +509,11 @@ ISSUES: [list any issues found, or "none"]
 SUGGESTIONS: [list improvements if needed, or "none"]
 VERDICT: [one sentence summary]
 
-SPECIAL VALIDATION RULES:
-- If the task involves creating files, check if <code create filename="..."> tags are used
-- If markdown code blocks (```language) are used instead of <code create> tags, mark COMPLETE: no
-- Files must use <code create> tags, NOT markdown blocks
-- All file content must be complete (no "..." or truncation)"""
+IMPORTANT VALIDATION RULES:
+- If the task is to CREATE FILES and proper <code create filename="..."> tags are used, mark COMPLETE: yes
+- Only mark COMPLETE: no if files are missing or tags are incorrect
+- Do NOT mark incomplete just because content is long
+- Focus on whether the USER'S REQUEST was fulfilled, not implementation details"""
 
     def _build_refinement_prompt(
         self, user_instruction: str, current_output: str, validation_feedback: str
@@ -587,6 +552,85 @@ Examples:
 Provide the refined response below:"""
 
     # Helper methods
+
+    def _execute_step_with_streaming(
+        self, step: AgentStep, temperature: float = 0.7, max_tokens: int = 2048
+    ) -> AgentStep:
+        """Helper method to execute a step with streaming support"""
+        # Show prompt if enabled
+        if self.streaming_callback and self.show_prompts:
+            self.streaming_callback("show_prompt", step.step_number, step.step_name, step.prompt)
+
+        # Show step start
+        if self.streaming_callback:
+            self.streaming_callback("step_start", step.step_number, step.step_name)
+
+        try:
+            # Try streaming if callback is available
+            if self.streaming_callback and self.show_reasoning:
+                # Convert generate to chat for streaming support
+                messages = []
+                messages.append({"role": "user", "content": step.prompt})
+
+                response_chunks = []
+
+                def progress_callback(message: str):
+                    """Callback for ollama streaming progress"""
+                    pass  # We'll handle chunks directly
+
+                # Use chat with streaming for better streaming support
+                result = self.llm_provider.chat(
+                    messages=messages,
+                    stream=True,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    progress_callback=progress_callback,
+                )
+
+                # Check if result is an LLMResponse (has 'content' attribute) or a generator
+                if hasattr(result, "content"):
+                    # It's already an LLMResponse (non-streaming or already converted)
+                    response = result
+                else:
+                    # It's a generator, collect chunks
+                    full_content = ""
+                    for chunk in result:
+                        full_content += chunk
+                        response_chunks.append(chunk)
+                        if self.streaming_callback:
+                            self.streaming_callback("reasoning_chunk", chunk)
+
+                    # Create LLMResponse manually from collected content
+                    response = LLMResponse(
+                        content=full_content,
+                        model=self.llm_provider.current_model or "unknown",
+                        prompt_tokens=0,  # Token counting would need to be implemented
+                        completion_tokens=len(full_content.split()),  # Rough estimate
+                        total_tokens=len(full_content.split()),
+                        provider=self.llm_provider.get_provider_type().value,
+                    )
+            else:
+                # Fallback to non-streaming
+                response = self.llm_provider.generate(
+                    prompt=step.prompt,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
+
+            step.set_response(response)
+
+            # Show step complete
+            if self.streaming_callback:
+                self.streaming_callback(
+                    "step_complete", step.step_number, step.step_name, step.tokens_used
+                )
+        except Exception as e:
+            if self.streaming_callback:
+                self.streaming_callback("step_error", step.step_number, step.step_name, str(e))
+            # Still raise the exception for proper error handling
+            raise
+
+        return step
 
     def _parse_intent(self, intent_response: str) -> Dict[str, Any]:
         """Parses intent response into structured data"""
@@ -664,8 +708,30 @@ Provide the refined response below:"""
         for line in lines:
             if line.strip().startswith("COMPLETE:"):
                 value = line.split(":", 1)[1].strip().lower()
-                return value == "yes"
+                is_complete = value == "yes"
 
+                # Additional check: if marked incomplete, look for quality assessment
+                if not is_complete:
+                    # Check if quality is at least "adequate" or "good"
+                    for quality_line in lines:
+                        if quality_line.strip().startswith("QUALITY:"):
+                            quality = quality_line.split(":", 1)[1].strip().lower()
+                            # If quality is good/excellent but marked incomplete, it might be a false negative
+                            if quality in ["good", "excellent", "adequate"]:
+                                # Check if issues are minor
+                                for issue_line in lines:
+                                    if issue_line.strip().startswith("ISSUES:"):
+                                        issues = issue_line.split(":", 1)[1].strip().lower()
+                                        # If no major issues, consider it complete
+                                        if (
+                                            issues in ["none", "minor", ""]
+                                            or "truncat" not in issues
+                                        ):
+                                            return True
+
+                return is_complete
+
+        # If no COMPLETE field found, default to False
         return False
 
     def _format_dict(self, data: Dict[str, Any]) -> str:

@@ -1,0 +1,33 @@
+name: database_schema
+description: Design database schema
+version: 1.0
+category: architecture
+
+parameters:
+  - name: description
+    type: string
+    required: true
+    description: What the database needs to store
+  - name: database_type
+    type: string
+    required: false
+    default: "PostgreSQL"
+    description: Database system
+  - name: considerations
+    type: string
+    required: false
+    default: ""
+    description: Special requirements or considerations
+
+template: |
+  Design a {database_type} database schema for: {description}
+
+  {considerations}
+
+  Provide:
+  1. Table definitions with columns, types, and constraints
+  2. Relationships and foreign keys
+  3. Indexes for performance
+  4. Example SQL to create the schema
+
+  Follow normalization best practices and include clear explanations.

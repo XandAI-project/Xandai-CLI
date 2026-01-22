@@ -35,7 +35,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pytest pytest-cov flake8 black isort mypy
+          pip install pytest pytest-cov flake8 black==24.8.0 isort mypy
 
       - name: Lint with flake8
         run: |

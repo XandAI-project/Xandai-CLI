@@ -24,6 +24,7 @@ from xandai.processors.review_processor import ReviewProcessor
 from xandai.processors.task_processor import TaskProcessor
 from xandai.utils.display_utils import DisplayUtils
 from xandai.utils.tool_manager import ToolManager
+from xandai.web_shell import WebShellServer
 
 
 class XandAICLI:
@@ -61,6 +62,9 @@ class XandAICLI:
         self.forced_mode: Optional[str] = None  # 'edit', 'create', or None
         self.auto_mode: bool = True
 
+        # Web Shell Server
+        self.web_shell_server: Optional[WebShellServer] = None
+
         # Command mappings
         self.commands = {
             "/help": self._show_help,
@@ -89,6 +93,8 @@ class XandAICLI:
             # Agent mode
             "/agent": self._process_agent_mode,
             "/set-agent-limit": self._set_agent_limit,
+            # Web Shell
+            "/host": self._start_web_shell,
         }
 
     def run(self, initial_input: Optional[str] = None):
@@ -395,6 +401,51 @@ class XandAICLI:
         except Exception as e:
             self.console.print(f"[red]Error setting limit: {e}[/red]")
 
+    def _start_web_shell(self, args: str):
+        """Starts the web shell server"""
+        # Parse arguments
+        host = "0.0.0.0"
+        port = 4800
+
+        if args.strip():
+            parts = args.strip().split()
+            for i, part in enumerate(parts):
+                if not part.startswith("-"):
+                    # If it's not a flag, assume it's the host
+                    host = part
+                elif part in ["-p", "--port", "--p"]:
+                    # Next part should be the port
+                    if i + 1 < len(parts):
+                        try:
+                            port = int(parts[i + 1])
+                        except ValueError:
+                            self.console.print(f"[red]Invalid port number: {parts[i + 1]}[/red]")
+                            return
+
+        try:
+            # Check if server is already running
+            if self.web_shell_server is not None:
+                self.console.print("[yellow]Web Shell is already running[/yellow]")
+                self.console.print(f"[cyan]Access it at: http://{host}:{port}[/cyan]")
+                return
+
+            # Create and start web shell server
+            self.web_shell_server = WebShellServer(self)
+            message = self.web_shell_server.start(host=host, port=port)
+
+            self.console.print(f"[green]✓ {message}[/green]")
+            self.console.print(
+                f"[cyan]Open your browser and navigate to: http://{host}:{port}[/cyan]"
+            )
+            self.console.print(
+                "[dim]The web interface allows real-time interaction with XandAI[/dim]"
+            )
+            self.console.print("[dim]You can continue using this terminal normally[/dim]")
+
+        except Exception as e:
+            self.console.print(f"[red]Error starting web shell: {e}[/red]")
+            self.web_shell_server = None
+
     # ===== Utility Commands =====
 
     def _show_help(self, args: str):
@@ -425,6 +476,11 @@ class XandAICLI:
 
 [cyan]Code Review:[/cyan]
   /review [path] - Analyze Git changes and provide code review
+
+[cyan]Web Interface:[/cyan]
+  /host [address] [-p port]  - Start web shell server
+                               Default: 0.0.0.0:4800
+                               Example: /host 0.0.0.0 -p 4800
 
 [cyan]LLM Provider Management:[/cyan]
   /provider      - Show provider connection status

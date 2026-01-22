@@ -6,7 +6,7 @@ Supports the LM Studio server endpoints as documented.
 """
 
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Generator, List, Optional, Union
 
 import requests
 
@@ -130,8 +130,16 @@ class LMStudioProvider(LLMProvider):
         stream: bool = False,
         progress_callback=None,  # For API compatibility, but not used
         **options,
-    ) -> LLMResponse:
-        """Send chat completion request to LM Studio"""
+    ) -> Union[LLMResponse, Generator[str, None, None]]:
+        """Send chat completion request to LM Studio
+
+        Returns:
+            Generator[str, None, None] if stream=True, otherwise LLMResponse
+        """
+
+        # Extract progress_callback from options if present (to avoid JSON serialization error)
+        if "progress_callback" in options:
+            progress_callback = options.pop("progress_callback")
 
         if not self.is_connected():
             raise ConnectionError(
@@ -159,7 +167,7 @@ class LMStudioProvider(LLMProvider):
             "temperature": options.get("temperature", self.config.temperature),
             "top_p": options.get("top_p", self.config.top_p),
             "max_tokens": options.get("max_tokens", self.config.max_tokens),
-            "stream": False,  # Force non-streaming for now to avoid parsing issues
+            "stream": stream,  # Enable streaming support
         }
 
         # Add extra options from config
@@ -172,6 +180,11 @@ class LMStudioProvider(LLMProvider):
                 payload[key] = value
 
         try:
+            # Handle streaming vs non-streaming
+            if stream:
+                return self._chat_stream(payload, model_to_use)
+
+            # Non-streaming response
             response = self.session.post(
                 f"{self.api_base}/chat/completions",
                 json=payload,
@@ -232,6 +245,55 @@ class LMStudioProvider(LLMProvider):
             raise ConnectionError(f"LM Studio HTTP error {response.status_code}: {e}")
         except requests.exceptions.RequestException as e:
             raise ConnectionError(f"LM Studio request failed: {e}")
+
+    def _chat_stream(self, payload: Dict[str, Any], model: str):
+        """Handle streaming response from LM Studio (OpenAI-compatible SSE)"""
+        import json
+
+        try:
+            response = self.session.post(
+                f"{self.api_base}/chat/completions",
+                json=payload,
+                stream=True,
+                timeout=self.config.timeout,
+            )
+            response.raise_for_status()
+
+            # Stream Server-Sent Events (SSE) format
+            for line in response.iter_lines():
+                if line:
+                    line_str = line.decode("utf-8")
+
+                    # Skip empty lines and comments
+                    if not line_str.strip() or line_str.startswith(":"):
+                        continue
+
+                    # Remove "data: " prefix
+                    if line_str.startswith("data: "):
+                        line_str = line_str[6:]
+
+                    # Check for end of stream
+                    if line_str.strip() == "[DONE]":
+                        break
+
+                    try:
+                        data = json.loads(line_str)
+
+                        # Extract content from delta
+                        if "choices" in data and data["choices"]:
+                            choice = data["choices"][0]
+                            delta = choice.get("delta", {})
+                            content = delta.get("content", "")
+
+                            if content:
+                                yield content
+
+                    except json.JSONDecodeError:
+                        # Skip malformed JSON lines
+                        continue
+
+        except requests.exceptions.RequestException as e:
+            raise ConnectionError(f"LM Studio streaming failed: {e}")
 
     def generate(
         self,

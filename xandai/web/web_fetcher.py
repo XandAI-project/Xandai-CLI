@@ -1,178 +1,270 @@
 """
-Web Fetching Module
+Web Fetcher
 
-Responsável por fazer requisições HTTP de forma robusta
-com tratamento de erros, timeouts e headers apropriados.
+Smart web content fetching with caching and rate limiting.
 """
 
+import hashlib
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from pathlib import Path
+from typing import Dict, Optional
+from urllib.parse import urljoin, urlparse
+from urllib.robotparser import RobotFileParser
 
 import requests
-from requests.exceptions import ConnectionError, RequestException, Timeout
+from bs4 import BeautifulSoup
 
 
 @dataclass
 class FetchResult:
-    """Resultado de uma requisição web"""
+    """Result of a web fetch operation"""
 
     success: bool
+    content: Optional["WebContent"] = None
+    error: Optional[str] = None
+    status_code: int = 0
+
+
+@dataclass
+class WebContent:
+    """Web content container"""
+
     url: str
-    content: Optional[str] = None
-    status_code: Optional[int] = None
-    headers: Optional[Dict[str, str]] = None
-    error_message: Optional[str] = None
-    response_time: float = 0.0
+    title: str
+    content: str
+    html: str
+    links: list
+    images: list
+    metadata: Dict[str, str]
+    status_code: int
+
+    def to_markdown(self) -> str:
+        """Convert to markdown format"""
+        md = f"# {self.title}\n\n"
+        md += f"**URL**: {self.url}\n\n"
+        md += "---\n\n"
+        md += self.content
+        return md
 
 
 class WebFetcher:
     """
-    Cliente HTTP robusto para buscar conteúdo web
+    Web Fetcher
 
-    Características:
-    - Timeouts configuráveis
-    - User-Agent apropriado
-    - Tratamento de redirects
-    - Retry logic para falhas temporárias
-    - Validação de content-type
+    Fetches web content with respect for robots.txt and rate limiting.
     """
 
-    def __init__(self, timeout: int = 10, max_retries: int = 2):
+    def __init__(
+        self,
+        cache_dir: Optional[str] = None,
+        rate_limit: float = 1.0,
+        timeout: int = 10,
+        user_agent: str = "XandAI/1.0",
+    ):
         """
-        Inicializa WebFetcher
+        Initialize web fetcher
 
         Args:
-            timeout: Timeout em segundos para requisições
-            max_retries: Número máximo de tentativas
+            cache_dir: Cache directory path
+            rate_limit: Minimum seconds between requests
+            timeout: Request timeout
+            user_agent: User agent string
         """
+        if cache_dir:
+            self.cache_dir = Path(cache_dir)
+        else:
+            home = Path.home()
+            self.cache_dir = home / ".xandai" / "web_cache"
+
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+
+        self.rate_limit = rate_limit
         self.timeout = timeout
-        self.max_retries = max_retries
+        self.user_agent = user_agent
+        self.last_request_time = {}
+        self.robots_parsers = {}
 
-        # Session reutilizável para melhor performance
-        self.session = requests.Session()
-
-        # Headers padrão para simular browser real
-        self.session.headers.update(
-            {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-                "Accept-Language": "en-US,en;q=0.5",
-                "Accept-Encoding": "gzip, deflate",
-                "Connection": "keep-alive",
-                "Upgrade-Insecure-Requests": "1",
-            }
-        )
-
-    def fetch(self, url: str, **kwargs) -> FetchResult:
+    def fetch(
+        self, url: str, use_cache: bool = True, respect_robots: bool = True
+    ) -> Optional[WebContent]:
         """
-        Busca conteúdo de uma URL com retry logic
+        Fetch web content
 
         Args:
-            url: URL para buscar
-            **kwargs: Parâmetros adicionais para requests
+            url: URL to fetch
+            use_cache: Use cached content if available
+            respect_robots: Respect robots.txt
 
         Returns:
-            FetchResult com resultado da requisição
+            WebContent or None
         """
-        start_time = time.time()
+        # Check cache
+        if use_cache:
+            cached = self._get_cached(url)
+            if cached:
+                return cached
 
-        for attempt in range(self.max_retries + 1):
-            try:
-                result = self._attempt_fetch(url, **kwargs)
-                result.response_time = time.time() - start_time
-                return result
+        # Check robots.txt
+        if respect_robots and not self._can_fetch(url):
+            return None
 
-            except (ConnectionError, Timeout) as e:
-                if attempt < self.max_retries:
-                    # Wait before retry (exponential backoff)
-                    time.sleep(0.5 * (2**attempt))
-                    continue
-                else:
-                    return FetchResult(
-                        success=False,
-                        url=url,
-                        error_message=f"Connection failed after {self.max_retries + 1} attempts: {str(e)}",
-                        response_time=time.time() - start_time,
-                    )
+        # Rate limiting
+        self._rate_limit(url)
 
-            except Exception as e:
-                return FetchResult(
-                    success=False,
-                    url=url,
-                    error_message=f"Unexpected error: {str(e)}",
-                    response_time=time.time() - start_time,
-                )
-
-        return FetchResult(
-            success=False,
-            url=url,
-            error_message="Max retries exceeded",
-            response_time=time.time() - start_time,
-        )
-
-    def _attempt_fetch(self, url: str, **kwargs) -> FetchResult:
-        """Única tentativa de buscar URL"""
-        # Merge default timeout with any provided
-        request_kwargs = {"timeout": self.timeout, "allow_redirects": True, **kwargs}
-
-        response = self.session.get(url, **request_kwargs)
-
-        # Check if response is successful
-        response.raise_for_status()
-
-        # Validate content type
-        content_type = response.headers.get("content-type", "").lower()
-        if not self._is_processable_content_type(content_type):
-            return FetchResult(
-                success=False,
-                url=url,
-                status_code=response.status_code,
-                headers=dict(response.headers),
-                error_message=f"Unsupported content type: {content_type}",
-            )
-
-        # Check content size (avoid downloading huge files)
-        content_length = response.headers.get("content-length")
-        if content_length and int(content_length) > 10 * 1024 * 1024:  # 10MB limit
-            return FetchResult(
-                success=False,
-                url=url,
-                status_code=response.status_code,
-                headers=dict(response.headers),
-                error_message=f"Content too large: {content_length} bytes",
-            )
-
-        # Handle encoding properly to avoid Unicode errors
         try:
-            # Try to get content with proper encoding
-            if response.encoding is None:
-                response.encoding = "utf-8"  # Default to UTF-8 if not specified
-            content = response.text
-        except UnicodeDecodeError:
-            # Fallback to raw content with error handling
-            content = response.content.decode("utf-8", errors="replace")
+            # Fetch content
+            headers = {"User-Agent": self.user_agent}
+            response = requests.get(url, headers=headers, timeout=self.timeout)
+            response.raise_for_status()
 
-        return FetchResult(
-            success=True,
-            url=response.url,  # Final URL after redirects
-            content=content,
-            status_code=response.status_code,
-            headers=dict(response.headers),
+            # Parse content
+            soup = BeautifulSoup(response.content, "html.parser")
+
+            # Extract title
+            title = soup.title.string if soup.title else urlparse(url).path
+
+            # Extract main content (simple heuristic)
+            content = self._extract_text(soup)
+
+            # Extract links
+            links = [urljoin(url, a.get("href")) for a in soup.find_all("a", href=True)]
+
+            # Extract images
+            images = [urljoin(url, img.get("src")) for img in soup.find_all("img", src=True)]
+
+            # Extract metadata
+            metadata = self._extract_metadata(soup)
+
+            web_content = WebContent(
+                url=url,
+                title=title.strip() if title else "Untitled",
+                content=content,
+                html=str(soup),
+                links=links,
+                images=images,
+                metadata=metadata,
+                status_code=response.status_code,
+            )
+
+            # Cache content
+            if use_cache:
+                self._cache_content(url, web_content)
+
+            return web_content
+
+        except Exception as e:
+            print(f"Error fetching {url}: {e}")
+            return None
+
+    def _can_fetch(self, url: str) -> bool:
+        """Check if URL can be fetched according to robots.txt"""
+        parsed = urlparse(url)
+        domain = f"{parsed.scheme}://{parsed.netloc}"
+
+        if domain not in self.robots_parsers:
+            robots_parser = RobotFileParser()
+            robots_parser.set_url(urljoin(domain, "/robots.txt"))
+            try:
+                robots_parser.read()
+                self.robots_parsers[domain] = robots_parser
+            except:
+                # If robots.txt cannot be fetched, allow crawling
+                return True
+
+        return self.robots_parsers[domain].can_fetch(self.user_agent, url)
+
+    def _rate_limit(self, url: str):
+        """Apply rate limiting"""
+        domain = urlparse(url).netloc
+
+        if domain in self.last_request_time:
+            elapsed = time.time() - self.last_request_time[domain]
+            if elapsed < self.rate_limit:
+                time.sleep(self.rate_limit - elapsed)
+
+        self.last_request_time[domain] = time.time()
+
+    def _extract_text(self, soup: BeautifulSoup) -> str:
+        """Extract main text content"""
+        # Remove script and style elements
+        for script in soup(["script", "style"]):
+            script.decompose()
+
+        # Try to find main content area
+        main_content = (
+            soup.find("main")
+            or soup.find("article")
+            or soup.find("div", class_="content")
+            or soup.find("div", id="content")
+            or soup.body
         )
 
-    def _is_processable_content_type(self, content_type: str) -> bool:
-        """Verifica se o content-type é processável"""
-        processable_types = [
-            "text/html",
-            "application/xhtml+xml",
-            "text/plain",
-            "application/xml",
-            "text/xml",
-        ]
+        if main_content:
+            text = main_content.get_text(separator="\n", strip=True)
+        else:
+            text = soup.get_text(separator="\n", strip=True)
 
-        return any(ptype in content_type for ptype in processable_types)
+        # Clean up whitespace
+        lines = [line.strip() for line in text.split("\n")]
+        lines = [line for line in lines if line]
 
-    def close(self):
-        """Fecha a session HTTP"""
-        self.session.close()
+        return "\n\n".join(lines)
+
+    def _extract_metadata(self, soup: BeautifulSoup) -> Dict[str, str]:
+        """Extract page metadata"""
+        metadata = {}
+
+        # Meta tags
+        for meta in soup.find_all("meta"):
+            name = meta.get("name") or meta.get("property")
+            content = meta.get("content")
+            if name and content:
+                metadata[name] = content
+
+        return metadata
+
+    def _get_cached(self, url: str) -> Optional[WebContent]:
+        """Get cached content"""
+        cache_key = hashlib.md5(url.encode()).hexdigest()
+        cache_file = self.cache_dir / f"{cache_key}.json"
+
+        if cache_file.exists():
+            import json
+
+            try:
+                with open(cache_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    return WebContent(**data)
+            except:
+                pass
+
+        return None
+
+    def _cache_content(self, url: str, content: WebContent):
+        """Cache web content"""
+        cache_key = hashlib.md5(url.encode()).hexdigest()
+        cache_file = self.cache_dir / f"{cache_key}.json"
+
+        import json
+
+        try:
+            with open(cache_file, "w", encoding="utf-8") as f:
+                data = {
+                    "url": content.url,
+                    "title": content.title,
+                    "content": content.content,
+                    "html": content.html,
+                    "links": content.links,
+                    "images": content.images,
+                    "metadata": content.metadata,
+                    "status_code": content.status_code,
+                }
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        except:
+            pass
+
+    def clear_cache(self):
+        """Clear all cached content"""
+        for cache_file in self.cache_dir.glob("*.json"):
+            cache_file.unlink()
