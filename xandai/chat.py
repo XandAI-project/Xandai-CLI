@@ -3268,11 +3268,12 @@ Remember: Your response will be written directly to the file! NO explanatory tex
         return "\\n".join(info_parts) if info_parts else None
 
     def _chat_with_streaming_progress(self, messages: list):
-        """Handle normal chat with streaming progress"""
+        """Handle normal chat with streaming progress - collects chunks and returns LLMResponse"""
         try:
             # Create progress callback for streaming
             with self.console.status("[bold green]Thinking...") as status:
                 current_chunks = 0
+                full_content = ""
 
                 def progress_callback(message: str):
                     nonlocal current_chunks
@@ -3289,7 +3290,7 @@ Remember: Your response will be written directly to the file! NO explanatory tex
 
                 # Try streaming first
                 try:
-                    return self.llm_provider.chat(
+                    result = self.llm_provider.chat(
                         messages=messages,
                         system_prompt=self.system_prompt,
                         stream=True,
@@ -3298,15 +3299,41 @@ Remember: Your response will be written directly to the file! NO explanatory tex
                 except Exception:
                     # Fallback but still use streaming
                     status.update("[bold green]Thinking... (streaming fallback)[/bold green]")
-                    return self.llm_provider.chat(
+                    result = self.llm_provider.chat(
                         messages=messages, system_prompt=self.system_prompt, stream=True
+                    )
+
+                # Check if result is a generator or already an LLMResponse
+                if hasattr(result, "content"):
+                    # It's already an LLMResponse
+                    return result
+                else:
+                    # It's a generator, collect all chunks
+                    for chunk in result:
+                        full_content += chunk
+                        current_chunks += 1
+                        status.update(
+                            f"[bold green]Thinking... ({current_chunks} chunks)[/bold green]"
+                        )
+
+                    # Import LLMResponse to create response object
+                    from xandai.integrations.base_provider import LLMResponse
+
+                    # Create LLMResponse from collected content
+                    return LLMResponse(
+                        content=full_content,
+                        model=self.llm_provider.current_model or "unknown",
+                        prompt_tokens=0,  # Exact token count not available in streaming
+                        completion_tokens=len(full_content.split()),  # Rough estimate
+                        total_tokens=len(full_content.split()),
+                        provider=self.llm_provider.get_provider_type().value,
                     )
 
         except Exception as e:
             self.console.print(f"[red]Error in chat: {e}[/red]")
-            # Final fallback - still use streaming
+            # Final fallback - use non-streaming to ensure we get an LLMResponse
             return self.llm_provider.chat(
-                messages=messages, system_prompt=self.system_prompt, stream=True
+                messages=messages, system_prompt=self.system_prompt, stream=False
             )
 
     def _infer_folder_structure(self, current_file: str, all_files: list) -> str:
