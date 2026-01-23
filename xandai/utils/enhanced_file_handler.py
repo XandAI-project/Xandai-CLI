@@ -343,7 +343,7 @@ class EnhancedFileHandler:
                 {"role": "user", "content": fix_prompt},
             ]
 
-            response = self.llm_provider.chat(messages=messages, temperature=0.3)
+            response = self.llm_provider.chat(messages=messages, temperature=0.3, stream=False)
 
             # Process response
             ai_response, results = self.process_ai_response_with_files(
@@ -392,7 +392,7 @@ class EnhancedFileHandler:
                 {"role": "user", "content": creation_prompt},
             ]
 
-            response = self.llm_provider.chat(messages=messages, temperature=0.3)
+            response = self.llm_provider.chat(messages=messages, temperature=0.3, stream=False)
 
             # Process response
             ai_response, results = self.process_ai_response_with_files(

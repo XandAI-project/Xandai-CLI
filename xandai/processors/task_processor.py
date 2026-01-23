@@ -242,6 +242,7 @@ ALWAYS RESPOND IN ENGLISH."""
                 messages=context,
                 temperature=0.3,  # Lower temperature for more consistency
                 max_tokens=4096,  # More tokens for detailed responses
+                stream=False,  # Non-streaming for task mode
             )
             return response
 
